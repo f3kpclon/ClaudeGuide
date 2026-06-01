@@ -2290,3 +2290,4 @@ Disciplina de invocación (Claude, no el usuario)
 - [Hooks](https://code.claude.com/docs/en/hooks-guide)
 - [Plugins](https://code.claude.com/docs/en/plugins)
 - [Agent Teams](https://code.claude.com/docs/en/agent-teams)
+
