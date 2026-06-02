@@ -166,7 +166,29 @@ El archivo de learnings sigue existiendo para que el postmortem lo actualice. Lo
 - **Fragmentar por dominio** — un archivo de 500 líneas siempre se lee completo; 5 archivos de 100 líneas se leen solo cuando aplican
 - **Gotchas críticos inline** — si un agente los lee siempre, ponerlos directo en su prompt
 
-### CLAUDE.md — plantilla
+### CLAUDE.md — tool de un solo propósito (sin dispatch)
+
+Si el proyecto tiene **un único flujo de entrada** (ej: siempre genera, siempre scaffoldea, siempre revisa), reemplazar la tabla de dispatch por una instrucción directa. Elimina la carga cognitiva de routing y arranca el flujo automáticamente.
+
+```markdown
+# [Proyecto]
+
+On every new request: load `.claude/skills/[flow-skill]/SKILL.md` and start [flow] immediately.
+
+## [Flow name]
+[Pasos del flujo en 2-3 líneas]
+
+## Hard rules
+…
+```
+
+**Cuándo usar:** projects where 100% of user interactions trigger the same flow. Si hay ≥2 flujos distintos → mantener dispatch table.
+
+> **[2026-06-02] artifact-factory:** implementado. Eliminó dispatch table de 7 líneas → instrucción directa de 1 línea. El scaffold flow ahora arranca sin que el usuario escriba nada.
+
+---
+
+### CLAUDE.md — plantilla (multi-flujo con dispatch)
 
 ```markdown
 # [Proyecto]
@@ -778,6 +800,34 @@ Ventaja sobre borrar: el archivo sigue existiendo como referencia histórica, pe
 
 Si el hub supera 40 líneas → hay contenido que no le pertenece.
 Si CLAUDE.md ya tiene el dispatch → usar `user-invocable-only` y eliminar el hub del flujo automático.
+
+### Patrón: scaffold-questions skill
+
+Cuando un tool-specific project tiene un flujo de `AskUserQuestion` definido (onboarding, scaffold, configuración), formalizar las preguntas exactas en una skill de referencia en lugar de improvisar en cada sesión.
+
+```markdown
+---
+name: scaffold-questions
+description: Exact AskUserQuestion format for [flow name]. Load before Call 1/2/3.
+disable-model-invocation: true
+allowed-tools: []
+---
+# [Flow] Questions
+## Call 1 — [Pregunta] (×1)
+question: "…"
+header: "…"
+options:
+  - [Label] | [description]
+  - [Label] | [description]
+## Call 2 — … (×4)
+…
+```
+
+**Por qué:** sin este skill, el modelo improvisa opciones distintas en cada sesión — inconsistente y difícil de testear. Con el skill cargado, las preguntas son idénticas siempre.
+
+**Cuándo usar:** cualquier flujo que tenga `AskUserQuestion` repetibles (onboarding, scaffold, configuración inicial).
+
+> **[2026-06-02] artifact-factory:** patrón implementado en `.claude/skills/scaffold-questions/SKILL.md`. Eliminó 3 iteraciones de preguntas incorrectas en la misma sesión.
 
 ### Dynamic context injection
 
@@ -1541,6 +1591,8 @@ claude --plugin-dir ./mi-plugin   # cargar sin instalar
 | Git en múltiples invocaciones separadas | 22k tokens (medido) vs ~10-12k esperado | Una sola invocación al final: BRANCH+COMMIT+PR+MERGE · VALIDADO: sí |
 | `git add -p` en agente git | Interactivo — el agente entra en loop esperando stdin, infla tool calls | Usar `git add -u` (todos los modificados) + `git status --short` previo |
 | Commit message no pasado en el prompt al agente git | El agente usa 1-2 tool calls extra para inferir qué cambió | Pasar mensaje explícito: `COMMIT: tipo: descripción` — el agente no explora |
+| `subagent_type: "validator"` (nombre de agente del proyecto) | Error "agent type not found" — falla inmediata, no silent | Solo los built-ins funcionan: `architect`, `generator`, `curator`, `claude`, `general-purpose`. Para invocar un agente del proyecto programáticamente: omitir `subagent_type` + cargar sus instrucciones en el prompt: `"Read .claude/agents/validator.md and follow it. TARGET: …"`. El `@agentname` solo funciona cuando el usuario lo escribe directamente en el chat. |
+| `\|\| return` en función bash con `set -e` | Script muere silenciosamente sin output cuando el archivo no está en el diff | `grep -qF "$file" \|\| return 0` — `return` sin código propaga el exit code 1 de grep; `set -e` mata el script antes del primer `echo`. Aplica a cualquier función de validación en CI/hooks. |
 
 ### 🟡 Frecuentes — mal diseño y malas prácticas
 
