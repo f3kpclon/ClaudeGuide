@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v4.6 · Production-validated (2026-05-31)
+**Author:** Félix Sotelo · **Version:** v4.6 · Production-validated (2026-06-02)
 
 ---
 
@@ -26,6 +26,7 @@ Covers agents, skills, hooks, plugins, learnings, scope, multi-agent architectur
 | Design multi-agent architecture | §10 — Multi-agent architecture |
 | Upgrade learnings to semantic search | §16 — Vector memory |
 | See a plan before executing | §17 — Plan + Invocation templates |
+| Know when to stop optimizing tokens | §23 — Real ceilings, formula, levers by impact |
 | Avoid the most expensive mistakes | §12 — Common errors (first table) |
 
 ---
