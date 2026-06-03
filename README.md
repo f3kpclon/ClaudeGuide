@@ -109,3 +109,5 @@ Guide (when updating guia-agentes-plugins-claude-code.md)
 - [§21 — Observability and debugging](#21-observability-and-debugging)
 - [§22 — Advanced Prompt engineering](#22-prompt-advanced-engineering)
 - [§15 — Glossary](#15-glossary)
+
+> **[2026-06-03]** **Version:** v4.7 · Validated in production · Estimates updated with real data (2026-06-03)
