@@ -208,7 +208,7 @@ On every new request: load `.claude/skills/[flow-skill]/SKILL.md` and start [flo
 
 ### CLAUDE.md — plantilla (multi-flujo con dispatch)
 
-```markdown
+````markdown
 # [Proyecto]
 
 ## Dispatch
@@ -246,7 +246,7 @@ Un agente por dominio técnico evita que el contexto de un sistema contamine el 
 
 ## Scope
 Leer `.claude/scope/scope-index.md` antes de cualquier tarea.
-```
+````
 
 ---
 
