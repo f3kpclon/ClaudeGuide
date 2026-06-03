@@ -35,3 +35,10 @@ Covers agents, skills, hooks, plugins, learnings, scope, multi-agent architectur
 ## Official Docs
 
 - [Agents](https://code.claude.com/docs/en/sub-agents) · [Skills](https://code.claude.com/docs/en/skills) · [Hooks](https://code.claude.com/docs/en/hooks-guide) · [Plugins](https://code.claude.com/docs/en/plugins) · [Agent Teams](https://code.claude.com/docs/en/agent-teams)
+
+---
+
+## Contributing
+
+Personal guide based on production experience — external PRs are not accepted.
+Open an [Issue](../../issues) if you find a technical error or want to suggest something.
