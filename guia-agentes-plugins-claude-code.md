@@ -829,6 +829,8 @@ options:
 
 > **[2026-06-02] artifact-factory:** patrón implementado en `.claude/skills/scaffold-questions/SKILL.md`. Eliminó 3 iteraciones de preguntas incorrectas en la misma sesión.
 
+> **Anti-pattern "in notes":** opciones con label `"type X in notes"` confunden — el usuario no ve ningún campo llamado "notes". Usar siempre `"Other" field (option 3 below)` para que apunte al campo visible de la UI. Validado en prueba de flujo 2026-06-02.
+
 ### Dynamic context injection
 
 Prefix `!` ejecuta un comando y pega el output en el contexto:
@@ -1525,14 +1527,37 @@ Solo cuando necesitas reutilizar en múltiples proyectos o compartir con el equi
 ### Estructura
 
 ```
-mi-plugin/
+mi-repo/
 ├── .claude-plugin/
-│   └── plugin.json       ← REQUERIDO
-├── agents/
-├── skills/
-├── hooks/
-│   └── hooks.json        ← REQUERIDO si usas hooks
-└── README.md             ← REQUERIDO para distribución
+│   └── marketplace.json  ← REQUERIDO para "Browse plugins" en desktop app
+├── plugins/
+│   └── mi-plugin/
+│       ├── .claude-plugin/
+│       │   └── plugin.json   ← REQUERIDO
+│       ├── agents/
+│       ├── skills/
+│       ├── hooks/
+│       │   └── hooks.json    ← REQUERIDO si usas hooks
+│       └── README.md         ← REQUERIDO para distribución
+```
+
+### marketplace.json
+
+Archivo en la raíz del repo. Es lo que lee el desktop app cuando el usuario hace **Browse plugins → Add marketplace**. Sin él, el repo no aparece como fuente de plugins en la UI.
+
+```json
+{
+  "name": "mi-marketplace",
+  "owner": {"name": "Tu Nombre"},
+  "description": "Una línea de qué contiene.",
+  "plugins": [
+    {
+      "name": "mi-plugin",
+      "source": "./plugins/mi-plugin",
+      "description": "Una línea de qué hace."
+    }
+  ]
+}
 ```
 
 ### plugin.json
@@ -1543,20 +1568,36 @@ mi-plugin/
   "version": "1.0.0",
   "description": "Una línea de qué hace.",
   "author": {"name": "Tu Nombre"},
-  "repository": "https://github.com/usuario/mi-plugin",
+  "repository": "https://github.com/usuario/mi-repo",
   "license": "MIT"
 }
 ```
 
 Campos válidos: `name`, `version`, `description`, `author`, `homepage`, `repository`, `license`.
 
+### Instalación — Desktop app (Claude Code)
+
+1. Code → **Customize**
+2. Click **+** junto a "Personal plugins"
+3. **Browse plugins** → **Add marketplace**
+4. Ingresar `usuario/mi-repo` → **Sync**
+5. Instalar el plugin desde el marketplace
+
+### Instalación — CLI
+
+```bash
+claude plugin add github:usuario/mi-repo
+```
+
 ### Probar localmente
 
 ```bash
-claude --plugin-dir ./mi-plugin   # cargar sin instalar
-/reload-plugins                   # recargar cambios
-/hooks                            # verificar hooks registrados
+claude --plugin-dir ./plugins/mi-plugin   # cargar sin instalar
+/reload-plugins                           # recargar cambios
+/hooks                                    # verificar hooks registrados
 ```
+
+> **[2026-06-02] design-ios:** `marketplace.json` en la raíz es REQUERIDO para el flujo "Browse plugins" del desktop app — no es un archivo opcional ni de metadata. Eliminarlo rompe la instalación UI para todos los usuarios del equipo. Error: confundirlo con dead weight porque la guía no lo mencionaba.
 
 ---
 
@@ -1593,6 +1634,8 @@ claude --plugin-dir ./mi-plugin   # cargar sin instalar
 | Commit message no pasado en el prompt al agente git | El agente usa 1-2 tool calls extra para inferir qué cambió | Pasar mensaje explícito: `COMMIT: tipo: descripción` — el agente no explora |
 | `subagent_type: "validator"` (nombre de agente del proyecto) | Error "agent type not found" — falla inmediata, no silent | Solo los built-ins funcionan: `architect`, `generator`, `curator`, `claude`, `general-purpose`. Para invocar un agente del proyecto programáticamente: omitir `subagent_type` + cargar sus instrucciones en el prompt: `"Read .claude/agents/validator.md and follow it. TARGET: …"`. El `@agentname` solo funciona cuando el usuario lo escribe directamente en el chat. |
 | `\|\| return` en función bash con `set -e` | Script muere silenciosamente sin output cuando el archivo no está en el diff | `grep -qF "$file" \|\| return 0` — `return` sin código propaga el exit code 1 de grep; `set -e` mata el script antes del primer `echo`. Aplica a cualquier función de validación en CI/hooks. |
+| AskUserQuestion option con `"in notes"` | Usuario no sabe dónde escribir — confusión en cada uso real | Referenciar explícitamente: `"Other" field (option 3 below)` en la etiqueta de la opción. Validado en artifact-factory 2026-06-02. |
+| Validator invocado con `subagent_type: claude` sin instrucciones Grep-first | 23 tool uses (medido) vs 10 esperado — el agente lee archivos completos | Pasar las instrucciones Grep-first explícitas + `TYPE: local\|plugin` en el prompt. Nunca leer lo que Grep puede responder. |
 
 ### 🟡 Frecuentes — mal diseño y malas prácticas
 
@@ -1693,6 +1736,8 @@ Plugin (si aplica)
 □ README.md con instalación y uso
 □ hooks/hooks.json existe
 ```
+
+> **[2026-06-02] Validator Grep-first:** validator debe recibir `TYPE: local|plugin` + 10 instrucciones Grep explícitas en el prompt. Sin esto: 23 tool uses. Con esto: 10 tool uses (medido). Agentes locales del proyecto no pueden invocarse con `subagent_type` — usar `subagent_type: claude` + instrucciones inline.
 
 ---
 
