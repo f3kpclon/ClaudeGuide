@@ -111,3 +111,101 @@ Guide (when updating guia-agentes-plugins-claude-code.md)
 - [§15 — Glossary](#15-glossary)
 
 > **[2026-06-03]** **Version:** v4.7 · Validated in production · Estimates updated with real data (2026-06-03)
+
+> **[2026-06-03]** - [§26 — Global context hook](#26-global-context-hook)
+<!-- §26 -->
+<a id="26-global-context-hook"></a>
+## 26. Global context hook
+> CLAUDE.md tells you where to look in the guide, but not when. This hook automatically injects the relevant section before Claude responds — 0 extra tokens if the prompt is not relevant.
+### Because
+The problem: Claude knows the guide exists but needs to infer when to consult it. Sometimes it doesn't. The hook detects keywords in the prompt and extracts the correct section automatically.
+| Without hook | With hook |
+|---|---|
+| Claude infers when to consult the guide | The relevant section arrives automatically |
+| You can skip query when you should do it | 0 extra tokens if the prompt is not relevant |
+`UserPromptSubmit` is executed **before** Claude processes the prompt. The stdout of the hook is injected as context into the session.
+### 3-step installation
+**1. Script** → `~/.claude/hooks/guia_context.py`
+````python
+#!/usr/bin/env python3
+import json, sys, re
+from pathlib import Path
+GUIDE = Path.home() / "Desktop/ClaudeGuide/guia-agentes-plugins-claude-code.md"
+MAX_LINES = 80
+KEYWORD_MAP = [
+(["agent", "agent", "subagent"], 5),
+(["hook", "pretooluse", "posttooluse"], 7),
+(["skill"], 6),
+(["scope"], 8),
+(["learning", "curator", "postmortem"], 9),
+(["multi-agent", "lead", "architecture"], 10),
+(["plugin", "distributable"], 11),
+(["haiku", "sonnet", "opus", "model"], 25),
+(["human factor", "invoke"], 24),
+(["overkill"], 14),
+(["budget", "tokens", "cost"], 2),
+(["vector memory", "semantics"], 16),
+(["security", "security"], 18),
+]
+def detect_section(prompt):
+p = prompt.lower()
+for keywords, n in KEYWORD_MAP:
+if any(k in p for k in keywords):
+return n
+
+def extract_section(n):
+lines = GUIDE.read_text().splitlines()
+for anchor in [f"<!-- §{n}-quick -->", f"<!-- §{n} -->"]:
+try:
+start = next(i for i, l in enumerate(lines) if anchor in l) + 1
+exceptStopIteration:
+continue
+result = []
+for line in lines[start:]:
+if re.match(r"<!-- §\d", line):
+break
+result.append(line)
+if len(result) > 3:
+return "
+".join(result[:MAX_LINES]).strip()
+return ""
+try:
+payload = json.load(sys.stdin)
+except Exception:
+sys.exit(0)
+section = detect_section(payload.get("prompt", ""))
+if section:
+content = extract_section(section)
+if content:
+print(f"[Guide §{section}]
+{content}")
+````
+**2. Permissions**
+```
+chmod +x ~/.claude/hooks/guia_context.py
+```
+**3. Register in `~/.claude/settings.json`**
+```json
+"UserPromptSubmit": [
+{
+"hooks": [{
+"type": "command",
+"command": "python3 /Users/felixsotelo/.claude/hooks/guia_context.py"
+}]
+}
+]
+```
+### Add sections to the map
+To include a new section, add an entry to `KEYWORD_MAP` in the script:
+```python
+(["keyword1", "keyword2"], N), # §N — Section name
+```
+### Checklist §26
+```
+□ guia_context.py created in ~/.claude/hooks/
+□ chmod +x applied
+□ UserPromptSubmit registered in ~/.claude/settings.json
+□ Prompt with "agent" → §5 injected as context
+□ Prompt without keywords → without injection
+```
+---

@@ -64,6 +64,7 @@
 - [§10 — Arquitectura multi-agente](#10-arquitectura-multi-agente)
 - [§11 — Plugin distribuible](#11-plugin-distribuible)
 - [§17 — Plan + Invocation Templates](#17-plan--invocation-templates--eficiencia-máxima-de-prompts)
+- [§26 — Hook global de contexto](#26-hook-global-de-contexto)
 
 ### Calidad y eficiencia
 - [§14 — Guía anti-overkill](#14-guía-anti-overkill)
@@ -212,7 +213,7 @@ On every new request: load `.claude/skills/[flow-skill]/SKILL.md` and start [flo
 
 ### CLAUDE.md — plantilla (multi-flujo con dispatch)
 
-```markdown
+````markdown
 # [Proyecto]
 
 ## Dispatch
@@ -250,7 +251,7 @@ Un agente por dominio técnico evita que el contexto de un sistema contamine el 
 
 ## Scope
 Leer `.claude/scope/scope-index.md` antes de cualquier tarea.
-```
+````
 
 ---
 
@@ -493,6 +494,8 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 ---
 
 <!-- §5 -->
+<a id="5-agentes"></a>
+
 ## 5. Agentes
 
 > Un agente es Claude con un rol fijo, herramientas limitadas y un contexto aislado. La clave lowcost: darle solo las herramientas que necesita y el modelo más barato que pueda hacer el trabajo. Un agente mal configurado cuesta lo mismo que uno bien configurado — pero produce peores resultados.
@@ -3561,6 +3564,126 @@ La optimización más barata del sistema no es un hook ni un agente más eficien
 □ git, postmortem, curador → haiku
 □ plan skill → haiku
 □ Opus solo cuando hay evidencia de que sonnet falla
+```
+
+---
+
+<!-- §26 -->
+<a id="26-hook-global-de-contexto"></a>
+
+## 26. Hook global de contexto
+
+> CLAUDE.md indica dónde buscar en la guía, pero no cuándo. Este hook inyecta automáticamente la sección relevante antes de que Claude responda — 0 tokens extra si el prompt no es relevante.
+
+### Por qué
+
+El problema: Claude sabe que la guía existe pero necesita inferir cuándo consultarla. A veces no lo hace. El hook detecta keywords en el prompt y extrae la sección correcta de forma automática.
+
+| Sin hook | Con hook |
+|---|---|
+| Claude infiere cuándo consultar la guía | La sección relevante llega automáticamente |
+| Puede omitir consulta cuando debería hacerla | 0 tokens extra si el prompt no es relevante |
+
+`UserPromptSubmit` se ejecuta **antes** de que Claude procese el prompt. El stdout del hook se inyecta como contexto en la sesión.
+
+### Instalación en 3 pasos
+
+**1. Script** → `~/.claude/hooks/guia_context.py`
+
+````python
+#!/usr/bin/env python3
+import json, sys, re
+from pathlib import Path
+
+GUIA = Path.home() / "Desktop/ClaudeGuide/guia-agentes-plugins-claude-code.md"
+MAX_LINES = 80
+
+KEYWORD_MAP = [
+    (["agente", "agent", "subagent"],          5),
+    (["hook", "pretooluse", "posttooluse"],     7),
+    (["skill"],                                 6),
+    (["scope"],                                 8),
+    (["learning", "curator", "postmortem"],     9),
+    (["multi-agente", "lead", "arquitectura"], 10),
+    (["plugin", "distribuible"],               11),
+    (["haiku", "sonnet", "opus", "modelo"],    25),
+    (["factor humano", "invocar"],             24),
+    (["overkill"],                             14),
+    (["presupuesto", "tokens", "costo"],        2),
+    (["vector memory", "semántica"],           16),
+    (["seguridad", "security"],                18),
+]
+
+def detect_section(prompt):
+    p = prompt.lower()
+    for keywords, n in KEYWORD_MAP:
+        if any(k in p for k in keywords):
+            return n
+    return None
+
+def extract_section(n):
+    lines = GUIA.read_text().splitlines()
+    for anchor in [f"<!-- §{n}-quick -->", f"<!-- §{n} -->"]:
+        try:
+            start = next(i for i, l in enumerate(lines) if anchor in l) + 1
+        except StopIteration:
+            continue
+        result = []
+        for line in lines[start:]:
+            if re.match(r"<!-- §\d", line):
+                break
+            result.append(line)
+        if len(result) > 3:
+            return "\n".join(result[:MAX_LINES]).strip()
+    return ""
+
+try:
+    payload = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+
+section = detect_section(payload.get("prompt", ""))
+if section:
+    content = extract_section(section)
+    if content:
+        print(f"[Guía §{section}]\n{content}")
+````
+
+**2. Permisos**
+
+```
+chmod +x ~/.claude/hooks/guia_context.py
+```
+
+**3. Registrar en `~/.claude/settings.json`**
+
+```json
+"UserPromptSubmit": [
+  {
+    "hooks": [{
+      "type": "command",
+      "command": "python3 /Users/felixsotelo/.claude/hooks/guia_context.py"
+    }]
+  }
+]
+```
+
+### Añadir secciones al mapa
+
+Para incluir una sección nueva, agregar una entrada al `KEYWORD_MAP` en el script:
+
+```python
+(["keyword1", "keyword2"], N),  # §N — Nombre sección
+```
+
+### Checklist §26
+
+```
+□ guia_context.py creado en ~/.claude/hooks/
+□ chmod +x aplicado
+□ UserPromptSubmit registrado en ~/.claude/settings.json
+□ Prompt con "agente" → §5 inyectado como contexto
+□ Prompt sin keywords → sin inyección
 ```
 
 ---
