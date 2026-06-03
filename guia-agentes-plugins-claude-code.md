@@ -3591,7 +3591,8 @@ El problema: Claude sabe que la guía existe pero necesita inferir cuándo consu
 import json, sys, re
 from pathlib import Path
 
-GUIA = Path.home() / "Desktop/ClaudeGuide/guia-agentes-plugins-claude-code.md"
+# ← Ajustar con la ruta donde clonaste este repo
+GUIA = Path("~/ruta/a/guia-agentes-plugins-claude-code.md").expanduser()
 MAX_LINES = 80
 
 KEYWORD_MAP = [
@@ -3658,7 +3659,7 @@ chmod +x ~/.claude/hooks/guia_context.py
   {
     "hooks": [{
       "type": "command",
-      "command": "python3 /Users/felixsotelo/.claude/hooks/guia_context.py"
+      "command": "python3 ~/.claude/hooks/guia_context.py"
     }]
   }
 ]

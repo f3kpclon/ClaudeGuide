@@ -35,3 +35,7 @@ Covers agents, skills, hooks, plugins, learnings, scope, multi-agent architectur
 ## Official Docs
 
 - [Agents](https://code.claude.com/docs/en/sub-agents) · [Skills](https://code.claude.com/docs/en/skills) · [Hooks](https://code.claude.com/docs/en/hooks-guide) · [Plugins](https://code.claude.com/docs/en/plugins) · [Agent Teams](https://code.claude.com/docs/en/agent-teams)
+
+> **[2026-06-03]** # ← Adjust with the path where you cloned this repo
+GUIDE = Path("~/path/to/guide-agents-plugins-claude-code.md").expanduser()
+"command": "python3 ~/.claude/hooks/guia_context.py"
