@@ -38,7 +38,6 @@ Covers agents, skills, hooks, plugins, learnings, scope, multi-agent architectur
 
 ---
 
-## Contributing
+## Contributing 👻
 
-Personal guide based on production experience — external PRs are not accepted.
-Open an [Issue](../../issues) if you find a technical error or want to suggest something.
+If you'd like to suggest something, open an [Issue](../../issues) and I'll take a look. If it fits my workflow, I'll incorporate it myself. Thanks for reading!
