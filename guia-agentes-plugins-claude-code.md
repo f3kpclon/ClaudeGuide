@@ -489,6 +489,8 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 ---
 
 <!-- §5 -->
+<a id="5-agentes"></a>
+
 ## 5. Agentes
 
 > Un agente es Claude con un rol fijo, herramientas limitadas y un contexto aislado. La clave lowcost: darle solo las herramientas que necesita y el modelo más barato que pueda hacer el trabajo. Un agente mal configurado cuesta lo mismo que uno bien configurado — pero produce peores resultados.
