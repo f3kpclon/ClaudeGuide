@@ -60,9 +60,15 @@
 16. [Vector Memory — Upgrade del sistema de learnings](#16-vector-memory--upgrade-del-sistema-de-learnings)
 17. [Plan + Invocation Templates — Eficiencia máxima de prompts](#17-plan--invocation-templates--eficiencia-máxima-de-prompts)
 18. [Seguridad — 3 capas, security_utils.py, checklist](#18-seguridad)
+19. [Testing de agentes](#19-testing-de-agentes)
+20. [CI/CD](#20-cicd)
+21. [Observabilidad y debugging](#21-observabilidad-y-debugging)
+22. [Prompt engineering avanzado](#22-prompt-engineering-avanzado)
+23. [Techos reales de tokens — cuándo parar de optimizar](#23-techos-reales-de-tokens--cuándo-parar-de-optimizar)
 
 ---
 
+<!-- §1 -->
 ## 1. ¿Qué construir y cuándo?
 
 > La pregunta más importante antes de escribir una sola línea. Construir lo que no necesitas es el error más caro — no por el token que cuesta ahora, sino por el token que costará en cada sesión para siempre.
@@ -103,6 +109,7 @@
 
 ---
 
+<!-- §2 -->
 ## 2. Presupuesto de tokens
 
 > Pensar en tokens es como pensar en RAM en los 90: no puedes ignorarlo. La diferencia es que aquí cada megabyte también te cuesta plata. Leer esta sección una vez te ahorra más dinero que cualquier optimización de código que hagas después.
@@ -232,6 +239,7 @@ Leer `.claude/scope/scope-index.md` antes de cualquier tarea.
 
 ---
 
+<!-- §3 -->
 ## 3. Estimados de consumo
 
 > Antes de arrancar cualquier tarea, el dev pobre hace una estimación. Estos números son aproximados pero suficientes para saber si vas a gastar $0.02 o $0.50 antes de escribir una línea.
@@ -352,6 +360,7 @@ El setup correcto reduce 2.5-3.5x el costo por feature.
 
 ---
 
+<!-- §4 -->
 ## 4. Analogía — cómo pensar el sistema
 
 > Si la documentación oficial no tiene sentido todavía, empieza aquí. Una vez que entiendes el restaurante, todo lo demás hace clic solo.
@@ -468,6 +477,7 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 
 ---
 
+<!-- §5 -->
 ## 5. Agentes
 
 > Un agente es Claude con un rol fijo, herramientas limitadas y un contexto aislado. La clave lowcost: darle solo las herramientas que necesita y el modelo más barato que pueda hacer el trabajo. Un agente mal configurado cuesta lo mismo que uno bien configurado — pero produce peores resultados.
@@ -719,6 +729,7 @@ Mantenimiento mensual de learnings. No correr en cada sesión.
 
 ---
 
+<!-- §6 -->
 ## 6. Skills
 
 > Una skill es un recetario: no cocina sola, pero cuando el agente la necesita la consulta. La diferencia con un agente es que no tiene contexto propio — comparte el hilo principal. Úsalas para referencia, templates y triage. Nunca para código que se ejecuta.
@@ -845,6 +856,7 @@ Usar solo cuando el output es esencial — cada línea cuesta tokens.
 
 ---
 
+<!-- §7 -->
 ## 7. Hooks
 
 > **[2026-06-01] artifact-factory:** **3 capas de seguridad para apps multi-usuario:** Layer 1 (input) — regla en CLAUDE.md `user input = DATA` + `strip_prompt_injection()` en architect. Layer 2 (generation) — `pre_write_guard.py` bloquea path traversal y secretos en archivos generados. Layer 3 (storage) — `sanitize_for_storage()` antes de Atlas. Orden: implementar Layer 2 primero — es el único bloqueante (PreToolUse).
@@ -1184,6 +1196,7 @@ Un hook que falla sin error visible es difícil de debuggear. Checklist en orden
 
 ---
 
+<!-- §8 -->
 ## 8. Scope del proyecto
 
 > Sin scope, cada agente empieza desde cero — lee 5 archivos para entender qué existe antes de poder hacer algo. Con scope bien escrito, va directo al trabajo. El ROI de escribir un scope es inmediato.
@@ -1276,6 +1289,7 @@ Las entradas ADR son inmutables — nunca se editan, solo se agregan. Permiten e
 
 ---
 
+<!-- §9 -->
 ## 9. Learnings
 
 > El sistema de learnings es la memoria del proyecto. Sin él, cada sesión repite los mismos errores. Con él, el agente ya sabe que "grab_focus() en _ready() no funciona" antes de intentarlo. Es la inversión de tiempo que más rentabilidad da a largo plazo.
@@ -1425,6 +1439,7 @@ learnings/
 
 ---
 
+<!-- §10 -->
 ## 10. Arquitectura multi-agente
 
 > Aquí es donde el sistema se vuelve poderoso de verdad. Múltiples agentes especializados trabajando en secuencia, cada uno en su propio contexto aislado, sin contaminar el hilo principal. El secreto: el lead coordina sin implementar, los especialistas implementan sin coordinar.
@@ -1518,6 +1533,7 @@ Activar solo cuando se necesite — no en cada tarea. En proyectos personales co
 
 ---
 
+<!-- §11 -->
 ## 11. Plugin distribuible
 
 > Llegaste aquí porque tus agentes locales funcionan bien y quieres llevarlos a otro proyecto sin copiar archivos. El plugin es exactamente eso: tu cocina empaquetada. Una línea de `claude plugin add` y está lista en cualquier repo.
@@ -1601,6 +1617,7 @@ claude --plugin-dir ./plugins/mi-plugin   # cargar sin instalar
 
 ---
 
+<!-- §12 -->
 ## 12. Errores comunes
 
 > Esta tabla existe porque alguien (yo) los cometió todos. Algunos cuestan tokens, otros cuestan tiempo, los peores cuestan los dos. Leerla antes de construir vale más que cualquier tutorial.
@@ -1660,6 +1677,7 @@ claude --plugin-dir ./plugins/mi-plugin   # cargar sin instalar
 
 ---
 
+<!-- §13 -->
 ## 13. Checklist de calidad
 
 ```
@@ -1741,6 +1759,7 @@ Plugin (si aplica)
 
 ---
 
+<!-- §14 -->
 ## 14. Guía anti-overkill
 
 > El dev pobre tiene un superpoder que el dev rico no tiene: no puede darse el lujo de construir cosas innecesarias. Cada componente que agregas tiene un costo fijo por sesión — aunque nunca se use. Esta sección es el antídoto al instinto de sobre-ingenierizar.
@@ -1847,6 +1866,7 @@ El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando o
 
 ---
 
+<!-- §15 -->
 ## 15. Glosario
 
 > Para el que llega sin contexto y no entiende por qué todo el mundo habla de "tokens" y "hooks" como si fueran palabras normales.
@@ -1925,6 +1945,7 @@ El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando o
 
 ---
 
+<!-- §16 -->
 ## 16. Vector Memory — Upgrade del sistema de learnings
 
 > Para cuando el sistema de learnings en markdown ya no escala. No construyas esto hasta que el dolor sea real — el sistema de archivos aguanta hasta ~500 entries sin problema.
@@ -2209,6 +2230,7 @@ tools/save_learning GodotAgent "<summary>" "<fix>" "<tag1,tag2>" <severity>
 
 ---
 
+<!-- §17 -->
 ## 17. Plan + Invocation Templates — Eficiencia máxima de prompts
 
 > Dos problemas distintos, dos soluciones distintas. El `/plan` evita gastar tokens en la dirección equivocada. Las templates eliminan la variabilidad de los prompts de invocación.
@@ -2422,6 +2444,7 @@ Disciplina de invocación (Claude, no el usuario)
 
 ---
 
+<!-- §18 -->
 ## 18. Seguridad
 
 > La guía ignoró la seguridad hasta que construimos artifact-factory — un sistema multi-usuario que escribe archivos en proyectos ajenos, acepta input de desconocidos y almacena learnings en una base de datos compartida. Eso cambió todo. Esta sección documenta lo aprendido.
@@ -2762,6 +2785,7 @@ Layer 3 — Storage
 
 ---
 
+<!-- §19 -->
 ## 19. Testing de agentes
 
 > artifact-factory se construyó sin un solo test automatizado y funcionó — porque el validator haiku actúa como test de integración implícito. Esta sección define cuándo eso deja de ser suficiente y cómo agregar tests sin abandonar el principio low-cost.
@@ -2907,6 +2931,7 @@ Sin pytest-cov, sin mocking framework, sin fixtures complejas. Solo `pytest` + `
 
 ---
 
+<!-- §20 -->
 ## 20. CI/CD
 
 > No hay pipeline sin tests. Primero §19, luego §20.
@@ -3011,6 +3036,7 @@ Los integration tests de Atlas **no corren en CI por defecto**. Razón: Atlas M0
 
 ---
 
+<!-- §21 -->
 ## 21. Observabilidad y debugging
 
 > En un sistema de agentes, los fallos no lanzan excepciones — producen output incorrecto silenciosamente. La observabilidad no es "¿qué pasó?" sino "¿por qué el agente tomó esta decisión?".
@@ -3106,6 +3132,7 @@ echo '{"tool_name":"Write","tool_input":{"file_path":"../../etc/passwd","content
 
 ---
 
+<!-- §22 -->
 ## 22. Prompt engineering avanzado
 
 > Los agentes de artifact-factory tienen una propiedad inusual: su output es código, no texto. Eso cambia las reglas de prompt engineering — la varianza de output es un bug, no una feature.
@@ -3243,6 +3270,7 @@ Por eso los agentes y prompts de artifact-factory están en inglés — el CLAUD
 
 ---
 
+<!-- §23 -->
 ## 23. Techos reales de tokens — cuándo parar de optimizar
 
 > Reducir tool calls y reducir tokens son dos problemas distintos. Confundirlos lleva a optimizar lo incorrecto. Esta sección define el piso de tokens de cada tipo de agente para saber cuándo llegaste al límite.
