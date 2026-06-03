@@ -597,12 +597,27 @@ Máximo 2 ciclos por problema — nunca más.
 
 | Agente | Responsabilidad | Modelo |
 |---|---|---|
-| `lead` | Orchestrador ≥2 sistemas | sonnet |
+| `lead` | Orchestrador — coordina pipeline cross-especialistas | sonnet |
 | `reviewer` | Convenciones y calidad | haiku |
-| `debugger` | Diagnóstico antes de modificar | sonnet |
+| `debugger` | Diagnóstico de bugs no obvios (multi-capa, async, runtime) | sonnet |
 | `git` | Ramas, commits, PRs | haiku |
 | `postmortem` | Lecciones al final de sesión — captura | haiku |
 | `curador` | Mantenimiento periódico de learnings — dedup, prune, promover a inline | haiku |
+
+**Lead — herramientas: `Read, Glob, Grep` únicamente.** Sin Bash, Write ni Edit.
+No es una recomendación — es una garantía física: sin esas herramientas el lead no puede implementar aunque quiera. Darle Write/Edit es equivalente a escribir "NUNCA implementes" en el prompt: el agente puede ignorarlo. Sin las tools, es imposible.
+
+**Debugger — cuándo incluirlo:**
+```
+¿El dominio tiene bugs cuya causa no es obvia desde el síntoma?
+    SÍ → debugger (hypothesis ledger)
+    NO → el implementer lo resuelve inline
+
+Incluir cuando: multi-capa (iOS, Android, web fullstack, games)
+                async/concurrency (Swift 6, Coroutines, Promises)
+                runtime visual (SwiftUI, Compose, juegos)
+No incluir:     CLI lineal, scripts simples, plugins (no tienen runtime)
+```
 
 El `postmortem` captura sesión a sesión. El `curador` corre mensualmente (o cuando un learnings supera el límite) para eliminar duplicados, archivar entradas obsoletas y verificar que los top gotchas estén inline en el agente correcto. No correr el curador en cada sesión.
 
@@ -1509,6 +1524,26 @@ model: haiku
 
 Activar solo cuando se necesite — no en cada tarea. En proyectos personales con un solo dev, el dispatch directo desde CLAUDE.md es suficiente. El pre-layer agrega valor cuando el input al sistema es ruidoso.
 
+### La pregunta clave para el lead
+
+> ¿Una sola tarea del usuario se descompone en ≥2 especialistas trabajando en secuencia?
+> → SÍ → lead + hub. → NO → dispatch directo desde CLAUDE.md, sin lead.
+
+Tener múltiples agentes **no** requiere lead. El lead es solo para pipelines cross-especialistas.
+
+| Patrón | Lead? | Hub? | Por qué |
+|---|---|---|---|
+| Design system: "add component" → atoms→molecules→organisms | ✅ | ✅ | pipeline secuencial |
+| iOS: "add feature" → domain→data→presentation→DI→coordinator | ✅ | ✅ | pipeline secuencial |
+| Game: "fix bug" → debugger→implementer→reviewer→git | ✅ | ✅ | pipeline secuencial |
+| swifttesting-plugin: "generate tests" → test-generator | ❌ | ❌ | tarea independiente |
+| CLI con git+reviewer | ❌ | ❌ | tareas independientes |
+| Plugin de migración: tareas separadas por módulo | ❌ | ❌ | cada tarea va a un especialista |
+
+**Hub — cuándo añadirlo:**
+Si hay lead → el hub es casi siempre necesario para triage. Sin hub, CLAUDE.md debe contener
+la lógica de dispatch completa — si eso supera 30 líneas, hub > CLAUDE.md inline.
+
 ### Reglas de diseño
 
 **Agentes = contextos aislados** — lo que lee un agente no contamina el hilo principal.
@@ -1653,6 +1688,7 @@ claude --plugin-dir ./plugins/mi-plugin   # cargar sin instalar
 | `\|\| return` en función bash con `set -e` | Script muere silenciosamente sin output cuando el archivo no está en el diff | `grep -qF "$file" \|\| return 0` — `return` sin código propaga el exit code 1 de grep; `set -e` mata el script antes del primer `echo`. Aplica a cualquier función de validación en CI/hooks. |
 | AskUserQuestion option con `"in notes"` | Usuario no sabe dónde escribir — confusión en cada uso real | Referenciar explícitamente: `"Other" field (option 3 below)` en la etiqueta de la opción. Validado en artifact-factory 2026-06-02. |
 | Validator invocado con `subagent_type: claude` sin instrucciones Grep-first | 23 tool uses (medido) vs 10 esperado — el agente lee archivos completos | Pasar las instrucciones Grep-first explícitas + `TYPE: local\|plugin` en el prompt. Nunca leer lo que Grep puede responder. |
+| Invocar agente sin arquitectura/scope definidos | El agente asume, genera loops de corrección, tokens ×3-5 respecto a tarea bien acotada | `/plan` primero; si no hay scope → escribirlo antes de invocar. Ver §24. |
 
 ### 🟡 Frecuentes — mal diseño y malas prácticas
 
@@ -1700,6 +1736,7 @@ Agentes
 □ agentes de diagnóstico/revisión tienen sección ## Output con formato compacto forzado
 □ sin "Leer antes de empezar" incondicional para learnings frecuentes
 □ sin contenido duplicado con skills o docs
+□ Contexto definido antes de invocar: output esperado + scope + criterio de éxito (ver §24)
 
 Skills
 □ Hub: disable-model-invocation: false, < 40 líneas
@@ -1796,20 +1833,34 @@ Si la respuesta es "nada, funciona igual" → no lo construyas.
     NO → adelante.
 ```
 
+### Always-YES — exentos del filtro anti-overkill
+
+Estos componentes se crean **siempre**, sin pasar por el árbol de decisiones:
+
+| Componente | Por qué es always-YES |
+|---|---|
+| `curator` | Siempre se CREA cuando hay learnings. La restricción de §14 aplica a *correrlo* (< 3 meses), no a crearlo. |
+| `postmortem` | Necesario desde la primera sesión. Anti-overkill no aplica: no esperás a que ocurra para tenerlo. |
+| `learnings-general.md` | Siempre generar. Split por dominio solo cuando supera 150 líneas. |
+| `pre_write_guard` | Cualquier proyecto con file writes. Consecuencia real si se omite. |
+| `plan` skill (local) | Todo proyecto local. Stack-agnostic, zero overhead, evita ejecutar agentes sin revisar. |
+| `plan` skill (plugin + sequential) | Plugin con workflow secuencial → plan domain-specific (conoce las capas). |
+
 ### Cuándo NO construir cada componente
 
 | Componente | Overkill cuando... | Alternativa |
 |---|---|---|
 | Agente nuevo | La tarea ocurre < 3 veces o la puede hacer el agente existente | Agregar una sección al agente existente |
 | Hook | La regla no tiene consecuencias reales si se ignora | Regla en el prompt del agente |
-| Pre-layer (preflight) | El proyecto tiene un solo dev con inputs claros | Dispatch directo desde CLAUDE.md |
+| Pre-layer (preflight) | Solo dev con inputs claros | Dispatch directo desde CLAUDE.md |
 | Plugin | El código se usa en un solo proyecto | Agente/skill local |
-| Curador | El proyecto tiene < 3 meses o los learnings no llegaron a 150 líneas | No correrlo todavía |
+| Curador | Restricción: < 3 meses o < 150 líneas → no *correrlo* todavía (pero sí crearlo) | Esperar al primer umbral |
 | Learnings file nuevo | Hay < 5 entries que justifiquen el archivo | Agregarlas a `learnings-general.md` |
 | Scope file nuevo | El sistema tiene < 3 decisiones de diseño | Agregarlas al scope-index.md |
-| Hub skill | CLAUDE.md ya tiene el dispatch completo | `skillOverrides: user-invocable-only` |
+| Hub skill | CLAUDE.md ya tiene el dispatch completo y ≤5 agentes | `skillOverrides: user-invocable-only` |
 | Opus | La tarea es implementación, checklist o git | haiku o sonnet |
-| Lead | La tarea involucra 1 sistema y < 3 archivos | Especialista directo |
+| Lead | Una sola tarea NO se descompone en pipeline cross-especialistas | Especialista directo |
+| Debugger | CLI lineal, script simple, plugin (sin runtime) | Implementer lo resuelve inline |
 
 ### Señales de sobre-ingeniería activa
 
@@ -1956,14 +2007,17 @@ El archivo markdown falla cuando necesitas búsqueda semántica: *"¿tuve este b
 
 ### Cuándo hacer el upgrade
 
+El trigger primario es **calidad del recall**, no volumen. MathVoid lo activó con ~50 entries porque grep fallaba con queries informales: "nodo se borra mal" no matcheaba "queue_free() debe usarse en vez de free()" — vector search lo encontró con score 0.78.
+
 ```
-¿Tienes > 500 learnings en total?               NO → no lo hagas todavía
-¿El curador ya no puede limpiar eficientemente? NO → no lo hagas todavía
-¿Buscas por similitud y no encuentras nada?     SÍ → continuar
-¿Múltiples proyectos compartiendo memoria?      SÍ → continuar
+¿Grep falla con queries naturales/informales?   SÍ → activar (trigger primario — sin importar volumen)
+¿Tienes > 500 learnings en total?               SÍ → activar (trigger de volumen)
+¿Múltiples proyectos compartiendo memoria?      SÍ → activar
+¿El curador ya no puede limpiar eficientemente? SÍ → activar
 ```
 
 La regla práctica: **si grep encuentra lo que buscas, no necesitas vectores.**
+Si grep encuentra con keywords exactos pero falla con lenguaje natural → es el momento.
 
 ### Stack — lowcost, $0/mes para uso personal
 
@@ -2318,10 +2372,14 @@ usuario: ok
 → recién aquí se invoca @godot-lead
 ```
 
-#### Cuándo saltarse el `/plan`
+#### `/plan` es la norma — no la excepción
+
+> No consume más tokens en la tarea — los **ahorra** al evitar el loop ejecutar→corregir→reejecutar. Un plan cuesta ~500-800t en haiku; una corrección de dirección cuesta 10-20k.
+
+**Regla:** usar `/plan` por defecto. Saltarlo es la excepción que requiere justificación.
 
 ```
-✅ Usar /plan cuando...          ❌ Saltarse /plan cuando...
+✅ Usar /plan (default)          ❌ Saltarse /plan (excepción)
 Tarea nueva o no obvia           Fix de 1 línea ya identificado
 ≥2 archivos involucrados         Tarea ya planificada en sesión anterior
 Riesgo de efectos secundarios    Cambio cosmético / typo / comentario
@@ -2334,7 +2392,7 @@ Una sola línea al inicio del dispatch, antes que cualquier agente:
 
 ```markdown
 ## Dispatch
-¿Ver plan antes de ejecutar? → /plan [tarea]
+/plan [tarea] — NORMA antes de ejecutar (omitir solo para fixes triviales de 1 línea)
 ¿≥2 sistemas o ≥3 archivos? → @lead
 ...
 ```
@@ -3364,6 +3422,82 @@ Cuando un agente está en su techo real, no hay más que optimizar desde el agen
 □ No seguir optimizando cuando tokens < 2× el techo real estimado
 ```
 
+
+<!-- §24 -->
+## 24. El contrato del contexto — el factor humano
+
+> El agente es tan bueno como el contexto que recibe. Esta es la variable más subestimada del sistema.
+
+### La fórmula real
+
+```
+éxito_del_agente = f(calidad_del_contexto_humano)
+```
+
+Contexto malo → el agente asume → suposición incorrecta → el humano corrige → más tokens → resultado mediocre. El loop se repite hasta que el contexto está claro — pero el costo ya se pagó.
+
+### La paradoja
+
+Las personas que más necesitan los agentes (sin experiencia técnica) son las que menos saben estructurar el input. Las que mejor saben usarlos (con experiencia técnica) podrían hacer el trabajo ellas mismas.
+
+La solución no es mejorar el agente — es desarrollar la habilidad de **dar contexto**.
+
+### Checklist pre-invocación — lo que el humano debe definir ANTES de invocar
+
+```
+□ ¿Qué quiero exactamente?
+    Output concreto, no vago. "Arregla el bug" ≠ "El botón X no responde al click en iOS 17"
+
+□ ¿Cuál es la arquitectura del proyecto?
+    Si no está en scope/, escribirla primero. El agente no puede adivinarla.
+
+□ ¿Cuál es el scope de esta tarea?
+    Qué toca. Qué NO toca. Los límites importan tanto como el objetivo.
+
+□ ¿Cuál es el criterio de éxito?
+    ¿Cómo sé que está hecho? Sin esto, el agente decide — y puede decidir mal.
+```
+
+Si no puedes responder estas 4 preguntas, no invoques el agente todavía.
+
+### Anti-patrón: "cuéntame qué necesitas"
+
+Síntoma de contexto mal formado: el humano invoca el agente esperando que **el agente descubra** qué hay que hacer. El agente empieza a preguntar, el humano responde a medias, el agente asume el resto.
+
+```
+❌ "Mejora el sistema de autenticación"
+✅ "El login falla cuando el token expira en mobile. Archivo: auth/token_refresh.ts.
+    Scope: solo el retry logic, no el flujo de login. Éxito: refresh automático sin logout visible."
+```
+
+### `/plan` como forcing function
+
+`/plan` obliga al humano a articular el contexto antes de que el agente ejecute. Si no puedes describir la tarea para el plan, no estás listo para invocar el agente.
+
+El costo del plan (~500-800t) es el precio de **no** gastar 10-20k en la dirección equivocada.
+
+**Regla:** si dudas de si necesitas `/plan` → lo necesitas.
+
+### El costo real de contexto malo
+
+```
+Tarea con contexto claro:     ~4-8k tokens (techo normal del agente)
+Tarea con contexto vago:      ~12-30k tokens (loops de corrección)
+Diferencia:                   3-5× — pagado en tokens, no en calidad
+```
+
+La optimización más barata del sistema no es un hook ni un agente más eficiente — es que el humano sepa qué quiere antes de pedirlo.
+
+### Checklist §24
+
+```
+□ Antes de invocar: ¿puedo describir el output exacto en 1-2 líneas?
+□ ¿El scope está escrito (qué toca / qué NO toca)?
+□ ¿El criterio de éxito es verificable?
+□ Si no puedo responder las 3: /plan primero, invocación después
+```
+
+---
 
 ## Recursos oficiales
 
