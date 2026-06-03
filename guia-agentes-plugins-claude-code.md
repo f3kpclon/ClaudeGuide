@@ -10,6 +10,8 @@
 >
 > Si puedes hacer algo con **haiku**, no uses sonnet. Si puedes usar una regla en CLAUDE.md, no crees un agente. Si puedes poner un gotcha inline, no hagas que el agente lea un archivo.
 >
+> El agente es tan bueno como el contexto que recibe. Contexto vago → el agente improvisa → loops de corrección → tokens ×3-5. Define output, scope y criterio de éxito **antes** de invocar. `/plan` primero. (→ §24)
+>
 > Esta es la filosofía. El resto es implementación.
 
 ---
@@ -42,31 +44,38 @@
 
 ## Índice
 
-1. [¿Qué construir y cuándo?](#1-qué-construir-y-cuándo)
-2. [Presupuesto de tokens](#2-presupuesto-de-tokens)
-3. [Estimados de consumo](#3-estimados-de-consumo)
-4. [Analogía — cómo pensar el sistema](#4-analogía--cómo-pensar-el-sistema)
-5. [Agentes](#5-agentes)
-6. [Skills](#6-skills)
-7. [Hooks](#7-hooks)
-8. [Scope del proyecto](#8-scope-del-proyecto)
-9. [Learnings](#9-learnings)
-10. [Arquitectura multi-agente](#10-arquitectura-multi-agente)
-11. [Plugin distribuible](#11-plugin-distribuible)
-12. [Errores comunes](#12-errores-comunes)
-13. [Checklist de calidad](#13-checklist-de-calidad)
-14. [Guía anti-overkill](#14-guía-anti-overkill)
-15. [Glosario](#15-glosario)
-16. [Vector Memory — Upgrade del sistema de learnings](#16-vector-memory--upgrade-del-sistema-de-learnings)
-17. [Plan + Invocation Templates — Eficiencia máxima de prompts](#17-plan--invocation-templates--eficiencia-máxima-de-prompts)
-18. [Seguridad — 3 capas, security_utils.py, checklist](#18-seguridad)
-19. [Testing de agentes](#19-testing-de-agentes)
-20. [CI/CD](#20-cicd)
-21. [Observabilidad y debugging](#21-observabilidad-y-debugging)
-22. [Prompt engineering avanzado](#22-prompt-engineering-avanzado)
-23. [Techos reales de tokens — cuándo parar de optimizar](#23-techos-reales-de-tokens--cuándo-parar-de-optimizar)
-24. [El contrato del contexto — el factor humano](#24-el-contrato-del-contexto--el-factor-humano)
-25. [Modelo correcto — tabla de decisión única](#25-modelo-correcto--tabla-de-decisión-única)
+### Fundamentos — leer primero
+- [§4 — Analogía: cómo pensar el sistema](#4-analogía--cómo-pensar-el-sistema)
+- [§1 — ¿Qué construir y cuándo?](#1-qué-construir-y-cuándo)
+- [§2 — Presupuesto de tokens](#2-presupuesto-de-tokens)
+- [§25 — Modelo correcto (haiku/sonnet/opus)](#25-modelo-correcto--tabla-de-decisión-única)
+- [§24 — El factor humano: contexto antes de invocar](#24-el-contrato-del-contexto--el-factor-humano)
+
+### Construcción — lo que más usas
+- [§5 — Agentes](#5-agentes)
+- [§7 — Hooks](#7-hooks)
+- [§6 — Skills](#6-skills)
+- [§8 — Scope del proyecto](#8-scope-del-proyecto)
+- [§9 — Learnings](#9-learnings)
+- [§10 — Arquitectura multi-agente](#10-arquitectura-multi-agente)
+- [§11 — Plugin distribuible](#11-plugin-distribuible)
+- [§17 — Plan + Invocation Templates](#17-plan--invocation-templates--eficiencia-máxima-de-prompts)
+
+### Calidad y eficiencia
+- [§14 — Guía anti-overkill](#14-guía-anti-overkill)
+- [§12 — Errores comunes](#12-errores-comunes)
+- [§13 — Checklist de calidad](#13-checklist-de-calidad)
+- [§23 — Techos reales de tokens](#23-techos-reales-de-tokens--cuándo-parar-de-optimizar)
+- [§3 — Estimados de consumo](#3-estimados-de-consumo)
+
+### Avanzado y referencia
+- [§16 — Vector Memory](#16-vector-memory--upgrade-del-sistema-de-learnings)
+- [§18 — Seguridad](#18-seguridad)
+- [§19 — Testing de agentes](#19-testing-de-agentes)
+- [§20 — CI/CD](#20-cicd)
+- [§21 — Observabilidad y debugging](#21-observabilidad-y-debugging)
+- [§22 — Prompt engineering avanzado](#22-prompt-engineering-avanzado)
+- [§15 — Glosario](#15-glosario)
 
 ---
 
