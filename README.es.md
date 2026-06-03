@@ -6,6 +6,10 @@
 
 ---
 
+> 🌐 **Language / Idioma:** [🇺🇸 English](README.md) · **🇪🇸 Español**
+
+---
+
 > Cada byte en contexto tiene costo. Esta guía existe para que construyas sistemas poderosos sin que tu tarjeta llore al final del mes.
 >
 > Si puedes hacer algo con **haiku**, no uses sonnet. Si puedes usar una regla en CLAUDE.md, no crees un agente. Si puedes poner un gotcha inline, no hagas que el agente lea un archivo.
