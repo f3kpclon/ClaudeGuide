@@ -3685,6 +3685,140 @@ Para incluir una sección nueva, agregar una entrada al `KEYWORD_MAP` en el scri
 
 ---
 
+<!-- §27 -->
+<a id="27-handoff-protocol"></a>
+
+## 27. Handoff Protocol — Preservar contexto entre sesiones
+
+> Sesiones largas degradan la calidad de razonamiento. Este protocolo preserva el estado exacto en un snapshot estructurado y lo retoma en sesión nueva sin fricción — cero llamadas de API extra, cero overhead por turno.
+
+### El problema
+
+Claude Code no tiene memoria entre sesiones. A medida que el contexto se llena, la calidad del razonamiento baja antes de que el usuario lo note. El degradado es silencioso.
+
+### Por qué es LowCost
+
+La trampa obvia es llamar `/v1/messages/count_tokens` para saber cuándo avisar. Eso es gratis en dinero pero agrega una llamada de API por turno — latencia real.
+
+La solución: Claude Code **ya calcula** `context_window.used_percentage` y lo entrega al comando `statusLine` en el JSON de stdin. Leer ese número es una operación de archivo. Costo = 0.
+
+| Enfoque | Overhead |
+|---|---|
+| Token counting API por turno | 1 HTTP call/turno (~200ms latencia) |
+| `statusLine` + archivo local | Lectura de archivo — cero |
+
+### Arquitectura
+
+```
+statusLine (cada evento)
+  → lee context_window.used_percentage del JSON de Claude Code
+  → escribe ~/.claude/ctx_pct.txt
+  → muestra barra de progreso en la UI
+
+Stop hook (cada respuesta de Claude)
+  → lee ctx_pct.txt
+  → si ≥ 70%: dialog nativo del OS (una sola vez por sesión)
+    → Sí: escribe /tmp/handoff_pending
+    → No: continúa
+
+UserPromptSubmit hook (próximo mensaje del usuario)
+  → si /tmp/handoff_pending existe: inyecta "HANDOFF REQUESTED"
+  → Claude invoca el skill /handoff
+
+/handoff skill
+  → Claude compone snapshot internamente (no se muestra en chat)
+  → Bash escribe a {repo}/.claude/handoffs/YYYY-MM-DD_HHmm.md + latest.md
+  → .gitignore actualizado automáticamente
+  → snapshot copiado al clipboard
+  → Claude imprime una línea de confirmación en el chat
+```
+
+### Componentes
+
+| Archivo | Rol |
+|---|---|
+| `CLAUDE.md` | Triggers manuales (`handoff`, `snapshot`, `pausa`) + resume behavior |
+| `commands/handoff.md` | Skill `/handoff` — compone snapshot internamente, escribe a disco vía Bash, imprime una línea de confirmación |
+| `hooks/statusline-context.sh` | Barra de progreso con niveles y mensajes |
+| `hooks/handoff-monitor.sh` | Detecta 70%, muestra dialog cross-platform |
+| `hooks/handoff-inject.sh` | Inyecta el request en el siguiente mensaje |
+
+### Dialog cross-platform
+
+El Stop hook detecta el OS y usa la herramienta nativa:
+
+```bash
+case "$OSTYPE" in
+  darwin*)   osascript     ;;   # macOS — built-in
+  linux*)    zenity/kdialog;;   # GNOME / KDE
+  msys*|cygwin*) powershell;;  # Windows Git Bash / WSL
+  *)         systemMessage ;;  # fallback en el chat
+esac
+```
+
+### Barra de progreso
+
+El `statusLine` muestra un indicador visual con escalada de urgencia:
+
+```
+🥬 [██░░░░░░░░] 20% — fresco como lechuga
+😎 [███░░░░░░░] 35% — tranqui
+🔥 [█████░░░░░] 52% — se calienta la cosa
+👻 [██████░░░░] 63% — en cualquier momento me voy en la vola'
+🔪 [███████░░░] 74% — me pase po          ← dialog dispara aquí
+💀 [████████░░] 83% — ¿qué hacíamos?
+🆘 [█████████░] 92% — handoff altiro weón
+```
+
+Los colores ANSI (verde/amarillo/rojo) coinciden con el nivel de urgencia.
+
+### Snapshot template
+
+```markdown
+## Snapshot de Handoff
+**Fecha:** [YYYY-MM-DD HH:MM]
+**Repo / Proyecto:** [nombre]
+## Objetivo
+## Completado
+## En Progreso
+## Próximos Pasos
+## Decisiones Técnicas
+## Blockers
+## Contexto Técnico
+```
+
+Para retomar: pega el snapshot al inicio de sesión nueva. Claude confirma el objetivo antes de continuar.
+
+### Instalación
+
+```bash
+git clone https://github.com/f3kpclon/claude-code-handoff handoff-project
+cd handoff-project
+bash install.sh   # idempotente — seguro de re-ejecutar
+# Reiniciar Claude Code
+```
+
+### Regla LowCost
+
+> Si Claude Code ya calcula el dato que necesitas, léelo — no lo recalcules. El `statusLine` JSON tiene `context_window.used_percentage` listo. Úsalo.
+
+### Checklist §27
+
+```
+□ bash install.sh ejecutado
+□ Claude Code reiniciado
+□ statusLine visible en la barra inferior con barra de progreso
+□ /handoff escribe snapshot a disco sin mostrarlo en chat
+□ /handoff imprime una línea de confirmación en el chat
+□ Snapshots en {repo}/.claude/handoffs/ (ignorados por git)
+□ latest.md siempre disponible para retomar rápido
+□ Al llegar a 70%: dialog nativo aparece
+□ "Sí" en dialog → próximo mensaje genera snapshot automático
+□ Snapshot pegado en sesión nueva → Claude confirma objetivo
+```
+
+---
+
 ## Recursos oficiales
 
 - [Agents](https://code.claude.com/docs/en/sub-agents)
