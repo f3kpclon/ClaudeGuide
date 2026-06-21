@@ -978,6 +978,36 @@ Auto-compaction reencuaderna las skills más recientes con un budget de **5,000 
 
 <!-- §6-ref -->
 
+### Skill ↔ Agente — árbol de decisión
+
+> Skill y agente usan el mismo mecanismo por debajo. La diferencia es quién dirige: si la skill elige el agente (`context: fork`), la skill controla. Si el agente precarga skills (`skills:`), el agente controla.
+
+```
+¿El trabajo contaminaría el hilo principal con output voluminoso?
+├── No → Skill (comparte contexto)
+│       ¿Necesita tools propias o razonamiento prolongado?
+│       ├── No → Skill regular (referencia / hub / fork-ligero)
+│       └── Sí → Skill con context: fork + agent: Explore
+│                (skill elige el agente, su contenido = la tarea)
+└── Sí → Agente (contexto propio aislado)
+        ¿Siempre necesita cierto conocimiento de referencia al arrancar?
+        ├── No → Agente regular
+        └── Sí → Agente con skills: [skill-name]
+                 (agente precarga skill content, no lo descubre en runtime)
+```
+
+**Los 4 patrones con sus casos de uso:**
+
+| Patrón | Cuándo | Cómo |
+|---|---|---|
+| Skill regular | Referencia, convenciones, triage — comparte hilo | `disable-model-invocation: true/false` sin `context:` |
+| Skill con `context: fork` | Trabajo pesado que ensuciaría el hilo (diffs largos, búsquedas) | `context: fork` + `agent: Explore` en SKILL.md |
+| Agente regular | Tarea multi-step con contexto propio | `.claude/agents/<nombre>.md` sin `skills:` |
+| Agente con `skills:` | Agente que siempre necesita convenciones al arrancar | `skills: [api-conventions, error-patterns]` en frontmatter |
+
+**La nota clave de la doc oficial:**
+> *"Con `skills:` en un agente, el agente controla el sistema prompt y carga el contenido de la skill. Con `context: fork` en una skill, el contenido de la skill se inyecta en el agente elegido. Ambos usan el mismo mecanismo subyacente."*
+
 ### Frontmatter completo — todos los campos
 
 | Campo | Default | Uso |
