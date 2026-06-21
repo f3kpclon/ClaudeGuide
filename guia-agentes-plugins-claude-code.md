@@ -61,6 +61,8 @@
 - [§11 — Plugin distribuible](#11-plugin-distribuible)
 - [§17 — Plan + Invocation Templates](#17-plan--invocation-templates--eficiencia-máxima-de-prompts)
 - [§26 — Hook global de contexto](#26-hook-global-de-contexto)
+- [§28 — Prompt Library (shortcuts + recipes)](#28-prompt-library--shortcuts-para-claude-code)
+- [§29 — Contexto global propio](#29-contexto-global-propio--construir-tu-sistema)
 
 ### Calidad y eficiencia
 - [§14 — Guía anti-overkill](#14-guía-anti-overkill)
@@ -176,7 +178,7 @@ El archivo de learnings sigue existiendo para que el postmortem lo actualice. Lo
 | Docs de referencia | < 100 líneas | Se leen completos |
 | Learnings por dominio | < 150 líneas | Se cargan solo cuando aplica |
 | Scope por dominio | < 50 líneas | Deben ser densos y directos |
-| `description` | < 1,024 chars | Hard limit del spec |
+| `description` | < 1,536 chars | Límite real del sistema (`maxSkillDescriptionChars` configurable) |
 
 ### Principios DRY
 
@@ -759,9 +761,28 @@ Mantenimiento mensual de learnings. No correr en cada sesión.
 ---
 
 <!-- §6 -->
+<!-- §6-quick -->
 ## 6. Skills
 
 > Una skill es un recetario: no cocina sola, pero cuando el agente la necesita la consulta. La diferencia con un agente es que no tiene contexto propio — comparte el hilo principal. Úsalas para referencia, templates y triage. Nunca para código que se ejecuta.
+
+### Cuándo crear una skill
+
+La pregunta no es "¿puedo hacer esto con una skill?" — es "¿dónde vive mejor este contenido?"
+
+| Contenido | Dónde va | Por qué |
+|---|---|---|
+| Regla que aplica **siempre**, en toda tarea | `CLAUDE.md` | Costo fijo justificado — es el contrato del restaurante en la pared |
+| Procedimiento que se carga **bajo demanda** | Skill | Gratis en tokens hasta que se invoca — el menú del día |
+| Tarea con **contexto propio** o que contaminaría el hilo | Agente (`context: fork`) | El sous-chef trabaja en su cocina aparte — el hilo principal no se ensucia |
+
+**Trigger práctico (oficial):** creá una skill cuando seguís pegando las mismas instrucciones en el chat, o cuando una sección de CLAUDE.md creció hasta ser un procedimiento en vez de un hecho.
+
+```
+CLAUDE.md tiene ≥ 5 líneas sobre cómo hacer X  →  mover X a una skill
+Pegaste las mismas instrucciones más de 2 veces  →  skill de referencia
+La tarea contamina el hilo con logs/diffs largos →  skill con context: fork
+```
 
 ### Formato
 
@@ -780,11 +801,13 @@ Para referencia detallada → `docs/ref.md`
 
 ### Tipos y configuración
 
-| Tipo | `disable-model-invocation` | Tamaño | Uso |
+| Tipo | `disable-model-invocation` | Tamaño | Qué ve Claude en contexto |
 |---|---|---|---|
-| Hub / dispatch | `false` | < 40 líneas | Triage automático |
-| Referencia | `true` | < 200 líneas | Convenciones, patrones |
-| Template | `true` | Sin límite práctico | Nunca en contexto activo |
+| Hub / dispatch | `false` | < 40 líneas | Nombre + descripción siempre visibles — triage automático |
+| Referencia | `true` | < 200 líneas | **Nada** — ni nombre ni descripción — Claude no sabe que existe hasta que el usuario la invoca |
+| Template | `true` | Sin límite práctico | **Nada** — igual que referencia, nunca en contexto activo |
+
+> **Analogía:** `disable-model-invocation: true` no es "no activar" — es quitar la etiqueta del estante. El recetario sigue ahí, pero Claude no sabe ni que existe. Un hub con `false` es el libro de recetas abierto en la cocina — visible siempre. Una skill de referencia con `true` es el manual técnico en el cajón — gratis en tokens hasta que alguien lo pide.
 
 ### Controlar cuándo una skill se activa — `skillOverrides`
 
@@ -800,11 +823,12 @@ Por defecto, el modelo puede invocar cualquier skill según su `description`. Pa
 }
 ```
 
-| Valor | Efecto |
-|---|---|
-| `"on"` (default) | Skill disponible para el modelo y para el usuario (`/nombre`) |
-| `"user-invocable-only"` | El modelo NO la activa; el usuario SÍ puede llamarla con `/nombre` |
-| `"off"` | Invisible para todos |
+| Valor | Claude la ve | Usuario puede `/nombre` | Analogía |
+|---|---|---|---|
+| `"on"` (default) | Nombre + descripción | Sí | Recetario en la repisa con etiqueta y resumen — Claude sabe cuándo abrirlo |
+| `"name-only"` | Solo el nombre | Sí | Recetario con solo el título — Claude sabe que existe pero no cuándo usarlo |
+| `"user-invocable-only"` | Nada | Sí | Recetario en el cajón — el cocinero (usuario) lo busca, el modelo no lo ve |
+| `"off"` | Nada | No | Recetario en el sótano — nadie lo ve, cero tokens |
 
 **Cuándo usar `user-invocable-only` en el hub:**
 Si CLAUDE.md ya contiene la tabla de dispatch completa, el hub es redundante para el modelo. Desactivar el auto-trigger evita un LLM call innecesario (~280 tokens) por cada tarea sin perder la skill para uso manual.
@@ -827,6 +851,107 @@ Una skill con `"on"` (default) consume tokens en el system prompt aunque nunca s
 ```
 
 Ventaja sobre borrar: el archivo sigue existiendo como referencia histórica, pero no consume tokens.
+
+### Lifecycle — qué pasa después de invocar una skill
+
+Una skill invocada entra al contexto como un mensaje y **se queda toda la sesión** — Claude no vuelve a leer el archivo. Es el pan de ajo en la mesa: una vez que llega, se queda hasta que te vas.
+
+Auto-compaction reencuaderna las skills más recientes con un budget de **5,000 tokens por skill, 25,000 tokens compartidos**. Si invocaste muchas skills, las más antiguas se caen primero. Señal de problema: la skill "deja de funcionar" después de mucho intercambio — re-invocarla con `/nombre` la restaura.
+
+```
+□ Skill grande (> 200 líneas) → dividir en SKILL.md + reference.md cargado bajo demanda
+□ Skill que "se olvidó" → re-invocar con /nombre después de auto-compact
+□ Muchas skills en una sesión → usar name-only en las menos críticas para liberar budget
+```
+
+<!-- §6-ref -->
+
+### Frontmatter completo — todos los campos
+
+| Campo | Default | Uso |
+|---|---|---|
+| `name` | nombre del directorio | Display en listado — no cambia el comando `/` |
+| `description` | primer párrafo | Trigger de activación automática. **Primero el caso más importante.** |
+| `when_to_use` | — | Contexto adicional — se suma a `description` hacia el límite de 1,536 chars |
+| `argument-hint` | — | Hint en autocompletado: `[issue-number]`, `[archivo] [formato]` |
+| `arguments` | — | Nombres para `$name` substitution: `arguments: [issue, branch]` |
+| `disable-model-invocation` | `false` | `true` = quita la etiqueta del estante — Claude no sabe que existe |
+| `user-invocable` | `true` | `false` = oculta del menú `/` — Claude puede invocarla, el usuario no |
+| `allowed-tools` | — | Tools sin prompt de permiso mientras la skill está activa |
+| `disallowed-tools` | — | Tools bloqueadas mientras la skill está activa (se limpia al próximo mensaje) |
+| `model` | hereda sesión | Override de modelo **solo para este turno** |
+| `effort` | hereda sesión | Override de esfuerzo: `low\|medium\|high\|xhigh\|max` |
+| `context` | — | `fork` = corre en subagente aislado |
+| `agent` | `general-purpose` | Qué subagente usa `context: fork` (`Explore`, `Plan`, o custom) |
+| `hooks` | — | Hooks scoped al ciclo de vida de la skill |
+| `paths` | — | Glob — skill se activa solo cuando se trabaja con archivos que coinciden |
+| `shell` | `bash` | Shell para comandos `!`: `bash` o `powershell` |
+
+### String substitutions
+
+```markdown
+$ARGUMENTS          → todos los args como string ("123 --verbose")
+$ARGUMENTS[N]/$N   → arg por posición 0-based ($0 = primero)
+$nombre             → arg nombrado (con arguments: [issue, branch] → $issue, $branch)
+${CLAUDE_SESSION_ID} → ID de sesión actual (para logs, archivos por sesión)
+${CLAUDE_EFFORT}    → nivel de esfuerzo activo en este momento
+${CLAUDE_SKILL_DIR} → directorio de la skill — para referenciar scripts bundleados
+```
+
+**Ejemplo con args nombrados:**
+```yaml
+---
+name: fix-issue
+arguments: [issue, branch]
+disable-model-invocation: true
+---
+Fixear issue $issue en la branch $branch siguiendo nuestros estándares.
+```
+Invocación: `/fix-issue 42 feat/auth` → `$issue=42`, `$branch=feat/auth`.
+
+### context: fork — skill aislada en subagente
+
+Usá `context: fork` cuando la skill haría trabajo pesado que contaminaría el hilo principal (diffs largos, búsquedas exhaustivas, análisis de archivos). El contenido de SKILL.md se vuelve el prompt del subagente — el hilo principal solo recibe el resumen.
+
+```yaml
+---
+name: deep-research
+description: Investigar un tema en el codebase. Usar cuando el usuario pide análisis profundo de código.
+context: fork
+agent: Explore       # solo lectura, no carga CLAUDE.md — contexto limpio y económico
+---
+
+Investigar $ARGUMENTS:
+1. Encontrar archivos relevantes con Glob y Grep
+2. Leer y analizar el código
+3. Resumir hallazgos con referencias exactas de archivo:línea
+```
+
+> **Regla:** Si la skill busca o lee más de 3 archivos, considerar `context: fork`. El subagente paga su propio contexto — el hilo principal no se ensucia con los resultados intermedios.
+
+`agent: Explore` es el más económico para lectura: no carga CLAUDE.md ni git status. `agent: general-purpose` cuando necesitás más capacidad.
+
+### Supporting files — skill como directorio
+
+Una skill puede ser un directorio con archivos de soporte. SKILL.md es el entrypoint; el resto solo se carga cuando se referencia explícitamente:
+
+```
+mi-skill/
+├── SKILL.md          # < 500 líneas — entrypoint y navegación
+├── reference.md      # docs detalladas — no carga sola, Claude la lee cuando la necesita
+├── examples/
+│   └── sample.md     # output esperado — útil para few-shot en el body
+└── scripts/
+    └── helper.py     # script ejecutable — no se lee, se corre con !
+```
+
+Referenciar desde SKILL.md:
+```markdown
+Para especificación completa de la API → ver [reference.md](reference.md)
+Para ejemplos de output → ver [examples/sample.md](examples/sample.md)
+```
+
+**Cuándo usar:** cuando SKILL.md supera 200 líneas. La regla es la misma que para cualquier archivo en el sistema: un archivo de 500 líneas siempre se lee completo; dividido en partes se lee solo lo que aplica.
 
 ### Hub — qué va y qué no
 
@@ -873,7 +998,7 @@ options:
 
 ### Dynamic context injection
 
-Prefix `!` ejecuta un comando y pega el output en el contexto:
+Prefix `!` ejecuta un comando y pega el output en el contexto **antes** de que Claude lea la skill — Claude recibe datos reales, no el comando:
 
 ```markdown
 ## Estado actual
@@ -881,7 +1006,17 @@ Prefix `!` ejecuta un comando y pega el output en el contexto:
 !`git log --oneline -3`
 ```
 
-Usar solo cuando el output es esencial — cada línea cuesta tokens.
+Usar solo cuando el output es esencial — cada línea cuesta tokens. Para comandos multi-línea:
+
+````markdown
+```!
+node --version
+npm --version
+git status --short
+```
+````
+
+**`ultrathink` — razonamiento extendido en una palabra:** incluir `ultrathink` en cualquier parte del body activa pensamiento profundo para esa invocación. Usar en skills de auditoría o decisiones de arquitectura donde el costo del error justifica el costo del reasoning.
 
 ---
 
@@ -939,14 +1074,65 @@ Usar solo cuando el output es esencial — cada línea cuesta tokens.
 
 Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 
-### Eventos esenciales
+### Eventos — mapa completo
 
-| Evento | Bloqueable | Uso |
-|---|---|---|
-| `PreToolUse` | **Sí** | Validar antes de escribir o ejecutar |
-| `PostToolUse` | No | Confirmar, notificar, auto-formatear, encadenar acciones |
-| `SubagentStop` | No | Encadenar agentes, notificar al usuario |
-| `Stop` | No | Recordatorios al final de sesión |
+> Un hook es el portero del edificio: la regla en el prompt del agente es el cartel de "prohibido entrar" — el agente puede ignorarlo. El hook PreToolUse es la puerta con llave — el agente no puede abrirla aunque quiera.
+
+**Bloqueantes** — pueden detener la acción si retornan `permissionDecision: deny` + exit 0:
+
+| Evento | Matcher | Cuándo dispara | Uso típico |
+|---|---|---|---|
+| `PreToolUse` | Nombre de tool | Antes de ejecutar cualquier tool | Validar paths, bloquear comandos peligrosos |
+| `UserPromptSubmit` | Sin matcher | Antes de que Claude procese el prompt del usuario | Bloquear instrucciones peligrosas, inyectar contexto |
+| `PermissionRequest` | Nombre de tool | Cuando aparece dialog de permiso | Auto-aprobar comandos seguros conocidos |
+| `PostToolBatch` | Sin matcher | Al terminar un batch de tools en el loop agentic | Parar el loop completo si algo salió mal |
+
+**No bloqueantes** — observacionales, pueden inyectar contexto con `systemMessage` o `additionalContext`:
+
+| Evento | Matcher | Cuándo dispara | Uso típico |
+|---|---|---|---|
+| `PostToolUse` | Nombre de tool | Después de que la tool tuvo éxito | Auto-formatear, encadenar acciones, notificar |
+| `SubagentStop` | Nombre del agente | Al terminar un subagente | Encadenar agentes, confirmar al usuario |
+| `Stop` | Sin matcher | Al terminar el turno de Claude | Recordatorios, validaciones de fin de sesión |
+| `StopFailure` | Tipo de error | Cuando Claude para por error | Reaccionar a `rate_limit`, `overloaded`, `authentication_failed` |
+| `SessionStart` | `startup\|resume\|clear\|compact` | Al iniciar o retomar sesión | Inyectar contexto inicial, `watchPaths`, `reloadSkills` |
+| `FileChanged` | Nombre de archivo | Archivo vigilado cambia en disco | Recargar `.env`, disparar validaciones externas |
+
+### Tipos de handler
+
+La guía usa `"type": "command"` (Python/shell) en todos los ejemplos. Existen 3 tipos más:
+
+| Tipo | Cuándo usarlo |
+|---|---|
+| `"command"` | Script local — el más flexible, cubre el 95% de los casos |
+| `"http"` | POST a un servidor externo — webhooks, logging centralizado, CI |
+| `"mcp_tool"` | Llama directamente una tool de un servidor MCP ya conectado |
+| `"prompt"` | Claude decide sí/no con un prompt — para validaciones en lenguaje natural |
+
+```json
+// http hook — logging externo sin script local
+{"type": "http", "url": "http://localhost:8080/hooks", "headers": {"Authorization": "Bearer $TOKEN"}}
+
+// prompt hook — validación en lenguaje natural
+{"type": "prompt", "prompt": "¿Este comando Bash es seguro para ejecutar en producción? $ARGUMENTS"}
+```
+
+### Campos opcionales por hook
+
+```json
+{
+  "matcher": "Bash",
+  "hooks": [{
+    "type": "command",
+    "command": "python3 .claude/hooks/guard.py",
+    "if": "Bash(npm *)",        // condición adicional — AND con matcher
+    "timeout": 30,              // segundos antes de timeout (default: sin límite)
+    "statusMessage": "Verificando paquete...",  // spinner visible al usuario
+    "async": false,             // true = corre en background, no bloquea
+    "asyncRewake": false        // true = background + despierta a Claude si exit 2
+  }]
+}
+```
 
 <!-- §7-ref -->
 ### PreToolUse — bloquear con JSON
@@ -1144,7 +1330,7 @@ if __name__ == "__main__":
 **Reglas:**
 - `chmod +x` en todos los scripts
 - `try/except` en **todos** los hooks (PreToolUse, PostToolUse, SubagentStop, Stop) — no solo PreToolUse
-- PreToolUse usa JSON con `permissionDecision` — nunca `exit(2)`
+- PreToolUse bloquea con JSON `permissionDecision: deny` + exit 0 — nunca `exit(2)` directo (exit 2 bloquea pero sin razón estructurada; cualquier exit distinto de 0 y 2 muestra la primera línea de stderr como error no-bloqueante y la acción continúa igual)
 - SubagentStop y PostToolUse usan `systemMessage` — nunca `echo` crudo
 - Checks de string en comandos Bash: usar `re.split` para aislar el primer comando — nunca `"texto" in cmd` directo (matchea argumentos como `--body`)
 - Paths del proyecto: `Path(__file__).parent.parent.parent` — nunca paths absolutos hardcodeados
@@ -1224,6 +1410,143 @@ Un hook que falla sin error visible es difícil de debuggear. Checklist en orden
   "if": "Bash(git push *)"  ← glob sobre el comando completo
   Si el comando tiene flags antes del subcomando, el glob puede no matchear.
 ```
+
+### updatedInput — reescribir en vez de bloquear
+
+`updatedInput` es más potente que `deny`: en vez de rechazar la acción, la corrige silenciosamente antes de ejecutar. El agente no sabe que el comando cambió.
+
+```python
+# Ejemplo: npm install sin args → reescribir a npm ci automáticamente
+import json, sys, re
+
+data = json.load(sys.stdin)
+cmd  = data.get("tool_input", {}).get("command", "")
+first = re.split(r'\s*&&|\s*\|\||\s*;', cmd)[0].strip()
+
+if re.match(r'npm\s+install\s*$', first):
+    new_cmd = cmd.replace(first, 'npm ci', 1)
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "updatedInput": {"command": new_cmd},
+            "additionalContext": "npm install reescrito a npm ci — usa lockfile exacto y no modifica package-lock.json."
+        }
+    }))
+    sys.exit(0)
+
+sys.exit(0)
+```
+
+> El agente recibe `npm ci` como si él lo hubiera escrito. `additionalContext` le explica el cambio en el próximo turno.
+
+### SessionStart — inyectar contexto al iniciar
+
+`SessionStart` dispara antes de que Claude procese el primer mensaje. Útil para cargar estado externo (branch actual, tickets abiertos, env activo) sin que el usuario tenga que pegarlo.
+
+```python
+#!/usr/bin/env python3
+import json, sys, subprocess
+
+data = json.load(sys.stdin)
+if data.get("source") not in ("startup", "resume"):
+    sys.exit(0)
+
+try:
+    branch = subprocess.check_output(["git", "branch", "--show-current"], text=True).strip()
+    status = subprocess.check_output(["git", "status", "--short"], text=True).strip()
+    context = f"Branch: {branch}"
+    if status:
+        context += f"\nArchivos modificados:\n{status}"
+except Exception:
+    context = "Git no disponible en este directorio."
+
+print(json.dumps({
+    "hookSpecificOutput": {
+        "hookEventName": "SessionStart",
+        "additionalContext": context
+    }
+}))
+```
+
+```json
+{"SessionStart": [{"matcher": "startup|resume", "hooks": [{"type": "command", "command": "python3 .claude/hooks/session_start.py"}]}]}
+```
+
+### npm security guard — supply chain y slopsquatting
+
+> **Analogía:** `npm install <paquete>` es como contratar a un empleado nuevo sin verificar referencias — el postinstall script puede ejecutar código arbitrario desde el momento en que llega. `npm ci` es contratar a alguien ya verificado (lockfile exacto). `npx` es dejar que el empleado traiga a sus amigos sin presentarlos.
+
+**Riesgo específico para Claude Code — slopsquatting:** atacantes publican paquetes con nombres que los modelos de AI tienden a alucinar. Si Claude sugiere `import` de un paquete que no existe y el agente hace `npm install` directamente, el paquete malicioso ya está instalado.
+
+```python
+#!/usr/bin/env python3
+import json, sys, re
+
+def main():
+    try:
+        data = json.load(sys.stdin)
+    except Exception:
+        sys.exit(0)
+
+    cmd   = data.get("tool_input", {}).get("command", "")
+    first = re.split(r'\s*&&|\s*\|\||\s*;', cmd)[0].strip()
+
+    # npx desde registry = descarga + ejecuta sin verificación de integridad
+    if re.match(r'npx\s+[^./]', first):
+        pkg = first.split()[1]
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": (
+                f"npx {pkg} descarga y ejecuta código sin verificación.\n"
+                "Riesgo slopsquatting: el paquete puede no existir y un atacante haberlo publicado.\n"
+                f"Alternativa: npm install {pkg} --ignore-scripts && verificar con npm view {pkg}"
+            )
+        }}))
+        sys.exit(0)
+
+    # npm install <paquete> sin --ignore-scripts = lifecycle scripts sin control
+    m = re.match(r'npm\s+(?:i|install)\s+(\S+)', first)
+    if m and not m.group(1).startswith('-') and '--ignore-scripts' not in first:
+        pkg = m.group(1)
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": (
+                f"npm install {pkg} ejecuta lifecycle scripts (postinstall) automáticamente.\n"
+                "Riesgo: supply chain attack — el paquete puede exfiltrar credenciales al instalarse.\n"
+                f"Alternativa: npm install {pkg} --ignore-scripts\n"
+                f"Verificar antes: npm view {pkg} repository"
+            )
+        }}))
+        sys.exit(0)
+
+    # npm install sin args → reescribir a npm ci (reproducible, no modifica lockfile)
+    if re.match(r'npm\s+(?:i|install)\s*$', first):
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+            "updatedInput": {"command": cmd.replace(first, 'npm ci', 1)},
+            "additionalContext": "npm install reescrito a npm ci — garantiza reproducibilidad y no modifica package-lock.json."
+        }}))
+        sys.exit(0)
+
+    sys.exit(0)
+
+if __name__ == '__main__':
+    main()
+```
+
+```json
+{"PreToolUse": [{"matcher": "Bash", "if": "Bash(npm *)", "hooks": [{"type": "command",
+  "command": "python3 .claude/hooks/npm_guard.py", "statusMessage": "Verificando comando npm..."}]}]}
+```
+
+**Qué cubre este hook:**
+
+| Comando | Acción del hook | Por qué |
+|---|---|---|
+| `npx <paquete>` | Bloquea + explica slopsquatting | Descarga y ejecuta sin verificación |
+| `npm install <pkg>` | Bloquea + sugiere `--ignore-scripts` | Lifecycle scripts pueden ser maliciosos |
+| `npm install` | Reescribe a `npm ci` | Reproducible, no modifica lockfile |
+| `npm ci` | Permite sin intervención | Seguro por diseño |
+| `npm install <pkg> --ignore-scripts` | Permite | Usuario optó explícitamente |
 
 ---
 
@@ -1687,7 +2010,7 @@ claude --plugin-dir ./plugins/mi-plugin   # cargar sin instalar
 | Tablas markdown en agente haiku | Una tabla de 7 filas ocupa ~9 líneas — empuja sobre el límite de 60 | Formato inline: `` `feat` nuevo · `fix` bug · `refactor` sin cambio API `` |
 | Matcher `str_replace` en hooks.json | El hook NUNCA dispara — falla en silencio | Usar `MultiEdit`. Tool names válidos: `Bash`, `Write`, `Edit`, `MultiEdit`, `Read` |
 | `new_str` en MultiEdit siempre vacío | Validación bypaseada sin error ni aviso | Extraer de `edits[].new_str`, no de `tool_input.new_str` |
-| PreToolUse con exit 2 | Error sin razón estructurada | Retornar JSON `permissionDecision: deny`, exit 0 |
+| PreToolUse con exit 2 | Bloquea pero sin razón visible para el usuario | Retornar JSON `permissionDecision: deny` + exit 0 — el campo acepta `deny\|allow\|ask\|defer` |
 | SubagentStop con `echo` crudo | Texto sin formato contamina el contexto como stdout | `{"systemMessage": "..."}` |
 | PostToolUse con `print()` crudo | Mismo problema — texto contamina stdout | `{"systemMessage": "..."}` |
 | `try/except` solo en PreToolUse | SubagentStop, PostToolUse y Stop crashean si stdin viene vacío | try/except en **todos** los hooks |
@@ -1763,8 +2086,13 @@ Skills
 □ Hub: disable-model-invocation: false, < 40 líneas
 □ Hub con dispatch duplicado en CLAUDE.md → skillOverrides: user-invocable-only
 □ Referencias: disable-model-invocation: true
-□ description < 1,024 chars
+□ description < 1,536 chars (combined description + when_to_use; configurable con maxSkillDescriptionChars)
 □ Sin contenido duplicado
+□ Skill con trabajo pesado (> 3 archivos / logs largos) → context: fork con agent: Explore
+□ SKILL.md > 200 líneas → dividir en SKILL.md + reference.md (el directorio como soporte)
+□ Skill invocada en sesión larga → re-invocar con /nombre si "se olvidó" post-compact
+□ model / effort solo cuando el override está justificado (no usar sonnet donde haiku alcanza)
+□ user-invocable: false para background knowledge que no es acción del usuario
 
 Scope
 □ scope-index.md < 20 líneas
@@ -1793,19 +2121,21 @@ Agentes haiku (< 60 líneas)
 Hooks
 □ settings.json declara todos los hooks
 □ Scripts con chmod +x
-□ PreToolUse usa JSON permissionDecision
+□ PreToolUse usa JSON permissionDecision (deny|allow|ask|defer) + exit 0 — nunca exit 2
 □ SubagentStop y PostToolUse usan systemMessage (no echo)
 □ try/except en TODOS los hooks (no solo PreToolUse), sys.exit(0) como fallback
 □ Checks de string Bash usan re.split para aislar primer comando (no "texto" in cmd)
 □ Acciones irreversibles tienen hook guard — no solo regla en el prompt del agente
 □ Agente git tiene pre_push_guard bloqueando push directo a master
-□ Prompts de invocación mínimos — solo datos variables, no repetir el flujo del agente
 □ Sin paths absolutos — usar Path(__file__).parent.parent.parent
 □ MultiEdit extrae edits[].new_str, no tool_input.new_str
 □ Matcher en hooks.json usa nombres exactos: Write, Edit, MultiEdit, Bash, Read — nunca str_replace
 □ PostToolUse usa systemMessage JSON — igual que SubagentStop, nunca print() crudo
 □ Hub description coherente con skillOverrides (no decir "Auto-load" si es user-invocable-only)
 □ SubagentStop de agentes pesados muestra systemMessage de confirmación
+□ Proyectos Node.js tienen npm_guard.py bloqueando npx y npm install <pkg> sin --ignore-scripts
+□ updatedInput en vez de deny cuando la corrección es mecánica (ej: npm install → npm ci)
+□ SessionStart con matcher "startup|resume" para inyectar contexto de branch/estado al iniciar
 
 Plugin (si aplica)
 □ plugin.json con campos del spec
@@ -1881,6 +2211,7 @@ Estos componentes se crean **siempre**, sin pasar por el árbol de decisiones:
 | Hub skill | CLAUDE.md ya tiene el dispatch completo y ≤5 agentes | `skillOverrides: user-invocable-only` |
 | Opus | La tarea es implementación, checklist o git | haiku o sonnet |
 | Lead | Una sola tarea NO se descompone en pipeline cross-especialistas | Especialista directo |
+| Agente especialista | La tarea es copiar un patrón existente con ≤3 cambios y ≤2 archivos | Hacerlo directo en contexto principal — overhead del agente (~3-4k tokens arranque en frío) supera el riesgo de violar convenciones |
 | Debugger | CLI lineal, script simple, plugin (sin runtime) | Implementer lo resuelve inline |
 
 ### Señales de sobre-ingeniería activa
@@ -1997,7 +2328,7 @@ El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando o
 
 **systemMessage** — El formato correcto para que un hook inyecte texto en el contexto de Claude. `print(json.dumps({"systemMessage": "tu mensaje"}))`. Nunca `print("texto crudo")`.
 
-**permissionDecision** — Campo JSON que un hook PreToolUse usa para bloquear una acción: `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "razón"}}`.
+**permissionDecision** — Campo JSON que un hook PreToolUse usa para controlar una acción. Acepta `deny` (bloquea), `allow` (aprueba sin prompt), `ask` (muestra dialog igual) o `defer` (delega al siguiente hook). Siempre combinado con exit 0: `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "razón"}}`. Exit 2 también bloquea pero sin razón estructurada — no usarlo en PreToolUse.
 
 ### El dispatch
 
@@ -2005,9 +2336,9 @@ El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando o
 
 **Dispatch** — El proceso de decidir qué agente maneja cada tarea. Puede vivir en CLAUDE.md (proyecto), en el hub skill (plugin) o en ambos.
 
-**skillOverrides** — Configuración en `settings.json` que controla si una skill se activa automáticamente (`on`), solo si el usuario la llama (`user-invocable-only`), o nunca (`off`).
+**skillOverrides** — Configuración en `settings.json` que controla qué ve Claude de cada skill. Cuatro valores: `"on"` (nombre + descripción en contexto, menú visible), `"name-only"` (solo el nombre en contexto, menú visible — Claude sabe que existe pero no cuándo usarla), `"user-invocable-only"` (oculta a Claude, visible en menú para el usuario), `"off"` (invisible para todos).
 
-**disable-model-invocation** — Campo del frontmatter de una skill. `true` = solo se carga cuando Claude la pide explícitamente (skills de referencia). `false` = Claude puede activarla automáticamente (hub).
+**disable-model-invocation** — Campo del frontmatter de una skill. `true` = quita la etiqueta del estante: ni el nombre ni la descripción aparecen en el contexto de Claude — la skill no existe para él hasta que el usuario la invoca con `/nombre`. `false` = el recetario está en la repisa con etiqueta visible — Claude decide cuándo abrirlo.
 
 ### El scope
 
@@ -3527,6 +3858,8 @@ La optimización más barata del sistema no es un hook ni un agente más eficien
 
 > haiku/sonnet/opus está mencionado en §2, §5, §12 y §22. Esta sección es el único lookup necesario.
 
+> **Analogía:** el modelo es el nivel del chef que contratás. Haiku = cocinero de comida rápida — rápido, económico, perfecto para tareas repetibles. Sonnet = chef de restaurante — para platos que requieren técnica. Opus = chef Michelin — para cuando el costo de arruinar el plato supera el costo del chef.
+
 ### Tabla maestra
 
 | Tarea | Modelo | Razón |
@@ -3538,10 +3871,67 @@ La optimización más barata del sistema no es un hook ni un agente más eficien
 | Lead / orchestrador | **sonnet** | Coordina, no implementa |
 | Debugger (multi-capa, async, runtime) | **sonnet** | Diagnosis requiere razonamiento medio |
 | Architect (nuevo proyecto, decisiones de diseño) | **sonnet** | Decisiones de estructura, no triviales |
-| Refactor masivo / investigación profunda | **opus** | Solo cuando sonnet falla o el costo de error es muy alto |
-| Implementador con contexto > 10k tokens | **opus** | Sonnet pierde coherencia en contextos muy largos |
+| Refactor masivo / investigación profunda | **opus** | Solo cuando sonnet falla O el costo del error es irreversible |
+| Contexto > 10k tokens activos | **opus** | Sonnet pierde coherencia en contextos muy largos |
 
 **Regla de oro:** ¿Sonnet lo hace bien? → no usar opus. ¿Haiku lo hace bien? → no usar sonnet.
+
+### Antes de Opus — probar `effort` primero
+
+`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar. ~5× más barato que subir a Opus.
+
+```yaml
+# En el agente o en la skill
+effort: xhigh   # opciones: low | medium | high | xhigh | max
+model: claude-sonnet-4-6
+```
+
+```json
+// En settings.json para toda la sesión
+{ "effortLevel": "high" }
+```
+
+**Cuándo `effort: xhigh` resuelve lo que parecía Opus:**
+
+| Síntoma | Primer intento | Si sigue fallando |
+|---|---|---|
+| Razonamiento superficial en tarea compleja | Sonnet + `effort: xhigh` | Opus |
+| Pierde el hilo en contexto largo | Fragmentar el problema | Opus |
+| Alucinaciones en decisiones de arquitectura | Sonnet + `effort: xhigh` + `/plan` | Opus one-shot |
+
+### El marco de decisión para Opus
+
+La pregunta no es "¿es una tarea difícil?" — es:
+
+> **¿El costo de que Sonnet se equivoque supera el costo de Opus?**
+
+Opus cuesta ~5× más por token que Sonnet. Si un error de Sonnet cuesta 30 minutos de corrección → Opus vale la pena. Si cuesta 5 minutos → no.
+
+**Cuándo Opus tiene justificación real:**
+
+| Caso | Por qué Opus | Por qué no Sonnet |
+|---|---|---|
+| Security audit antes de merge a main | Falso negativo = brecha de producción | Puede pasar por alto patrones de ataque sutiles |
+| Arquitectura inicial de sistema > 2 años de vida | Error = meses de refactor | Con effort:xhigh puede no ver trade-offs a largo plazo |
+| Debug multi-capa con contexto > 10k tokens activos | Coherencia en contexto largo | Sonnet pierde el hilo — documentado |
+| Decisión one-shot sin segunda oportunidad | No hay iteración posible | Sonnet en loop con validator es alternativa |
+
+### Ejemplo concreto — security-auditor con Opus justificado
+
+```yaml
+# .claude/agents/security-auditor.md
+---
+name: security-auditor
+description: Audit de seguridad antes de merge a main. Invocar SOLO en PRs con cambios
+  de auth, permisos, storage o inputs de usuario. NO usar para linting o code style.
+model: claude-opus-4-8
+tools: Read, Glob, Grep
+---
+```
+
+**Por qué Opus aquí y no Sonnet:** el audit corre una vez por PR. El delta de costo es ~$0.04 por run. Un falso negativo (vulnerabilidad que pasa a producción) vale órdenes de magnitud más. El agente tiene `tools: Read, Glob, Grep` — sin Write ni Bash — para que el costo extra sea solo en razonamiento, no en ejecución.
+
+**Por qué no `effort: xhigh` en Sonnet:** patrones de seguridad sutiles (IDOR, timing attacks, second-order injection) requieren el nivel de razonamiento de Opus. En auditorías de seguridad, el costo del error justifica el modelo más capaz disponible.
 
 ### Anti-patrones frecuentes
 
@@ -3551,6 +3941,8 @@ La optimización más barata del sistema no es un hook ni un agente más eficien
 | Opus para git/postmortem | haiku — tarea estructurada |
 | Sin `model:` en el agente | Todos usan el modelo más caro disponible → especificar siempre |
 | Sonnet para triage/dispatch | haiku — decisión simple sobre keywords |
+| Opus por defecto "para estar seguros" | Sonnet + `effort: xhigh` primero — 5× más barato |
+| `effort: xhigh` global en settings.json | Solo en agentes o skills específicas — el costo se multiplica por cada tool call |
 
 ### Checklist §25
 
@@ -3559,7 +3951,10 @@ La optimización más barata del sistema no es un hook ni un agente más eficien
 □ Reviewer → haiku
 □ git, postmortem, curador → haiku
 □ plan skill → haiku
-□ Opus solo cuando hay evidencia de que sonnet falla
+□ Antes de Opus → probar Sonnet con effort: xhigh (skill frontmatter o settings.json)
+□ Opus solo si: security/arch one-shot O contexto > 10k tokens O costo de error es irreversible
+□ Agentes Opus tienen tools mínimas (Read/Grep/Glob) — el costo extra debe estar en razonamiento, no en ejecución
+□ effort: xhigh no en settings.json global — solo en agentes/skills que lo necesitan
 ```
 
 ---
@@ -3798,6 +4193,39 @@ bash install.sh   # idempotente — seguro de re-ejecutar
 # Reiniciar Claude Code
 ```
 
+### Seguridad y CI
+
+Este proyecto instala hooks que corren en **cada sesión de Claude de cada usuario**. Un PR malicioso en `hooks/` o `install.sh` es un supply chain attack real.
+
+**GitHub Actions** (`.github/workflows/ci.yml`) — corre en cada PR hacia `main`:
+
+| Job | Qué hace |
+|---|---|
+| `ShellCheck` | Lint de todos los `.sh` — errores y patrones inseguros |
+| `Tests` | `bash test.sh` — 16 aserciones, falla si install.sh aborta |
+| `Security Scan` | Detecta patrones peligrosos nuevos en `hooks/`, `install.sh`, `commands/`: `curl`, `wget`, `base64 -d`, `/dev/tcp`, `nc`, `python3 -c.*exec` |
+
+**Nota:** `set -euo pipefail` en `install.sh` hace que los tests fallen si el atacante inyecta un `curl` que no responde — doble protección sin código extra.
+
+**Branch protection** configurada vía API:
+- PRs obligatorios con aprobación del codeowner
+- Los 3 checks deben pasar antes de mergear
+- `enforce_admins: false` — el owner puede hacer push directo
+- `CODEOWNERS` en `.github/CODEOWNERS` — auto-request de review al owner
+
+```bash
+# Configurar branch protection vía gh CLI (para forks)
+gh api repos/{owner}/{repo}/branches/main/protection \
+  --method PUT --input - <<'EOF'
+{
+  "required_status_checks": {"strict": true, "contexts": ["ShellCheck","Tests","Security Scan"]},
+  "enforce_admins": false,
+  "required_pull_request_reviews": {"required_approving_review_count": 1, "require_code_owner_reviews": true, "dismiss_stale_reviews": true},
+  "restrictions": null
+}
+EOF
+```
+
 ### Regla LowCost
 
 > Si Claude Code ya calcula el dato que necesitas, léelo — no lo recalcules. El `statusLine` JSON tiene `context_window.used_percentage` listo. Úsalo.
@@ -3810,11 +4238,338 @@ bash install.sh   # idempotente — seguro de re-ejecutar
 □ statusLine visible en la barra inferior con barra de progreso
 □ /handoff escribe snapshot a disco sin mostrarlo en chat
 □ /handoff imprime una línea de confirmación en el chat
-□ Snapshots en {repo}/.claude/handoffs/ (ignorados por git)
+□ Snapshots en {repo}/.claude/handoffs/ (creado automáticamente, ignorado por git)
 □ latest.md siempre disponible para retomar rápido
 □ Al llegar a 70%: dialog nativo aparece
 □ "Sí" en dialog → próximo mensaje genera snapshot automático
 □ Snapshot pegado en sesión nueva → Claude confirma objetivo
+□ CI pasa en main (ShellCheck + Tests + Security Scan)
+□ Branch protection activa — PRs obligatorios para colaboradores
+□ CODEOWNERS configurado — owner recibe auto-request en cada PR
+```
+
+---
+
+<!-- §28 -->
+<!-- §28-quick -->
+## 28. Prompt Library — shortcuts para Claude Code
+
+> Estos no son comandos mágicos. Funcionan porque Claude lee lenguaje natural. El `/` es convención de consistencia — la misma razón por la que un chef tiene nombres fijos para sus técnicas aunque podría describirlas con otras palabras. Cuando están registrados como skills (`SKILL.md`), ganan `allowed-tools`, contexto dinámico y control de invocación. Como texto plano, funcionan igual pero sin esas garantías.
+
+**Tags usados en esta sección:**
+
+| Tag | Significado |
+|---|---|
+| `READ-ONLY` | No modifica archivos — seguro sin `/plan` previo |
+| `HAIKU ONLY` | Optimizado para haiku — no gastar sonnet en esto |
+| `SESSION ONLY` | El output es para esta sesión, no persiste entre sesiones |
+| `OVERLAPS /X` | Se superpone con otro shortcut — elegir el más específico |
+| `USE SPARINGLY` | Costoso en tokens — usar con criterio |
+
+---
+
+### Shortcuts
+
+#### `/plan` · `READ-ONLY` · `HAIKU ONLY`
+
+Preview de implementación antes de ejecutar cualquier agente. Muestra archivos a tocar, approach, riesgo, agente recomendado y tokens estimados. No modifica nada.
+
+```
+/plan añadir rate limiting al endpoint de login
+```
+
+> Skill completa en §17. Regla: usarlo por defecto — saltarlo requiere justificación.
+
+---
+
+#### `/handoff` · `SESSION ONLY`
+
+Genera un snapshot de la sesión actual y lo guarda en disco silenciosamente. Usar antes de cerrar o cuando el contexto se acerca al límite.
+
+```
+/handoff
+```
+
+> Skill completa en §27. El snapshot en `.claude/handoffs/latest.md` permite retomar sin preguntas.
+
+---
+
+#### `/nuevo-agente [nombre]` · `HAIKU ONLY`
+
+Genera el frontmatter completo + estructura mínima para un agente nuevo. Incluye model, tools, description como trigger list, y sección de Gotchas.
+
+```
+/nuevo-agente security-auditor
+Tarea: audit de seguridad en PRs con cambios de auth
+Modelo: opus (one-shot, costo de error alto)
+Tools: Read, Glob, Grep
+```
+
+---
+
+#### `/nueva-skill [tipo]` · `HAIKU ONLY`
+
+Genera la estructura correcta según el tipo de skill. Tipos: `hub`, `referencia`, `fork`.
+
+```
+/nueva-skill referencia
+Nombre: api-conventions
+Propósito: patrones de endpoints REST para este codebase
+```
+
+```
+/nueva-skill fork
+Nombre: deep-research
+Propósito: investigar un tema en el codebase sin contaminar el hilo
+```
+
+---
+
+#### `/nuevo-hook [evento]` · `HAIKU ONLY`
+
+Genera el Python skeleton correcto para el evento pedido. Incluye try/except, re.split para primer comando, y el JSON de respuesta correcto para ese evento.
+
+```
+/nuevo-hook PreToolUse
+Bloquear: npm install con paquetes nuevos sin --ignore-scripts
+```
+
+```
+/nuevo-hook SessionStart
+Inyectar: branch actual y archivos modificados al iniciar
+```
+
+---
+
+#### `/debug-agente [nombre]` · `READ-ONLY` · `OVERLAPS /plan`
+
+Checklist de diagnóstico cuando un agente falla, hace cosas inesperadas o es más caro de lo esperado. Revisa description, tools, model, hooks y output format.
+
+```
+/debug-agente reviewer
+Síntoma: aprueba PRs sin revisar los archivos de test
+```
+
+---
+
+#### `/optimizar [agente]` · `READ-ONLY` · `USE SPARINGLY`
+
+Analiza el costo de un agente y sugiere las optimizaciones con mayor ROI. Sigue el orden de §23: output format → discovery calls → bash chaining → system prompt → scope.
+
+```
+/optimizar godot-lead
+Costo actual: ~28k tokens por sesión
+Esperado: ~14k
+```
+
+---
+
+#### `/audit-guia` · `READ-ONLY` · `HAIKU ONLY`
+
+Valida el proyecto actual contra el checklist §13. Revisa CLAUDE.md, agentes, skills, hooks y scope. Lista solo las violaciones — no repite lo que está bien.
+
+```
+/audit-guia
+```
+
+---
+
+<!-- §28-ref -->
+
+### Recipes — shortcuts apilados
+
+> Un shortcut solo es bueno. Dos apilados en secuencia son afilados. Tres son un sistema.
+
+#### "Ejecutar con seguridad"
+```
+/plan → @agente → /handoff
+```
+Planificar antes de ejecutar, ejecutar con agente correcto, capturar estado antes de cerrar. El orden importa: sin `/plan`, el agente puede ir en la dirección equivocada. Sin `/handoff`, la próxima sesión empieza desde cero.
+
+#### "Ciclo de mejora"
+```
+/debug-agente → /optimizar
+```
+Primero entender por qué falla (síntoma → causa), luego reducir el costo. Hacerlos al revés optimiza un agente roto.
+
+#### "Crear y testear"
+```
+/nueva-skill fork → /plan → @agente
+```
+Crear la skill de investigación, planificar con ella activa para confirmar que el scope es correcto, ejecutar.
+
+#### "Construir bien desde el arranque"
+```
+/nuevo-agente → /plan → /audit-guia
+```
+Generar el agente nuevo, planificar la primera tarea para validar que el design es correcto, auditar contra el checklist antes de usarlo en producción.
+
+---
+
+### Las 4 Leyes — adaptadas a Claude Code
+
+*(Originalmente de commandlib — mapeadas a secciones de esta guía)*
+
+**Ley 1 — Especificidad gana a shortcuts**
+Un prompt con scope + output + criterio de éxito vale más que 5 shortcuts en secuencia. Los shortcuts son atajos para llegar al contexto correcto, no sustitutos del contexto. → §24
+
+**Ley 2 — Los constraints hacen mejor a Claude**
+`tools` mínimas, `model` explícito, output format forzado. Cada constraint que agregás a un agente es un token que Claude no gasta en decidir. → §5, §22
+
+**Ley 3 — El contexto es la ventaja**
+El hook de `SessionStart` que inyecta branch + estado pesa más que cualquier shortcut. El contexto que llega automáticamente es el que nunca se olvida. → §26
+
+**Ley 4 — Iterar, no reiniciar**
+Cuando algo sale mal, responder con lo que está incorrecto — no reescribir el prompt. El hilo es el contexto acumulado. `/handoff` antes de cerrar: la próxima sesión arranca donde dejaste. → §27
+
+---
+
+<!-- §29 -->
+<!-- §29-quick -->
+## 29. Contexto global propio — construir tu sistema
+
+> Sin contexto global, Claude es un consultor que llega cada lunes sin cuaderno: vos explicás de nuevo quién sos, qué filosofía seguís y qué no debe tocar. Con contexto global, es el mismo consultor pero con sus reglas interiorizadas, sus herramientas en el bolsillo y su cuaderno de aprendizajes abierto. El cliente no explica — trabaja.
+
+### Las 4 capas — qué hace cada una
+
+```
+~/.claude/CLAUDE.md          ← reglas que aplican siempre (costo fijo justificado)
+~/.claude/skills/            ← procedimientos bajo demanda (0 tokens hasta invocar)
+~/.claude/settings.json      ← automatizaciones y guards por evento
+memory/                      ← aprendizajes acumulados entre sesiones
+```
+
+| Capa | Cuándo construirla | Si no existe |
+|---|---|---|
+| `CLAUDE.md` global | Siempre — es la primera | Claude improvisa filosofía y reglas en cada sesión |
+| Skills globales | Cuando CLAUDE.md tiene ≥5 líneas explicando un procedimiento | Repetís las mismas instrucciones en cada sesión |
+| `UserPromptSubmit` hook | Cuando tenés un cuerpo de conocimiento que Claude debería consultar automáticamente | Claude sabe que la guía existe pero no siempre la consulta |
+| `PreToolUse` hook | Cuando hay acciones que Claude no debe poder tomar en **ningún** proyecto | Un agente mal configurado puede ejecutar `npm install` sin freno |
+| Memoria persistente | Cuando hay feedback que querés que persista entre sesiones | Corregís el mismo error dos veces |
+
+### Orden de construcción — árbol de decisión
+
+```
+¿Primera vez configurando? → Empezar con CLAUDE.md global (5 minutos)
+
+¿Tenés conocimiento específico que Claude debería consultar sin pedírselo?
+  Sí → UserPromptSubmit hook (guia_context.py o equivalente) — §26
+  No → saltear por ahora
+
+¿Hay procedimientos que pegás repetidamente en el chat?
+  Sí → Skills globales en ~/.claude/skills/ — §6
+  No → saltear
+
+¿Hay acciones irreversibles que Claude no debe tomar en ningún proyecto?
+  Sí → PreToolUse hook global (npm guard, git push guard) — §7
+  No → saltear
+
+¿Hay patrones de feedback que querés recordar en futuras sesiones?
+  Sí → Memoria persistente — inicializar MEMORY.md
+  No → saltear
+```
+
+> **Regla de scope:** si dudás entre global y proyecto, va en el proyecto. El scope global contamina todos los contextos — un hook global mal calibrado genera ruido en proyectos donde no aplica.
+
+### Separación `~/.claude/` vs `.claude/`
+
+| Dónde | Aplica a | Ejemplos correctos |
+|---|---|---|
+| `~/.claude/CLAUDE.md` | Todos los proyectos | Filosofía LowCost, reglas de modelo, shortcuts |
+| `~/.claude/skills/` | Todos los proyectos | `/plan`, `/handoff`, `/nuevo-agente` |
+| `~/.claude/hooks/` + `settings.json` | Todos los proyectos | npm guard, guia_context.py, handoff hooks |
+| `.claude/CLAUDE.md` | Este proyecto | Stack, agentes, reglas específicas del repo |
+| `.claude/agents/` | Este proyecto | Agentes del dominio |
+| `.claude/skills/` | Este proyecto | Skills del proyecto |
+
+<!-- §29-ref -->
+
+### Bootstrap desde cero — 5 pasos
+
+**Paso 1 — CLAUDE.md global** (5 min)
+
+```markdown
+# Tu nombre — Reglas globales
+
+## Filosofía
+[tu filosofía de trabajo — 3-5 líneas máximo]
+
+## Conocimiento de referencia
+`/ruta/a/tu/guia-o-docs.md`
+Solo la sección relevante: sed -n '/<!-- §N -->/,/<!-- §[0-9]/p' <archivo>
+
+## Principios de operación
+- [principio 1]
+- [principio 2]
+```
+
+**Paso 2 — Hook de inyección automática** (15 min)
+
+Adaptar `guia_context.py` (§26) con tu propio `KEYWORD_MAP` apuntando a tus docs. Registrar en `settings.json` bajo `UserPromptSubmit`.
+
+**Paso 3 — Skills para procedimientos repetibles** (10 min por skill)
+
+Identificar qué instrucciones pegás más de 2 veces por semana. Cada una → `~/.claude/skills/<nombre>/SKILL.md` con `disable-model-invocation: true`.
+
+**Paso 4 — Guards para acciones irreversibles** (20 min)
+
+Un `PreToolUse` global con las acciones que nunca deberían ocurrir en ningún proyecto: `npm install <pkg>` sin `--ignore-scripts`, push directo a ramas protegidas, `rm -rf` sin confirmación.
+
+**Paso 5 — Inicializar memoria** (5 min)
+
+```bash
+mkdir -p ~/.claude/projects/<proyecto>/memory
+echo "# Memory Index" > ~/.claude/projects/<proyecto>/memory/MEMORY.md
+```
+
+Primera entry: feedback de la filosofía de trabajo — el patrón que más frecuentemente tenés que recordarle a Claude.
+
+---
+
+### Anti-patrones del contexto global
+
+| Anti-patrón | Consecuencia | Fix |
+|---|---|---|
+| Contenido de un proyecto específico en `~/.claude/CLAUDE.md` | Contamina todos los proyectos — Claude menciona el stack de un proyecto en contextos donde no aplica | Mover al `.claude/CLAUDE.md` del proyecto |
+| Skills globales largas (> 200 líneas) | El budget de descripciones se comparte — una skill pesada desplaza a otras en proyectos distintos | Dividir en SKILL.md + reference.md; o hacer skill de proyecto |
+| `PreToolUse` global demasiado específico | Genera ruido en proyectos donde la condición no aplica | Guard de proyecto en `.claude/settings.json` |
+| Duplicar reglas en CLAUDE.md global y de proyecto | Costo doble, inconsistencia cuando cambia una y no la otra | Una fuente de verdad — si aplica siempre → global; si es del proyecto → proyecto |
+| Muchas skills globales con `disable-model-invocation: false` | Compiten con skills del proyecto, saturan el budget de descripciones | Solo el hub o skills de conocimiento general en `false`; el resto en `true` |
+
+### El sistema de esta guía como ejemplo real
+
+```
+~/.claude/
+├── CLAUDE.md                    # filosofía + índice de la guía + principios de operación
+├── settings.json                # hooks: SessionStart / UserPromptSubmit / PreToolUse / Stop / PostToolUse
+├── skills/
+│   ├── handoff-protocol/        # formato del snapshot (§27) — disable:false, Claude lo carga solo
+│   ├── handoff/                 # genera el snapshot (§28) — disable:true, el usuario lo invoca
+│   ├── plan/                    # preview antes de ejecutar (§17/§28) — haiku
+│   ├── nuevo-agente/            # scaffold de agentes (§28) — haiku
+│   ├── nueva-skill/             # scaffold de skills (§28) — haiku
+│   ├── nuevo-hook/              # scaffold de hooks (§28) — haiku
+│   └── audit-guia/              # valida contra §13 (§28) — haiku
+└── hooks/
+    ├── guia_context.py          # UserPromptSubmit → inyección automática de §N (§26)
+    ├── npm_guard.py             # PreToolUse → supply chain + slopsquatting (§7)
+    ├── handoff-inject.sh        # UserPromptSubmit → inyecta handoff pendiente (§27)
+    ├── handoff-monitor.sh       # Stop → monitorea necesidad de handoff (§27)
+    └── inject-index.sh          # SessionStart → índice del codebase
+```
+
+Cada pieza tiene su sección de referencia. Nada se inventó solo — todo se construyó desde los principios documentados en la guía.
+
+### Checklist §29
+
+```
+□ ~/.claude/CLAUDE.md existe con filosofía + índice de conocimiento
+□ UserPromptSubmit hook conecta CLAUDE.md con el conocimiento específico
+□ Skills en disable-model-invocation: true — el usuario controla cuándo se invocan
+□ PreToolUse guards solo para acciones verdaderamente globales
+□ Nada de contenido de proyecto específico en el scope global
+□ Memoria inicializada con al menos una entry de filosofía
+□ Separación clara: regla siempre activa → CLAUDE.md; procedimiento → skill; garantía → hook
 ```
 
 ---
