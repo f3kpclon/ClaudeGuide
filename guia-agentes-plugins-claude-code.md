@@ -498,40 +498,61 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 
 > Un agente es Claude con un rol fijo, herramientas limitadas y un contexto aislado. La clave lowcost: darle solo las herramientas que necesita y el modelo más barato que pueda hacer el trabajo. Un agente mal configurado cuesta lo mismo que uno bien configurado — pero produce peores resultados.
 
-### Formato
+### Template — agente
 
 ```markdown
 ---
-name: mi-agente
-description: Trigger list. Usar cuando el usuario pide X, menciona Y,
-  o el contexto involucra Z.
-tools: Read, Write, Edit, Glob, Grep
-model: sonnet
+name: <nombre-kebab-case>           # cómo se invoca: @nombre · único en el proyecto
+description: "<Qué hace este agente>. Usar cuando <caso principal>,
+  <caso secundario>, o el contexto involucra <señal de activación>."
+model: <haiku|sonnet|opus>          # haiku: tarea fija · sonnet: razonamiento variable · opus: decisión one-shot
+tools: <Read, Glob, Grep>           # solo las necesarias — ver tabla de tools abajo
 ---
 
-# Nombre del Agente
+# <Nombre Legible>
 
-Una línea de responsabilidad. Sin narración.
+<Una línea: qué HACE este agente.>
+<Una línea: qué NO HACE — delimita el scope para el orchestrador.>
 
 ## Gotchas críticos
+- <problema conocido del dominio>: <causa> → <fix>
+- <otro gotcha>: <causa> → <fix>
 
-> **[2026-06-02] first_test_game:** **godot-git con VALIDADO: sí — prohibido git log, git status post-commit, git diff y git branch.** Confiá en el exit code y en el commit que viene en el prompt — no verificar lo que ya sabés.
-Target: ≤6 tool calls por invocación final; si superás 6, el agente está explorando en vez de ejecutar.
+## Output                           # SOLO si el agente produce output estructurado
+<formato exacto — tabla, lista corta, JSON · sin prosa>
 
+## Protocolo de fallo               # SOLO si el agente usa Bash
+Si un comando falla:
+1. Reportar el error exacto — no intentar resolverlo solo
+2. Proponer máximo UNA alternativa
+3. Si falla de nuevo → parar y reportar al usuario
+```
 
-> **[2026-06-02] first_test_game:** - **godot-git sin VALIDADO: sí → no invocar.** Sin ese flag, el agente se detiene a mitad esperando confirmación — pedir al usuario que lo agregue antes.
-- `git add -p` está prohibido en agentes — no es interactivo. Usar `git add <archivos>` explícito.
-- Si el commit no viene en el prompt: `git diff --stat HEAD` — 1 comando, no explorar más.
+**Ejemplo completo — security-auditor:**
 
+```markdown
+---
+name: security-auditor
+description: "Audit de seguridad. Usar cuando el PR modifica auth, permisos,
+  storage o cualquier input de usuario. No usar para linting o code style."
+model: opus                         # one-shot irreversible — ver §25
+tools: Read, Glob, Grep             # sin Write ni Bash — solo lectura
+---
 
-> **[2026-06-01] artifact-factory:** - **`model:` en agent .md no se aplica automáticamente** — el tool Agent defaultea a sonnet aunque el archivo declare `model: haiku`. Siempre pasa `model: "haiku"` explícito en validator y cualquier agente read-only o de instrucciones fijas.
-- **Batch preguntas antes de llamar al arquitecto** — un Agent call por pregunta crea N agentes sin memoria entre sí y cuesta 3×. Usa 2 llamadas AskUserQuestion (×4 + ×3) y luego un solo call al arquitecto con todas las respuestas.
+# Security Auditor
 
-- Error frecuente 1: causa y fix en una línea.
-- Error frecuente 2: causa y fix en una línea.
+Revisa cambios en busca de vulnerabilidades de seguridad.
+No implementa fixes — reporta y explica, el implementador corrige.
 
-## Reglas
-- Regla concreta
+## Gotchas críticos
+- IDOR: verificar que toda operación valide ownership del recurso antes de actuar
+- Timing attacks: comparaciones de tokens deben usar hmac.compare_digest, no ==
+- Second-order injection: sanitizar en storage Y al leer, no solo al escribir
+
+## Output
+PASS: <descripción>
+FAIL: <vulnerabilidad> — <riesgo> — <fix sugerido>
+RESULTADO: PASS | FAIL
 ```
 
 ### Campos del frontmatter
@@ -784,19 +805,56 @@ Pegaste las mismas instrucciones más de 2 veces  →  skill de referencia
 La tarea contamina el hilo con logs/diffs largos →  skill con context: fork
 ```
 
-### Formato
+### Templates por tipo de skill
 
+**Hub** — dispatch automático, siempre visible para Claude:
 ```markdown
 ---
-name: mi-skill
-description: Trigger list. Caso de uso más importante primero.
-when_to_use: Contexto adicional sobre cuándo cargar.
-disable-model-invocation: false
+name: <proyecto>-hub
+description: "<Proyecto> dispatch. [caso A] → @<agente-a> | [caso B] → @<agente-b>."
+disable-model-invocation: false     # Claude lo activa solo — descripción siempre en contexto
 allowed-tools: Read
 ---
 
-## Instrucciones directas.
-Para referencia detallada → `docs/ref.md`
+# <Proyecto> — Dispatch
+| Tarea | Agente | Cuándo |
+|---|---|---|
+| <tarea-1> | @<agente> | <condición> |
+| <tarea-2> | @<agente> | <condición> |
+```
+> Límite: < 40 líneas. Si CLAUDE.md ya tiene el dispatch → `skillOverrides: "user-invocable-only"`.
+
+---
+
+**Referencia** — conocimiento bajo demanda, invisible hasta que se invoca:
+```markdown
+---
+name: <dominio>-conventions
+description: "<Qué contiene>. Cargar cuando: <condición concreta>."
+disable-model-invocation: true      # Claude no lo activa — gratis en tokens hasta que el usuario lo pide
+allowed-tools: []
+---
+
+<Convenciones, patrones, API — sin prosa de relleno>
+```
+> Límite: < 200 líneas. Si supera → dividir en `SKILL.md` + `reference.md`.
+
+---
+
+**Fork** — tarea aislada en subagente, no contamina el hilo:
+```markdown
+---
+name: <tarea>-research
+description: "<Qué investiga>. Usar cuando la tarea lee > 3 archivos o produce output voluminoso."
+disable-model-invocation: false
+context: fork
+agent: Explore                      # solo lectura, no carga CLAUDE.md — contexto limpio y económico
+---
+
+Investigar $ARGUMENTS:
+1. <paso concreto con Glob/Grep>
+2. <paso concreto con Read>
+3. Resumir hallazgos con referencias exactas de archivo:línea
 ```
 
 ### Tipos y configuración
@@ -1135,36 +1193,69 @@ La guía usa `"type": "command"` (Python/shell) en todos los ejemplos. Existen 3
 ```
 
 <!-- §7-ref -->
-### PreToolUse — bloquear con JSON
+### Template — PreToolUse (bloquear o reescribir)
 
 ```python
 #!/usr/bin/env python3
-import json, sys
+"""
+PreToolUse hook — bloquear o reescribir antes de ejecutar.
+Recibe JSON por stdin, responde con JSON por stdout + exit 0.
+Exit 2 también bloquea pero sin mensaje estructurado — no usarlo.
+"""
+import json, sys, re
 
 def main():
     try:
         payload = json.load(sys.stdin)
     except Exception:
-        sys.exit(0)
+        sys.exit(0)  # stdin vacío o inválido → dejar pasar silenciosamente
 
     tool = payload.get('tool_name', '')
     inp  = payload.get('tool_input', {})
-    path = inp.get('file_path', '') or inp.get('path', '')
+
+    # ── Extraer campos según el tool ─────────────────────────────────────────
+    # Write/Edit/MultiEdit → file_path + content/new_str
+    path    = inp.get('file_path', '') or inp.get('path', '')
     content = inp.get('content', '') or inp.get('new_str', '')
 
-    violations = validate(path, content)  # tu lógica
+    # Bash → command (aislar SIEMPRE el primer comando de la cadena)
+    cmd       = inp.get('command', '')
+    first_cmd = re.split(r'\s*&&|\s*\|\||\s*;', cmd)[0].strip()
 
+    # ── Tu lógica aquí ───────────────────────────────────────────────────────
+    violations = []
+
+    # Ejemplo — bloquear si el path toca .env:
+    # if '.env' in path:
+    #     violations.append("No escribir en archivos .env — usar variables de entorno")
+
+    # Ejemplo — bloquear comando peligroso:
+    # if re.match(r'rm\s+-rf\s+/', first_cmd):
+    #     violations.append("rm -rf en ruta absoluta bloqueado")
+
+    # ── Respuesta ─────────────────────────────────────────────────────────────
     if not violations:
-        sys.exit(0)
+        sys.exit(0)  # sin violaciones → dejar pasar
 
+    # BLOQUEAR con mensaje visible al usuario:
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
+            "permissionDecision": "deny",        # deny | allow | ask | defer
             "permissionDecisionReason": "\n".join(violations)
         }
     }))
     sys.exit(0)
+
+    # ALTERNATIVA — reescribir el input en vez de bloquear:
+    # print(json.dumps({
+    #     "hookSpecificOutput": {
+    #         "hookEventName": "PreToolUse",
+    #         "updatedInput": {"command": cmd.replace("npm install", "npm ci")},
+    #         "additionalContext": "Reescrito para garantizar reproducibilidad."
+    #     }
+    # }))
+    # sys.exit(0)
 
 if __name__ == '__main__':
     main()
@@ -1567,60 +1658,60 @@ Fragmentado por dominio — cada agente lee solo lo que necesita.
 └── scope-[sistema-b].md
 ```
 
-### scope-index.md — plantilla
+### Template — scope-index.md
 
 ```markdown
-# [Proyecto] — Scope Index
-Última actualización: YYYY-MM-DD
+# <Proyecto> — Scope Index
+Última actualización: <YYYY-MM-DD>
 
-## Estado
-[Una línea del estado actual del proyecto]
+## Estado                                  # REQUIRED — una línea del estado actual
+<Qué se está construyendo o dónde está el proyecto ahora mismo.>
 
-## Lo que existe
-- Sistema A
-- Sistema B
+## Lo que existe                           # REQUIRED — sistemas ya construidos
+- <Sistema A>
+- <Sistema B>
 
-## Próximo sistema
-[Sistema] → ver `scope-[sistema].md`
+## Próximo sistema                         # REQUIRED si hay algo planificado
+<Sistema C> → ver `scope-<sistema-c>.md`
 
-## Backlog
-1. [Prioritario]
-2. [Siguiente]
+## Backlog                                 # OPTIONAL
+1. <Lo más prioritario>
+2. <Siguiente>
 
-## Archivos de scope
-- `scope-[a].md` — descripción
+## Archivos de scope                       # REQUIRED — uno por sistema
+- `scope-<a>.md` — <descripción en una línea>
+- `scope-<b>.md` — <descripción en una línea>
 ```
 
-### scope-[sistema].md — plantilla
+### Template — scope-\<sistema\>.md
 
 ```markdown
-# [Proyecto] — Scope: [Sistema]
-Última actualización: YYYY-MM-DD
-Leer cuando: [condición específica]
+# <Proyecto> — Scope: <Sistema>
+Última actualización: <YYYY-MM-DD>
+Leer cuando: <condición específica — ej: "implementando features del sistema de auth">
 
-## Qué hace
-[Una línea]
+## Qué hace                                # REQUIRED — una línea
+<Responsabilidad única de este sistema.>
 
-## Orden de implementación
-1. Paso concreto
-2. Paso concreto
+## Orden de implementación                 # REQUIRED si hay dependencias entre pasos
+1. <Paso concreto — lo que debe existir primero>
+2. <Paso siguiente>
 
-## Flujo
-[diagrama en texto si aplica]
+## Flujo                                   # OPTIONAL — solo si la secuencia no es obvia
+<diagrama en texto ASCII si aplica>
 
-## Dependencias
-- [X] necesario antes de [Y]
+## Dependencias                            # OPTIONAL
+- <Sistema X> debe estar completo antes de empezar <parte Y>
 
-## API existente relevante
-Listar solo lo que el agente implementador necesita conocer de sistemas ya construidos:
-  NombreClase  ruta/al/script.gd
-    metodo(param: Tipo) → efecto o señal emitida
-    señal: nombre_señal(param: Tipo)
-  Autoload
-    metodo_util()
+## API existente relevante                 # REQUIRED cuando este sistema integra otros
+# Listar solo lo que el agente implementador necesita conocer — no todo el código
+<NombreClase>  <ruta/al/archivo.ext>
+  <metodo>(<param>: <Tipo>) → <efecto o señal emitida>
+  señal: <nombre_señal>(<param>: <Tipo>)
 
-## Decisiones (ADR)
-- YYYY-MM-DD: [decisión tomada]. Alternativas descartadas: [X, Y]. Razón: [por qué esta opción].
+## Decisiones (ADR)                        # OPTIONAL — solo decisiones no obvias
+# Las entradas ADR son INMUTABLES — nunca editar, solo agregar
+- <YYYY-MM-DD>: <decisión tomada>. Alternativas descartadas: <X, Y>. Razón: <por qué esta>.
 ```
 
 **Por qué la sección API importa para los tokens:**
@@ -1704,18 +1795,33 @@ No todo learning tiene que estar en el archivo. Los más críticos deben vivir i
 
 El archivo de learnings es la **fuente de verdad histórica** — contiene todas las entradas con fecha y causa. El inline es un **subconjunto activo** — los top 5-10 gotchas que no deben olvidarse en ninguna tarea.
 
-### Bootstrap para proyecto nuevo
+### Template — learnings-\<dominio\>.md
 
-No arrancar con archivos vacíos — poblar con lecciones conocidas del stack:
+No arrancar con archivos vacíos — poblar con lecciones conocidas del stack desde el día 1:
 
 ```markdown
-# Learnings — [Dominio]
-Última revisión: YYYY-MM-DD
+# Learnings — <Dominio>
+Última revisión: <YYYY-MM-DD>
+Agente curador: @<nombre-curador>
 
-## Lo que funciona
-## Lo que no funciona
-## Patrones del proyecto
+## Lo que funciona                         # patrones confirmados del stack
+- <YYYY-MM-DD> <patrón>: <por qué funciona — contexto mínimo para entender>
+
+## Lo que no funciona                      # errores con causa conocida
+- <YYYY-MM-DD> <problema>: <causa raíz> → <fix o workaround>
+
+## Patrones del proyecto                   # decisiones de arquitectura ya tomadas
+- <YYYY-MM-DD> <patrón>: <razón — alternativa descartada si aplica>
+
+## Errores recurrentes                     # gotchas que aparecen más de una vez
+- <YYYY-MM-DD> <error>: <causa> → <fix>
+```
+
+**Cómo arrancar con un stack conocido:**
+```markdown
 ## Errores recurrentes
+- <hoy> Async sin await en JS: silencioso, retorna Promise no resuelta → siempre await o .catch()
+- <hoy> CORS en dev: credentials require explicit origin, not * → Access-Control-Allow-Origin: http://localhost:3000
 ```
 
 ### Mantenimiento
@@ -1931,39 +2037,37 @@ mi-repo/
 │       └── README.md         ← REQUERIDO para distribución
 ```
 
-### marketplace.json
+### Template — marketplace.json
 
-Archivo en la raíz del repo. Es lo que lee el desktop app cuando el usuario hace **Browse plugins → Add marketplace**. Sin él, el repo no aparece como fuente de plugins en la UI.
+Raíz del repo. El desktop app lo lee en **Browse plugins → Add marketplace** — sin él el repo no aparece como fuente de plugins.
 
 ```json
 {
-  "name": "mi-marketplace",
-  "owner": {"name": "Tu Nombre"},
-  "description": "Una línea de qué contiene.",
+  "name": "<nombre-del-marketplace>",
+  "owner": {"name": "<Tu Nombre>"},
+  "description": "<Una línea de qué colección de plugins contiene.>",
   "plugins": [
     {
-      "name": "mi-plugin",
-      "source": "./plugins/mi-plugin",
-      "description": "Una línea de qué hace."
+      "name": "<nombre-del-plugin>",
+      "source": "./plugins/<nombre-del-plugin>",
+      "description": "<Una línea de qué hace este plugin.>"
     }
   ]
 }
 ```
 
-### plugin.json
+### Template — plugin.json
 
 ```json
 {
-  "name": "mi-plugin",
-  "version": "1.0.0",
-  "description": "Una línea de qué hace.",
-  "author": {"name": "Tu Nombre"},
-  "repository": "https://github.com/usuario/mi-repo",
-  "license": "MIT"
+  "name": "<nombre-del-plugin>",         // REQUIRED — kebab-case, único en el marketplace
+  "version": "1.0.0",                   // REQUIRED — semver
+  "description": "<Qué hace en una línea.>", // REQUIRED
+  "author": {"name": "<Tu Nombre>"},    // REQUIRED
+  "repository": "https://github.com/<usuario>/<repo>", // RECOMMENDED
+  "license": "MIT"                      // OPTIONAL
 }
 ```
-
-Campos válidos: `name`, `version`, `description`, `author`, `homepage`, `repository`, `license`.
 
 ### Instalación — Desktop app (Claude Code)
 
