@@ -66,6 +66,7 @@
 - [§17 — Plan + Invocation Templates](#17-plan--invocation-templates--eficiencia-máxima-de-prompts)
 - [§26 — Hook global de contexto](#26-hook-global-de-contexto)
 - [§28 — Prompt Library (shortcuts + recipes)](#28-prompt-library--shortcuts-para-claude-code)
+- [§29 — Contexto global propio](#29-contexto-global-propio--construir-tu-sistema)
 
 ### Calidad y eficiencia
 - [§14 — Guía anti-overkill](#14-guía-anti-overkill)
@@ -4424,6 +4425,156 @@ El hook de `SessionStart` que inyecta branch + estado pesa más que cualquier sh
 
 **Ley 4 — Iterar, no reiniciar**
 Cuando algo sale mal, responder con lo que está incorrecto — no reescribir el prompt. El hilo es el contexto acumulado. `/handoff` antes de cerrar: la próxima sesión arranca donde dejaste. → §27
+
+---
+
+<!-- §29 -->
+<!-- §29-quick -->
+## 29. Contexto global propio — construir tu sistema
+
+> Sin contexto global, Claude es un consultor que llega cada lunes sin cuaderno: vos explicás de nuevo quién sos, qué filosofía seguís y qué no debe tocar. Con contexto global, es el mismo consultor pero con sus reglas interiorizadas, sus herramientas en el bolsillo y su cuaderno de aprendizajes abierto. El cliente no explica — trabaja.
+
+### Las 4 capas — qué hace cada una
+
+```
+~/.claude/CLAUDE.md          ← reglas que aplican siempre (costo fijo justificado)
+~/.claude/skills/            ← procedimientos bajo demanda (0 tokens hasta invocar)
+~/.claude/settings.json      ← automatizaciones y guards por evento
+memory/                      ← aprendizajes acumulados entre sesiones
+```
+
+| Capa | Cuándo construirla | Si no existe |
+|---|---|---|
+| `CLAUDE.md` global | Siempre — es la primera | Claude improvisa filosofía y reglas en cada sesión |
+| Skills globales | Cuando CLAUDE.md tiene ≥5 líneas explicando un procedimiento | Repetís las mismas instrucciones en cada sesión |
+| `UserPromptSubmit` hook | Cuando tenés un cuerpo de conocimiento que Claude debería consultar automáticamente | Claude sabe que la guía existe pero no siempre la consulta |
+| `PreToolUse` hook | Cuando hay acciones que Claude no debe poder tomar en **ningún** proyecto | Un agente mal configurado puede ejecutar `npm install` sin freno |
+| Memoria persistente | Cuando hay feedback que querés que persista entre sesiones | Corregís el mismo error dos veces |
+
+### Orden de construcción — árbol de decisión
+
+```
+¿Primera vez configurando? → Empezar con CLAUDE.md global (5 minutos)
+
+¿Tenés conocimiento específico que Claude debería consultar sin pedírselo?
+  Sí → UserPromptSubmit hook (guia_context.py o equivalente) — §26
+  No → saltear por ahora
+
+¿Hay procedimientos que pegás repetidamente en el chat?
+  Sí → Skills globales en ~/.claude/skills/ — §6
+  No → saltear
+
+¿Hay acciones irreversibles que Claude no debe tomar en ningún proyecto?
+  Sí → PreToolUse hook global (npm guard, git push guard) — §7
+  No → saltear
+
+¿Hay patrones de feedback que querés recordar en futuras sesiones?
+  Sí → Memoria persistente — inicializar MEMORY.md
+  No → saltear
+```
+
+> **Regla de scope:** si dudás entre global y proyecto, va en el proyecto. El scope global contamina todos los contextos — un hook global mal calibrado genera ruido en proyectos donde no aplica.
+
+### Separación `~/.claude/` vs `.claude/`
+
+| Dónde | Aplica a | Ejemplos correctos |
+|---|---|---|
+| `~/.claude/CLAUDE.md` | Todos los proyectos | Filosofía LowCost, reglas de modelo, shortcuts |
+| `~/.claude/skills/` | Todos los proyectos | `/plan`, `/handoff`, `/nuevo-agente` |
+| `~/.claude/hooks/` + `settings.json` | Todos los proyectos | npm guard, guia_context.py, handoff hooks |
+| `.claude/CLAUDE.md` | Este proyecto | Stack, agentes, reglas específicas del repo |
+| `.claude/agents/` | Este proyecto | Agentes del dominio |
+| `.claude/skills/` | Este proyecto | Skills del proyecto |
+
+<!-- §29-ref -->
+
+### Bootstrap desde cero — 5 pasos
+
+**Paso 1 — CLAUDE.md global** (5 min)
+
+```markdown
+# Tu nombre — Reglas globales
+
+## Filosofía
+[tu filosofía de trabajo — 3-5 líneas máximo]
+
+## Conocimiento de referencia
+`/ruta/a/tu/guia-o-docs.md`
+Solo la sección relevante: sed -n '/<!-- §N -->/,/<!-- §[0-9]/p' <archivo>
+
+## Principios de operación
+- [principio 1]
+- [principio 2]
+```
+
+**Paso 2 — Hook de inyección automática** (15 min)
+
+Adaptar `guia_context.py` (§26) con tu propio `KEYWORD_MAP` apuntando a tus docs. Registrar en `settings.json` bajo `UserPromptSubmit`.
+
+**Paso 3 — Skills para procedimientos repetibles** (10 min por skill)
+
+Identificar qué instrucciones pegás más de 2 veces por semana. Cada una → `~/.claude/skills/<nombre>/SKILL.md` con `disable-model-invocation: true`.
+
+**Paso 4 — Guards para acciones irreversibles** (20 min)
+
+Un `PreToolUse` global con las acciones que nunca deberían ocurrir en ningún proyecto: `npm install <pkg>` sin `--ignore-scripts`, push directo a ramas protegidas, `rm -rf` sin confirmación.
+
+**Paso 5 — Inicializar memoria** (5 min)
+
+```bash
+mkdir -p ~/.claude/projects/<proyecto>/memory
+echo "# Memory Index" > ~/.claude/projects/<proyecto>/memory/MEMORY.md
+```
+
+Primera entry: feedback de la filosofía de trabajo — el patrón que más frecuentemente tenés que recordarle a Claude.
+
+---
+
+### Anti-patrones del contexto global
+
+| Anti-patrón | Consecuencia | Fix |
+|---|---|---|
+| Contenido de un proyecto específico en `~/.claude/CLAUDE.md` | Contamina todos los proyectos — Claude menciona el stack de un proyecto en contextos donde no aplica | Mover al `.claude/CLAUDE.md` del proyecto |
+| Skills globales largas (> 200 líneas) | El budget de descripciones se comparte — una skill pesada desplaza a otras en proyectos distintos | Dividir en SKILL.md + reference.md; o hacer skill de proyecto |
+| `PreToolUse` global demasiado específico | Genera ruido en proyectos donde la condición no aplica | Guard de proyecto en `.claude/settings.json` |
+| Duplicar reglas en CLAUDE.md global y de proyecto | Costo doble, inconsistencia cuando cambia una y no la otra | Una fuente de verdad — si aplica siempre → global; si es del proyecto → proyecto |
+| Muchas skills globales con `disable-model-invocation: false` | Compiten con skills del proyecto, saturan el budget de descripciones | Solo el hub o skills de conocimiento general en `false`; el resto en `true` |
+
+### El sistema de esta guía como ejemplo real
+
+```
+~/.claude/
+├── CLAUDE.md                    # filosofía + índice de la guía + principios de operación
+├── settings.json                # hooks: SessionStart / UserPromptSubmit / PreToolUse / Stop / PostToolUse
+├── skills/
+│   ├── handoff-protocol/        # formato del snapshot (§27) — disable:false, Claude lo carga solo
+│   ├── handoff/                 # genera el snapshot (§28) — disable:true, el usuario lo invoca
+│   ├── plan/                    # preview antes de ejecutar (§17/§28) — haiku
+│   ├── nuevo-agente/            # scaffold de agentes (§28) — haiku
+│   ├── nueva-skill/             # scaffold de skills (§28) — haiku
+│   ├── nuevo-hook/              # scaffold de hooks (§28) — haiku
+│   └── audit-guia/              # valida contra §13 (§28) — haiku
+└── hooks/
+    ├── guia_context.py          # UserPromptSubmit → inyección automática de §N (§26)
+    ├── npm_guard.py             # PreToolUse → supply chain + slopsquatting (§7)
+    ├── handoff-inject.sh        # UserPromptSubmit → inyecta handoff pendiente (§27)
+    ├── handoff-monitor.sh       # Stop → monitorea necesidad de handoff (§27)
+    └── inject-index.sh          # SessionStart → índice del codebase
+```
+
+Cada pieza tiene su sección de referencia. Nada se inventó solo — todo se construyó desde los principios documentados en la guía.
+
+### Checklist §29
+
+```
+□ ~/.claude/CLAUDE.md existe con filosofía + índice de conocimiento
+□ UserPromptSubmit hook conecta CLAUDE.md con el conocimiento específico
+□ Skills en disable-model-invocation: true — el usuario controla cuándo se invocan
+□ PreToolUse guards solo para acciones verdaderamente globales
+□ Nada de contenido de proyecto específico en el scope global
+□ Memoria inicializada con al menos una entry de filosofía
+□ Separación clara: regla siempre activa → CLAUDE.md; procedimiento → skill; garantía → hook
+```
 
 ---
 

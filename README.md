@@ -234,3 +234,44 @@ Minimal `tools`, explicit `model`, forced output format. Each constraint you add
 The `SessionStart` hook that injects branch + state weighs more than any shortcut. The context that arrives automatically is the one that is never forgotten. → §26
 **Law 4 — Iterate, don't restart**
 When something goes wrong, respond with what's wrong — don't rewrite the prompt. The thread is the accumulated context. `/handoff` before closing: the next session starts where you left off. → §27
+
+> **[2026-06-21]** - [§29 — Own global context](#29-own-global-context--build-your-system)
+## 29. Own global context — build your system
+> Without a global context, Claude is a consultant who arrives every Monday without a notebook: you explain again who you are, what philosophy you follow and what he should not touch. With a global context, it is the same consultant but with his internalized rules, his tools in his pocket and his learning notebook open. The client does not explain — he works.
+### The 4 layers — what each one does
+| Layer | When to build it | If it does not exist |
+| `CLAUDE.md` global | Always — it's the first | Claude improvises philosophy and rules in each session |
+| Global skills | When CLAUDE.md has ≥5 lines explaining a procedure | You repeat the same instructions in each session |
+| `UserPromptSubmit` hook | When you have a body of knowledge that Claude should automatically consult | Claude knows that the guide exists but he does not always consult it |
+| `PreToolUse` hook | When there are actions that Claude should not be able to take in **any** project | A misconfigured agent can run `npm install` without stopping |
+| Persistent memory | When there is feedback that you want to persist between sessions | You fix the same mistake twice |
+### Construction order — decision tree
+> **Scope rule:** if you doubt between global and project, it goes in the project. The global scope contaminates all contexts — a poorly calibrated global hook generates noise in projects where it does not apply.
+### Separation `~/.claude/` vs `.claude/`
+| Where | Applies to | Correct examples |
+| `~/.claude/CLAUDE.md` | All projects | LowCost philosophy, model rules, shortcuts |
+| `~/.claude/skills/` | All projects | `/plan`, `/handoff`, `/new-agent` |
+| `~/.claude/hooks/` + `settings.json` | All projects | npm guard, guia_context.py, handoff hooks |
+| `.claude/CLAUDE.md` | This project | Stack, agents, repo specific rules |
+| `.claude/agents/` | This project | Domain Agents |
+| `.claude/skills/` | This project | Project skills |
+### Bootstrap from scratch — 5 steps
+**Step 1 — CLAUDE.md global** (5 min)
+**Step 2 — Automatic injection hook** (15 min)
+Adapt `guia_context.py` (§26) with your own `KEYWORD_MAP` pointing to your docs. Register in `settings.json` under `UserPromptSubmit`.
+**Step 3 — Skills for repeatable procedures** (10 min per skill)
+Identify which instructions you paste more than 2 times a week. Each → `~/.claude/skills/<name>/SKILL.md` with `disable-model-invocation: true`.
+**Step 4 — Guards for irreversible actions** (20 min)
+A global `PreToolUse` with actions that should never happen in any project: `npm install <pkg>` without `--ignore-scripts`, direct push to protected branches, `rm -rf` without commit.
+**Step 5 — Initialize memory** (5 min)
+First entry: work philosophy feedback — the pattern you most frequently have to remind Claude of.
+### Global context anti-patterns
+| Anti-pattern | Consequence | Fix |
+| Content of a specific project in `~/.claude/CLAUDE.md` | Contaminates all projects — Claude mentions a project stack in contexts where it does not apply | Move to the project's `.claude/CLAUDE.md` |
+| Long global skills (> 200 lines) | Description budget is shared — one heavy skill displaces others in different projects | Split into SKILL.md + reference.md; or do project skill |
+| Global `PreToolUse` too specific | Generates noise in projects where the condition does not apply | Save project in `.claude/settings.json` |
+| Duplicate rules in global and project CLAUDE.md | Double cost, inconsistency when one changes and not the other | A source of truth — if always applicable → global; if it is from the project → project |
+| Many global skills with `disable-model-invocation: false` | They compete with project skills, saturate the budget with descriptions | Only the hub or general knowledge skills in `false`; the rest in `true` |
+### The system in this guide as a real example
+Each piece has its reference section. Nothing was invented alone — everything was built from the principles documented in the guide.
+### Checklist §29
