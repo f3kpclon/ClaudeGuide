@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v4.8 · Validada en producción · §26 hook global de contexto (2026-06-03)
+**Versión:** v5.0 · Validada en producción · §28 Prompt Library + §29 contexto global · docs validados vs oficial (2026-06-21)
 
 ---
 
