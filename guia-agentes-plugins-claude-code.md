@@ -1008,6 +1008,73 @@ Auto-compaction reencuaderna las skills más recientes con un budget de **5,000 
 **La nota clave de la doc oficial:**
 > *"Con `skills:` en un agente, el agente controla el sistema prompt y carga el contenido de la skill. Con `context: fork` en una skill, el contenido de la skill se inyecta en el agente elegido. Ambos usan el mismo mecanismo subyacente."*
 
+### Ejemplos — los 4 patrones en código
+
+**Patrón 1 — Skill regular (referencia, comparte hilo):**
+```yaml
+# .claude/skills/api-conventions/SKILL.md
+---
+name: api-conventions
+description: "Convenciones de API REST del proyecto. Cargar cuando se implementan endpoints."
+disable-model-invocation: true   # Claude no la activa sola — cero tokens hasta que el usuario la pide
+allowed-tools: []
+---
+Cuando escribas endpoints:
+- Usar kebab-case en rutas: /user-profiles, no /userProfiles
+- Errores siempre con {error: string, code: string}
+- Paginación con ?page=&limit= (max 100)
+```
+
+**Patrón 2 — Skill con `context: fork` (tarea aislada, skill dirige):**
+```yaml
+# .claude/skills/audit-deps/SKILL.md
+---
+name: audit-deps
+description: "Auditar dependencias del proyecto. Usar cuando el usuario pide revisar paquetes o seguridad de dependencias."
+context: fork
+agent: Explore             # solo lectura — no carga CLAUDE.md, contexto limpio
+---
+Auditar dependencias de $ARGUMENTS o del proyecto completo si no se especifica:
+1. Leer package.json y package-lock.json
+2. Identificar paquetes con versiones pinned vs ranges
+3. Buscar paquetes deprecados o sin mantenimiento (último commit > 2 años)
+4. Reportar: paquete · versión actual · riesgo · acción recomendada
+```
+> La skill dirige: elige el agente (`Explore`), su contenido se convierte en la tarea del subagente. El hilo principal recibe solo el resumen.
+
+**Patrón 3 — Agente regular (contexto propio, sin skills precargadas):**
+```yaml
+# .claude/agents/implementador.md
+---
+name: implementador
+description: "Implementa features según el scope del sistema activo. Usar cuando hay una tarea concreta de código definida."
+model: sonnet
+tools: Read, Write, Edit, Glob, Grep
+---
+Implementar la tarea recibida siguiendo las convenciones del proyecto.
+Si necesitás convenciones de API → invocar /api-conventions antes de empezar.
+```
+
+**Patrón 4 — Agente con `skills:` (contexto propio + conocimiento precargado):**
+```yaml
+# .claude/agents/api-developer.md
+---
+name: api-developer
+description: "Implementa endpoints REST siguiendo las convenciones del proyecto. Usar cuando el task involucra crear o modificar endpoints."
+model: sonnet
+tools: Read, Write, Edit, Glob, Grep
+skills:
+  - api-conventions        # inyectado al arrancar — el agente ya sabe las convenciones
+  - error-handling-patterns
+---
+Implementar el endpoint descrito. Las convenciones ya están cargadas en contexto — no hace falta invocar /api-conventions.
+```
+> El agente dirige: controla su propio sistema prompt y precarga el contenido de las skills al iniciar. No necesita descubrirlas en runtime. Solo funciona con skills que tienen `disable-model-invocation: false`.
+
+**¿Cuándo elegir Patrón 3 vs Patrón 4?**
+- Patrón 3 si las convenciones cambian frecuentemente o el agente no siempre las necesita
+- Patrón 4 si el agente **siempre** trabaja en el mismo dominio y las convenciones son estables — evita que el agente tenga que invocar la skill manualmente en cada sesión
+
 ### Frontmatter completo — todos los campos
 
 | Campo | Default | Uso |
