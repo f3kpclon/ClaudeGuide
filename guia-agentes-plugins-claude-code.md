@@ -492,6 +492,7 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 ---
 
 <!-- §5 -->
+<!-- §5-quick -->
 <a id="5-agentes"></a>
 
 ## 5. Agentes
@@ -559,10 +560,20 @@ RESULTADO: PASS | FAIL
 
 | Campo | Obligatorio | Notas |
 |---|---|---|
-| `name` | Recomendado | Cómo se invoca: `@mi-agente` |
-| `description` | **Sí** | Trigger list — lo más importante |
-| `tools` | No | Sin esto hereda todo — siempre especificar |
-| `model` | No | `haiku`, `sonnet`, u `opus` |
+| `name` | **Sí** | kebab-case · invocación: `@nombre` · único en el proyecto |
+| `description` | **Sí** | Trigger list — lo más importante. Claude delega cuando matchea |
+| `model` | Recomendado | `haiku` · `sonnet` · `opus` · `inherit` (default). Sin esto → hereda el modelo del hilo |
+| `tools` | Recomendado | Sin esto hereda todo — siempre limitar al mínimo necesario |
+| `disallowedTools` | No | Denylist — complemento de `tools`. Se aplica ANTES que `tools` si ambos están |
+| `skills` | No | Skills a precargar en contexto al arrancar — el inverso de `context: fork` en skills (ver §6) |
+| `permissionMode` | No | `default` · `acceptEdits` · `auto` · `dontAsk` · `bypassPermissions` · `plan` |
+| `maxTurns` | No | Máximo de turnos antes de que el subagente pare automáticamente |
+| `memory` | No | Memoria persistente entre sesiones: `user` (`~/.claude/agent-memory/`) · `project` · `local` |
+| `isolation` | No | `worktree` = corre en un checkout git aislado — los cambios no tocan el hilo principal |
+| `background` | No | `true` = siempre corre en background como tarea — no bloquea el hilo |
+| `hooks` | No | Hooks scoped al ciclo de vida de este agente (misma sintaxis que settings.json) |
+| `effort` | No | Override de esfuerzo: `low` · `medium` · `high` · `xhigh` · `max` |
+| `color` | No | Color en la UI: `red` · `blue` · `green` · `yellow` · `purple` · `orange` · `pink` · `cyan` |
 
 ### Modelo por tipo de agente
 
@@ -657,6 +668,49 @@ No incluir:     CLI lineal, scripts simples, plugins (no tienen runtime)
 ```
 
 El `postmortem` captura sesión a sesión. El `curador` corre mensualmente (o cuando un learnings supera el límite) para eliminar duplicados, archivar entradas obsoletas y verificar que los top gotchas estén inline en el agente correcto. No correr el curador en cada sesión.
+
+<!-- §5-ref -->
+
+### Campos avanzados del frontmatter
+
+**`tools` — sintaxis extendida:**
+```yaml
+tools: Read, Glob, Grep                # allowlist exacta
+tools: Agent(worker, researcher)       # allowlist de qué subagentes puede spawnar este agente
+tools: Agent                           # puede spawnar cualquier subagente sin restricción
+# Si Agent está ausente de tools → el agente no puede spawnar subagentes en absoluto
+```
+
+**`disallowedTools` — denylist (se aplica antes que `tools`):**
+```yaml
+disallowedTools: Write, Edit           # hereda todo excepto escritura
+disallowedTools: mcp__github           # bloquea todos los tools del servidor MCP "github"
+disallowedTools: mcp__*               # bloquea todos los MCP tools de cualquier servidor
+```
+
+**`skills` — precargar conocimiento al arrancar (inverso de `context:fork`):**
+```yaml
+skills:
+  - api-conventions          # inyecta el contenido COMPLETO de esta skill al inicio
+  - error-handling-patterns  # útil para agentes que siempre necesitan convenciones del proyecto
+```
+> Solo funciona con skills que tienen `disable-model-invocation: false`. Si la skill tiene `true`, Claude Code la saltea y logea un warning.
+> Ver §6 para el patrón inverso: skill con `context: fork` que elige el agente.
+
+**`memory` — persistencia entre sesiones:**
+```yaml
+memory: project   # .claude/agent-memory/<nombre>/ — shareable vía git (recomendado)
+memory: user      # ~/.claude/agent-memory/<nombre>/ — cross-project
+memory: local     # .claude/agent-memory-local/<nombre>/ — no committed
+```
+El agente recibe las primeras 200 líneas de su `MEMORY.md` en cada sesión. Útil para revisores que acumulan patrones del codebase a lo largo del tiempo.
+
+**`isolation: worktree` — checkout git aislado:**
+```yaml
+isolation: worktree   # el agente trabaja en un branch temporal, no toca el hilo principal
+                      # limpieza automática si no hay cambios al terminar
+```
+Combinado con `background: true` es el patrón para agentes que modifican muchos archivos en paralelo sin conflictos.
 
 ### Dónde colocar agentes
 
