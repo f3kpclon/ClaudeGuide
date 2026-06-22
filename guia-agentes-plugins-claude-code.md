@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.0 · Validada en producción · §28 Prompt Library + §29 contexto global · docs validados vs oficial (2026-06-21)
+**Versión:** v5.2 · Validada en producción · §26 dos-tier keywords + §14 catalog anti-pattern + §10 checkpoint · docs validados vs oficial (2026-06-22)
 
 ---
 
@@ -63,6 +63,7 @@
 - [§26 — Hook global de contexto](#26-hook-global-de-contexto)
 - [§28 — Prompt Library (shortcuts + recipes)](#28-prompt-library--shortcuts-para-claude-code)
 - [§29 — Contexto global propio](#29-contexto-global-propio--construir-tu-sistema)
+- [§30 — Cloud Agents programados — /schedule y /web-setup](#30-cloud-agents-programados--schedule-y-web-setup)
 
 ### Calidad y eficiencia
 - [§14 — Guía anti-overkill](#14-guía-anti-overkill)
@@ -2162,6 +2163,20 @@ la lógica de dispatch completa — si eso supera 30 líneas, hub > CLAUDE.md in
 
 **Commitear antes de crear rama** — si hay cambios sin commit y se crea una rama, los cambios se mezclan.
 
+### Checkpoint de delegación — estado sin Write tool
+
+El lead coordina sin implementar (§10). Tentación: darle `Write` para escribir un archivo JSON de estado cuando el contexto se comprime. Incorrecto: `Write` es implementación.
+
+Solución de protocolo — una línea en el output format después de cada delegación:
+
+```
+Checkpoint: [N/M completado] · Pendiente: [ComponentB] · Bloqueadores: [ninguno]
+```
+
+Si el contexto se comprime, Claude puede grep el historial por `Checkpoint:` para reconstruir el estado sin `Write`. El estado vive en la conversación, no en el filesystem.
+
+> Si la tarea del lead requiere más de ~20 turnos para completarse, el problema no es falta de estado — es que la tarea era demasiado grande. Dividir en sub-tareas atómicas, no parchar con archivos de estado.
+
 ---
 
 <!-- §11 -->
@@ -2464,6 +2479,7 @@ Estos componentes se crean **siempre**, sin pasar por el árbol de decisiones:
 | Learnings file nuevo | Hay < 5 entries que justifiquen el archivo | Agregarlas a `learnings-general.md` |
 | Scope file nuevo | El sistema tiene < 3 decisiones de diseño | Agregarlas al scope-index.md |
 | Hub skill | CLAUDE.md ya tiene el dispatch completo y ≤5 agentes | `skillOverrides: user-invocable-only` |
+| Verificación de compilación en plugin | Runner externo (xcodebuild, jest) es env-specific: scheme names, workspace paths, versiones — rompe en cualquier clone distinto | Documentar como limitación conocida; compilar en el IDE antes del PR |
 | Opus | La tarea es implementación, checklist o git | haiku o sonnet |
 | Lead | Una sola tarea NO se descompone en pipeline cross-especialistas | Especialista directo |
 | Agente especialista | La tarea es copiar un patrón existente con ≤3 cambios y ≤2 archivos | Hacerlo directo en contexto principal — overhead del agente (~3-4k tokens arranque en frío) supera el riesgo de violar convenciones |
@@ -2495,6 +2511,11 @@ Estas señales indican que el sistema ya tiene demasiado:
 
 ⚠️  El curador corre en cada sesión
     → Debe correr mensualmente. Si corre siempre, algo en el flujo está mal.
+
+⚠️  Un agente tiene secciones ## Catalog con API shapes completas (params, tipos, overloads)
+    → Las API shapes divergen del source sin que nadie lo note — el agente trabaja
+      con una API que ya no existe. Catalog = lista de nombres de existencia.
+      API shapes viven en el source; el agente los lee cuando los necesita.
 ```
 
 ### Regla de los tres usos
@@ -4333,6 +4354,40 @@ Para incluir una sección nueva, agregar una entrada al `KEYWORD_MAP` en el scri
 □ Prompt sin keywords → sin inyección
 ```
 
+### Plugin-level UserPromptSubmit — dos tiers de keywords
+
+Cuando el hook de contexto es para un **dominio específico** (no general como guia_context.py), los keywords genéricos (`new`, `view`, `component`) disparan en cualquier conversación y generan ruido. Patrón correcto: detección en dos tiers.
+
+**Tier 1 — símbolos exclusivos del dominio** (fire siempre que aparezcan):
+```python
+_DOMAIN_SYMBOLS = re.compile(
+    r'ExclusiveTerm1|ExclusiveTerm2|...'
+    # ← Solo términos que NO aparecen fuera del dominio
+    # DesignSystemKit: @CatalogElementMacro, ShimmerView, NaturalHeightLayout...
+)
+```
+
+**Tier 2 — acción + término de dominio en proximidad** (≤50 chars entre ellos):
+```python
+_DOMAIN_CONTEXT = re.compile(
+    r'(crea[r]?|nuevo|new|add|implement).{0,50}(domainTerm)|'
+    r'(domainTerm).{0,50}(crea[r]?|nuevo|new|add|es\s+un)',
+    re.IGNORECASE | re.DOTALL
+)
+```
+
+Si ningún tier matchea → no inyectar (silencio es correcto). Output: **plain stdout**, no `json.dumps({"systemMessage": ...})`. La doc oficial confirma que stdout de `UserPromptSubmit` va a `additionalContext` del contexto de Claude — sin mostrarse al usuario como mensaje separado.
+
+```python
+# ✅ Plain stdout — va a additionalContext silenciosamente
+print(f"[Dominio context]\n{content}")
+
+# ❌ systemMessage — se muestra al usuario como mensaje visible
+print(json.dumps({"systemMessage": content}))
+```
+
+> **[2026-06-22] design-ios:** Keywords genéricos (`new`, `view`, `component`, `swift`) en hub hook inyectaban el triage de capas en conversaciones de git, docs y cualquier cosa con esas palabras. Fix: Tier 1 con nombres exclusivos del sistema (`@CatalogElementMacro`, `ShimmerView`, `AppTabView`...) + Tier 2 con proximidad acción+capa (`"crea un atom"`, `"nuevo molecule"`). Ahora solo dispara cuando el dominio es inequívoco.
+
 ---
 
 <!-- §27 -->
@@ -4825,6 +4880,145 @@ Cada pieza tiene su sección de referencia. Nada se inventó solo — todo se co
 □ Nada de contenido de proyecto específico en el scope global
 □ Memoria inicializada con al menos una entry de filosofía
 □ Separación clara: regla siempre activa → CLAUDE.md; procedimiento → skill; garantía → hook
+```
+
+---
+
+<!-- §30 -->
+<!-- §30-quick -->
+## 30. Cloud Agents programados — /schedule y /web-setup
+
+> Un hook local corre en tu máquina. Un cloud agent corre en la nube de Anthropic con un checkout limpio del repo — sin acceso a tu filesystem, sin tus variables de entorno, sin tus plugins instalados. Son dos cosas distintas. Úsalos para cosas distintas.
+
+### Las 3 reglas
+
+1. **Cloud agents ≠ hooks locales** — los CCR (Claude Code Routines) tienen acceso al repo GitHub, no a `/Users/`. Si la tarea necesita tu filesystem → hook local. Si puede correr desde un clone fresco → CCR.
+2. **GitHub primero** — sin `/web-setup` el checkout falla silenciosamente. Conectar GitHub es el paso 0 antes de crear cualquier routine.
+3. **Prompt self-contained** — el agente arranca sin contexto, sin tu CLAUDE.md, sin tus plugins. El prompt debe incluir todo lo que necesita saber.
+
+### Cuándo usar cloud agents vs alternativas
+
+| Caso | Solución correcta |
+|---|---|
+| Tarea periódica sobre el repo (curar learnings, health check) | CCR — `/schedule` |
+| Acción automática en respuesta a un evento del usuario | Hook local `UserPromptSubmit`/`PostToolUse` |
+| Tarea única programada ("mañana a las 9am") | CCR con `run_once_at` |
+| Acción que necesita acceso al filesystem local | Hook local — los CCR no tienen acceso |
+| Monitor de CI/CD o builds externos | CCR — corre en nube, no bloquea tu sesión |
+
+### Modelos recomendados para CCR
+
+| Tarea | Modelo |
+|---|---|
+| Mantenimiento / curation / deduplicación | `claude-haiku-4-5-20251001` |
+| Análisis de código / PR review automático | `claude-sonnet-4-6` |
+| Tareas complejas multi-step | `claude-sonnet-4-6` |
+
+### /web-setup — conectar servicios OAuth
+
+Necesario una vez antes de crear routines que accedan a repos privados:
+
+```
+/web-setup          # en el prompt de Claude Code — abre flujo OAuth
+```
+
+Conecta: GitHub (para checkout del repo), Google Drive, y otros servicios MCP disponibles.
+Sin GitHub conectado → el campo `sources: [{git_repository: {url: ...}}]` del CCR falla al clonar.
+
+<!-- §30-ref -->
+
+### Estructura de un routine (create body)
+
+```json
+{
+  "name": "nombre-descriptivo",
+  "cron_expression": "0 0 1 * *",
+  "enabled": true,
+  "job_config": {
+    "ccr": {
+      "environment_id": "env_XXXXX",
+      "session_context": {
+        "model": "claude-haiku-4-5-20251001",
+        "sources": [
+          {"git_repository": {"url": "https://github.com/org/repo"}}
+        ],
+        "allowed_tools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"]
+      },
+      "events": [{
+        "data": {
+          "uuid": "<lowercase v4 uuid generado>",
+          "session_id": "",
+          "type": "user",
+          "parent_tool_use_id": null,
+          "message": {"role": "user", "content": "PROMPT SELF-CONTAINED AQUÍ"}
+        }
+      }]
+    }
+  }
+}
+```
+
+**Cron expresiones útiles:**
+
+| Cuándo | Expresión (UTC) |
+|---|---|
+| Diario a medianoche | `0 0 * * *` |
+| Primer día del mes | `0 0 1 * *` |
+| Cada lunes 9am UTC | `0 9 * * 1` |
+| Cada 2 horas | `0 */2 * * *` |
+
+Mínimo intervalo: 1 hora. `/30 * * * *` es rechazado.
+
+### Cómo invocar desde Claude Code
+
+```
+/schedule    # skill — Claude guía la creación de la routine
+```
+
+Internamente usa `RemoteTrigger` (tool deferred — cargar con `ToolSearch select:RemoteTrigger`):
+
+```
+RemoteTrigger {action: "list"}               # listar routines
+RemoteTrigger {action: "create", body: {...}} # crear
+RemoteTrigger {action: "run", trigger_id: "trig_XXX"} # ejecutar ahora
+```
+
+Ver/gestionar routines: https://claude.ai/code/routines
+
+### Checklist de prompt para CCR
+
+Un prompt de CCR debe responder estas preguntas sin asumir contexto externo:
+
+```
+□ ¿Qué archivos leer? (rutas relativas al repo clonado)
+□ ¿Qué condición activa la acción? (ej: si líneas > 150)
+□ ¿Qué hacer exactamente? (no "curar" — describir los pasos concretos)
+□ ¿Qué hacer si la condición NO se cumple? (output esperado + stop)
+□ ¿Cómo terminar? (commit + mensaje concreto / output a stdout)
+□ ¿Conservador o agresivo? (cuando hay duda, ¿mantener o eliminar?)
+```
+
+### Anti-patrones de CCR
+
+| Anti-patrón | Consecuencia | Fix |
+|---|---|---|
+| Prompt que asume plugins instalados (`@design-curador`) | El CCR no tiene los plugins del usuario | Describir la tarea directamente en el prompt |
+| Rutas absolutas (`/Users/felix/...`) | El CCR clona en `/tmp/...` — ruta no existe | Usar rutas relativas al repo |
+| Sin GitHub conectado | Checkout falla sin mensaje claro | Correr `/web-setup` antes de crear el routine |
+| Routine en sonnet para tareas simples | Costo 5× innecesario | Haiku para mantenimiento, sonnet para análisis |
+| Prompt vago ("mejora el código") | El agente improvisa → resultado impredecible | Criterios explícitos: condición + acción + stop |
+
+### Checklist §30
+
+```
+□ /web-setup corrido — GitHub (u otro servicio) conectado
+□ Repo es público o GitHub App instalada en él
+□ Modelo elegido según complejidad (haiku para mantenimiento)
+□ Prompt incluye: qué leer, condición, acción concreta, condición de stop
+□ Rutas en el prompt son relativas al repo (no absolutas)
+□ Cron expression en UTC — confirmada conversión desde timezone local
+□ Routine visible en https://claude.ai/code/routines
+□ `run_once_at` para tareas únicas en lugar de `cron_expression`
 ```
 
 ---

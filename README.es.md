@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.0 · Validada en producción · 2026-06-21
+**Versión:** v5.2 · Validada en producción · 2026-06-22
 
 ---
 
@@ -42,6 +42,7 @@
 | Usar shortcuts de prompts | §28 — Prompt Library con 8 shortcuts y 4 recipes |
 | Armar mi propio contexto global | §29 — construir `~/.claude/` desde cero |
 | Auto-inyectar contexto de la guía | §26 — hook `guia_context.py` |
+| Programar cloud agents | §30 — Cloud Agents (CCR) |
 | Saber si lo que construí es overkill | §14 — árbol anti-overkill |
 | Saber cuándo parar de optimizar | §23 — techos reales de tokens y palancas por impacto |
 | Evitar los errores más caros | §12 — primera tabla |
@@ -49,7 +50,17 @@
 
 ---
 
-## Novedades en v5.0
+## Novedades en v5.2
+
+| Área | Cambio |
+|---|---|
+| **§30 NUEVO** | Cloud Agents (CCR) — `/schedule`, `/web-setup`, prompts self-contained, referencia de cron |
+| **§26** | Detección en dos tiers para hooks `UserPromptSubmit` de plugin (símbolos + proximidad) |
+| **§14** | Nuevo anti-patrón: agente con secciones `## Catalog` que almacenan API shapes completas |
+| **§10** | Checkpoint de delegación del lead — el estado vive en la conversación, no en el filesystem |
+
+<details>
+<summary>Novedades en v5.0</summary>
 
 | Área | Cambio |
 |---|---|
@@ -59,6 +70,8 @@
 | **§28 NUEVO** | Prompt Library — 8 shortcuts con tags, 4 recipes, 4 Leyes |
 | **§29 NUEVO** | Contexto global propio — construir `~/.claude/` desde cero |
 | **Docs** | 5 errores factuales corregidos vs documentación oficial de Claude Code |
+
+</details>
 
 ---
 

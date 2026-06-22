@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.0 · Production-validated · 2026-06-21
+**Author:** Félix Sotelo · **Version:** v5.2 · Production-validated · 2026-06-22
 
 ---
 
@@ -35,13 +35,24 @@
 | Use prompt shortcuts | §28 — Prompt Library |
 | Build my own global context | §29 — Global context system |
 | Auto-inject guide context per session | §26 — Global context hook |
+| Schedule cloud agents | §30 — Cloud Agents (CCR) |
 | Know when to stop optimizing | §23 — Real token ceilings |
 | Validate what I built | §13 — Quality checklist |
 | Avoid the most expensive mistakes | §12 — Common errors |
 
 ---
 
-## What's New in v5.0
+## What's New in v5.2
+
+| Area | Change |
+|---|---|
+| **§30 NEW** | Cloud Agents (CCR) — `/schedule`, `/web-setup`, self-contained prompts, cron reference |
+| **§26** | Two-tier keyword detection for plugin-level `UserPromptSubmit` hooks (domain symbols + proximity) |
+| **§14** | New anti-pattern: agent with `## Catalog` sections storing full API shapes |
+| **§10** | Lead delegation checkpoint — state lives in conversation, not filesystem |
+
+<details>
+<summary>v5.0 changes</summary>
 
 | Area | Change |
 |---|---|
@@ -51,6 +62,8 @@
 | **§28 NEW** | Prompt Library — 8 shortcuts with tags, 4 recipes, 4 Laws |
 | **§29 NEW** | Global context system — build your own `~/.claude/` from scratch |
 | **Docs** | 5 factual errors corrected vs official Claude Code documentation |
+
+</details>
 
 ---
 
