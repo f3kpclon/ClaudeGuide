@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.5 · Validada en producción · §3 quick/ref split + §20 Claude-en-CI + §25 Fable5/effort/ExtCtx + §31 Advisor + §10 worktrees + §27 auto-compaction · docs validados vs oficial (2026-06-24)
+**Versión:** v5.6 · Validada en producción · §26 hook multi-section + KEYWORD_MAP completo (§3/§20/§30/§31) + CLAUDE.md actualizado · docs validados vs oficial (2026-06-24)
 
 ---
 
@@ -4629,32 +4629,84 @@ from pathlib import Path
 
 # ← Ajustar con la ruta donde clonaste este repo
 GUIA = Path("~/ruta/a/guia-agentes-plugins-claude-code.md").expanduser()
-MAX_LINES = 80
+MAX_SECTIONS = 2   # máximo de secciones a inyectar por prompt
+MAX_LINES    = 60  # líneas por sección (2 secciones × 60 = ~120 líneas máximo)
 
+# Orden importa: más específico primero.
+# Se recorren TODOS los entries y se acumulan hasta MAX_SECTIONS matches.
 KEYWORD_MAP = [
-    (["agente", "agent", "subagent"],          5),
-    (["hook", "pretooluse", "posttooluse"],     7),
-    (["skill"],                                 6),
-    (["scope"],                                 8),
-    (["learning", "curator", "postmortem"],     9),
-    (["multi-agente", "lead", "arquitectura"], 10),
-    (["plugin", "distribuible"],               11),
-    (["haiku", "sonnet", "opus", "modelo"],    25),
-    (["factor humano", "invocar"],             24),
-    (["overkill"],                             14),
-    (["presupuesto", "tokens", "costo"],        2),
-    (["vector memory", "semántica"],           16),
-    (["seguridad", "security"],                18),
+    # §26 — Hook global (específico — antes de §7)
+    (["guia_context", "keyword_map", "inyección automática",
+      "hook global", "context hook"],                                    26),
+    # §29 — Contexto global propio (específico — antes de §7)
+    (["contexto global", "~/.claude", "sistema propio",
+      "bootstrap", "capas del contexto", "global context"],             29),
+    # §5 — Agentes
+    (["agente", "agent", "subagent", "disallowedtools", "maxturns",
+      "memory: project", "skills:", "context:fork"],                     5),
+    # §6 — Skills
+    (["skill", "lifecycle", "context: fork", "ultrathink",
+      "supporting files", "disable-model-invocation"],                   6),
+    # §7 — Hooks (incluye permission modes y security guards)
+    (["hook", "pretooluse", "posttooluse", "npm", "npx",
+      "slopsquatting", "supply chain", "updatedinput",
+      "sessionstart", "filechanged", "permissionrequest",
+      "permiso", "permission", "guard", "credencial", "secret guard"],   7),
+    # §8 — Scope
+    (["scope"],                                                           8),
+    # §9 — Learnings
+    (["learning", "curator", "postmortem"],                              9),
+    # §10 — Multi-agente y worktrees
+    (["multi-agente", "lead", "arquitectura", "worktree"],              10),
+    # §11 — Plugin
+    (["plugin", "distribuible"],                                        11),
+    # §14 — Anti-overkill
+    (["overkill"],                                                      14),
+    # §16 — Vector Memory
+    (["vector memory", "semántica"],                                    16),
+    # §18 — Seguridad
+    (["seguridad", "security", "injection", "traversal"],               18),
+    # §20 — CI/CD + Claude-en-CI
+    (["ci/cd", "github action", "pipeline", "claude-code-action",
+      "@claude", "pr review", "workflow yml"],                          20),
+    # §24 — Factor humano
+    (["factor humano", "invocar", "contexto antes"],                    24),
+    # §25 — Modelo correcto
+    (["haiku", "sonnet", "opus", "modelo", "effort",
+      "xhigh", "fable", "fast mode", "extended context"],              25),
+    # §27 — Handoff + auto-compaction
+    (["handoff", "snapshot", "retomar sesión", "compaction",
+      "auto-compaction"],                                               27),
+    # §28 — Prompt Library
+    (["shortcut", "recipe", "prompt library", "/plan",
+      "4 leyes", "las leyes"],                                         28),
+    # §30 — Cloud Agents
+    (["schedule", "cron", "routine", "cloud agent",
+      "/web-setup", "ccr"],                                            30),
+    # §31 — Advisor Pattern
+    (["advisor", "patron advisor", "sous-chef",
+      "validar sin subir", "validación sin subir"],                    31),
+    # §3 — Estimados + caching
+    (["presupuesto", "tokens", "costo", "cache", "caching",
+      "ttl", "estimado", "consumo"],                                    3),
+    # §17 — Plan / Templates
+    (["invocation template", "/plan skill", "plan skill"],             17),
+    # §2 — Límites de tamaño
+    (["presupuesto de", "límites de tamaño", "150 líneas"],             2),
 ]
 
-def detect_section(prompt):
+def detect_sections(prompt: str) -> list:
     p = prompt.lower()
+    seen, results = set(), []
     for keywords, n in KEYWORD_MAP:
-        if any(k in p for k in keywords):
-            return n
-    return None
+        if n not in seen and any(k in p for k in keywords):
+            results.append(n)
+            seen.add(n)
+            if len(results) >= MAX_SECTIONS:
+                break
+    return results
 
-def extract_section(n):
+def extract_section(n: int) -> str:
     lines = GUIA.read_text().splitlines()
     for anchor in [f"<!-- §{n}-quick -->", f"<!-- §{n} -->"]:
         try:
@@ -4675,11 +4727,14 @@ try:
 except Exception:
     sys.exit(0)
 
-section = detect_section(payload.get("prompt", ""))
-if section:
-    content = extract_section(section)
+parts = []
+for n in detect_sections(payload.get("prompt", "")):
+    content = extract_section(n)
     if content:
-        print(f"[Guía §{section}]\n{content}")
+        parts.append(f"[Guía §{n}]\n{content}")
+
+if parts:
+    print("\n\n".join(parts))
 ````
 
 **2. Permisos**
