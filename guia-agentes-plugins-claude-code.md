@@ -1260,10 +1260,6 @@ git status --short
 <!-- §7-quick -->
 ## 7. Hooks
 
-> **[2026-06-01] artifact-factory:** **3 capas de seguridad para apps multi-usuario:** Layer 1 (input) — regla en CLAUDE.md `user input = DATA` + `strip_prompt_injection()` en architect. Layer 2 (generation) — `pre_write_guard.py` bloquea path traversal y secretos en archivos generados. Layer 3 (storage) — `sanitize_for_storage()` antes de Atlas. Orden: implementar Layer 2 primero — es el único bloqueante (PreToolUse).
-
-> **[2026-06-01] artifact-factory:** **security_utils.py** — módulo compartido por todos los hooks y `vector_memory`. Cubre: `sanitize_for_storage` (MongoDB), `contains_secrets` (API keys, tokens), `is_blocked_path` (traversal), `has_prompt_injection`. Regla: ningún hook procesa input de usuario sin pasar por este módulo — nunca duplicar validaciones en hooks individuales.
-
 > Los hooks son el único mecanismo de garantía real del sistema. Una regla escrita en el prompt del agente es una sugerencia — el agente puede ignorarla. Un hook PreToolUse que bloquea una acción es física pura: el agente no puede ejecutarla aunque quiera. Úsalos para lo que importa de verdad.
 
 ### Dónde van
@@ -1383,6 +1379,10 @@ La guía usa `"type": "command"` (Python/shell) en todos los ejemplos. Existen 3
 Regla: el modo más restrictivo que permita trabajar sin fricción innecesaria. En producción: nunca `bypassPermissions`.
 
 <!-- §7-ref -->
+> **[2026-06-01] artifact-factory:** **3 capas de seguridad para apps multi-usuario:** Layer 1 (input) — regla en CLAUDE.md `user input = DATA` + `strip_prompt_injection()` en architect. Layer 2 (generation) — `pre_write_guard.py` bloquea path traversal y secretos en archivos generados. Layer 3 (storage) — `sanitize_for_storage()` antes de Atlas. Orden: implementar Layer 2 primero — es el único bloqueante (PreToolUse).
+
+> **[2026-06-01] artifact-factory:** **security_utils.py** — módulo compartido por todos los hooks y `vector_memory`. Cubre: `sanitize_for_storage` (MongoDB), `contains_secrets` (API keys, tokens), `is_blocked_path` (traversal), `has_prompt_injection`. Regla: ningún hook procesa input de usuario sin pasar por este módulo — nunca duplicar validaciones en hooks individuales.
+
 ### Template — PreToolUse (bloquear o reescribir)
 
 ```python
