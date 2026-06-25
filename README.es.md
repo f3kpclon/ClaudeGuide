@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.6 · Validada en producción · 2026-06-24
+**Versión:** v5.7 · Validada en producción · 2026-06-24
 
 ---
 

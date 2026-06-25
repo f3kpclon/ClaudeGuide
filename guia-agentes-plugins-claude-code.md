@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.6 · Validada en producción · §26 hook multi-section + KEYWORD_MAP completo (§3/§20/§30/§31) + CLAUDE.md actualizado · docs validados vs oficial (2026-06-24)
+**Versión:** v5.7 · Validada en producción · §26 budget adaptativo + protocolo mantenimiento KEYWORD_MAP + §13 checklist actualizado · docs validados vs oficial (2026-06-24)
 
 ---
 
@@ -2564,9 +2564,10 @@ CLAUDE.md
 □ Sin tablas ni ejemplos de código
 
 Guía (al actualizar guia-agentes-plugins-claude-code.md)
-□ §24 en el Índice si se agregó
+□ §N en el Índice si se agregó
 □ Ninguna sección supera 150 líneas — si supera: agregar <!-- §N-quick --> (reglas) y <!-- §N-ref --> (código/ejemplos)
 □ Nueva sección tiene anchor <!-- §N --> y entrada en Índice
+□ Nueva sección → agregar entry en KEYWORD_MAP de guia_context.py (keywords + número de sección)
 
 Agentes
 □ description como trigger list
@@ -4629,8 +4630,8 @@ from pathlib import Path
 
 # ← Ajustar con la ruta donde clonaste este repo
 GUIA = Path("~/ruta/a/guia-agentes-plugins-claude-code.md").expanduser()
-MAX_SECTIONS = 2   # máximo de secciones a inyectar por prompt
-MAX_LINES    = 60  # líneas por sección (2 secciones × 60 = ~120 líneas máximo)
+MAX_SECTIONS = 2    # máximo de secciones a inyectar por prompt
+LINES_BUDGET = 120  # presupuesto total — se divide entre secciones encontradas
 
 # Orden importa: más específico primero.
 # Se recorren TODOS los entries y se acumulan hasta MAX_SECTIONS matches.
@@ -4706,7 +4707,7 @@ def detect_sections(prompt: str) -> list:
                 break
     return results
 
-def extract_section(n: int) -> str:
+def extract_section(n: int, max_lines: int) -> str:
     lines = GUIA.read_text().splitlines()
     for anchor in [f"<!-- §{n}-quick -->", f"<!-- §{n} -->"]:
         try:
@@ -4719,7 +4720,7 @@ def extract_section(n: int) -> str:
                 break
             result.append(line)
         if len(result) > 3:
-            return "\n".join(result[:MAX_LINES]).strip()
+            return "\n".join(result[:max_lines]).strip()
     return ""
 
 try:
@@ -4727,9 +4728,11 @@ try:
 except Exception:
     sys.exit(0)
 
+sections = detect_sections(payload.get("prompt", ""))
+max_lines = LINES_BUDGET // len(sections) if sections else LINES_BUDGET
 parts = []
-for n in detect_sections(payload.get("prompt", "")):
-    content = extract_section(n)
+for n in sections:
+    content = extract_section(n, max_lines)
     if content:
         parts.append(f"[Guía §{n}]\n{content}")
 
@@ -4756,13 +4759,32 @@ chmod +x ~/.claude/hooks/guia_context.py
 ]
 ```
 
-### Añadir secciones al mapa
+### Mantenimiento del KEYWORD_MAP
 
-Para incluir una sección nueva, agregar una entrada al `KEYWORD_MAP` en el script:
+El KEYWORD_MAP no se actualiza solo — cada sección nueva que no tenga entry queda fuera del sistema de inyección. El §13 (Checklist de calidad) ya incluye el recordatorio, pero el protocolo es:
 
+**Al crear §N nuevo:**
+1. Identificar 3-5 keywords que un usuario escribiría naturalmente al preguntar sobre ese tema
+2. Agregar el entry en orden de especificidad (más específico arriba):
 ```python
-(["keyword1", "keyword2"], N),  # §N — Nombre sección
+# §N — Nombre sección
+(["keyword1", "keyword2", "keyword3"], N),
 ```
+3. Testear con `echo '{"prompt": "frase con keyword"}' | python3 ~/.claude/hooks/guia_context.py | head -1`
+
+**Qué hace un buen keyword:**
+- Lo que el usuario escribe, no el título de la sección (`"caching"` > `"prompt caching"` > `"estimados de consumo"`)
+- Específico al tema para evitar falsos positivos (`"advisor pattern"` > `"advisor"` si el término es ambiguo)
+- En el idioma del usuario (si mezclan ES/EN, incluir ambos)
+
+**Budget adaptativo — cómo funciona:**
+```python
+LINES_BUDGET = 120  # presupuesto total fijo
+# 1 sección encontrada → 120 líneas (máximo detalle)
+# 2 secciones encontradas → 60 líneas cada una (120 total)
+```
+
+Si una sección quick tiene < 60 líneas, se sirve completa. El budget solo limita secciones largas — no trunca lo que ya es conciso.
 
 ### Checklist §26
 
@@ -4771,7 +4793,9 @@ Para incluir una sección nueva, agregar una entrada al `KEYWORD_MAP` en el scri
 □ chmod +x aplicado
 □ UserPromptSubmit registrado en ~/.claude/settings.json
 □ Prompt con "agente" → §5 inyectado como contexto
-□ Prompt sin keywords → sin inyección
+□ Prompt cruzado ("agente" + "hook") → §5 + §7 inyectados
+□ Prompt sin keywords → sin inyección (0 bytes stdout)
+□ Nueva sección → entry en KEYWORD_MAP + test de smoke
 ```
 
 ### Plugin-level UserPromptSubmit — dos tiers de keywords
