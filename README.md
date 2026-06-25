@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.4 · Production-validated · 2026-06-24
+**Author:** Félix Sotelo · **Version:** v5.5 · Production-validated · 2026-06-24
 
 ---
 
@@ -42,7 +42,17 @@
 
 ---
 
-## What's New in v5.4
+## What's New in v5.5
+
+> *§3 got a triage desk (quick/ref split). §20 learned to hire Claude as a contractor, not just test the office. The rest filled in the missing instruments from last round.*
+
+| Area | Change |
+|---|---|
+| **§3** | quick/ref split — estimation tables up front, godot benchmarks and detailed caching examples in ref |
+| **§20** | Claude-in-CI: `--print` + `--dangerously-skip-permissions` patterns, `@claude` comment trigger, cost-per-trigger table with model guidance |
+
+<details>
+<summary>v5.4 changes</summary>
 
 > *Five new instruments in the orchestra: a cost meter (caching), a smarter conductor (model routing), a sous-chef reviewer (Advisor), isolated practice rooms (worktrees), and a safety net before the stage collapses (auto-compaction).*
 
@@ -53,6 +63,8 @@
 | **§31 NEW** | Advisor Pattern — haiku reviewing sonnet output at ~1.15× cost vs ~5× for Opus upgrade |
 | **§10** | Worktrees — git-isolated parallel agents, `isolation: "worktree"` in Agent tool |
 | **§27** | Auto-compaction behavior — what survives, what doesn't, how to prepare context before it happens |
+
+</details>
 
 <details>
 <summary>v5.3 changes</summary>

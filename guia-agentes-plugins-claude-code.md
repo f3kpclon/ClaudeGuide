@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.4 · Validada en producción · §3 caching + §25 Fable5/FastMode/ExtCtx + §31 Advisor + §10 worktrees + §27 auto-compaction · docs validados vs oficial (2026-06-24)
+**Versión:** v5.5 · Validada en producción · §3 quick/ref split + §20 Claude-en-CI + §25 Fable5/effort/ExtCtx + §31 Advisor + §10 worktrees + §27 auto-compaction · docs validados vs oficial (2026-06-24)
 
 ---
 
@@ -256,15 +256,12 @@ Leer `.claude/scope/scope-index.md` antes de cualquier tarea.
 ---
 
 <!-- §3 -->
+<!-- §3-quick -->
 ## 3. Estimados de consumo
 
 > Antes de arrancar cualquier tarea, el dev pobre hace una estimación. Estos números son aproximados pero suficientes para saber si vas a gastar $0.02 o $0.50 antes de escribir una línea.
 
-Los números son aproximados. Sirven para planificar antes de arrancar.
-
 ### Costo fijo por sesión
-
-Tokens consumidos siempre, antes de cualquier trabajo real.
 
 | Componente | Tokens | Notas |
 |---|---|---|
@@ -274,11 +271,9 @@ Tokens consumidos siempre, antes de cualquier trabajo real.
 | scope-index.md (~20 líneas) | ~120 | Si está en CLAUDE.md |
 | **Total fijo mínimo** | **~1,000** | Por sesión, antes de cualquier tarea |
 
-Si el hub tiene `skillOverrides: user-invocable-only`, el modelo no lo activa automáticamente y los ~280 tokens no se gastan.
+Si el hub tiene `skillOverrides: user-invocable-only`, los ~280 tokens no se gastan.
 
 ### Costo por tipo de tarea
-
-Adicional sobre el fijo.
 
 | Tarea | Agentes | Tokens extra (contexto principal) | Tokens subagente (aislado) |
 |---|---|---|---|
@@ -290,9 +285,40 @@ Adicional sobre el fijo.
 | Refactor cross-cutting | lead + todos los especialistas | ~3,000 | ~30-40k |
 | Fin de sesión | postmortem + git | ~500 | ~2-4k |
 
-**Nota:** "Tokens extra (contexto principal)" = overhead en el hilo principal (prompt + resultado resumido).
-"Tokens subagente (aislado)" = consumo interno del agente en su contexto aislado — no se acumula en el hilo principal (Capa 3).
+"Tokens subagente (aislado)" = consumo interno del agente — no se acumula en el hilo principal (Capa 3).
 
+### Impacto del modelo
+
+| Modelo | Costo relativo | Cuándo |
+|---|---|---|
+| haiku | 1× | Tareas fijas: git, postmortem, reviewer de checklist |
+| sonnet | 5× | Implementación, debugging |
+| opus | 15× | Arquitectura con trade-offs complejos |
+
+Un reviewer en sonnet cuesta 5× más que en haiku — mismo resultado.
+
+### Prompt Caching — reglas clave
+
+| Tipo | Costo relativo | Cuándo ocurre |
+|---|---|---|
+| Cache creation | ~1.25× | Primera llamada o después de expirar el TTL |
+| Cache read | ~0.1× | Mismo prefix dentro del TTL |
+| Sin cache (base) | 1× | Referencia |
+
+- **TTL: 5 minutos** — después de 5 min de inactividad el cache expira
+- **Qué se cachea:** CLAUDE.md, system prompts de agentes, historial hasta el corte del prefix
+- **Regla de prefix:** contenido estable → CLAUDE.md. Contenido dinámico (paths, IDs, runtime) → `additionalContext` de hook. El dinámico invalida el cache si entra en el prefix.
+
+### Señales de consumo excesivo
+
+- Tarea simple tarda más de lo esperado → CLAUDE.md creció demasiado
+- El agente sabe cosas que no le dijiste → contenido duplicado entre archivos
+- Reviewer tarda igual que el implementador → está corriendo en sonnet
+- El lead ejecuta bash → tiene Bash en tools, no debería
+- El lead escribe código directamente → tiene Write/Edit en tools — quitarlos, la delegación debe ser garantía física
+- Cada agente hace 2-3 Read calls antes de empezar → gotchas deberían estar inline
+
+<!-- §3-ref -->
 ### Costo por archivo bajo demanda
 
 | Archivo | Tokens |
@@ -306,7 +332,7 @@ Adicional sobre el fijo.
 ### Estimados por agente (tokens internos — contexto aislado)
 
 Los agentes corren en contexto aislado (Capa 3). Estos tokens **no se acumulan** en el hilo principal.
-Los rangos varían según complejidad de la tarea. `†estimado` / `✓medido`
+`†estimado` / `✓medido`
 
 | Agente | Modelo | Rango típico | Factores principales |
 |---|---|---|---|
@@ -331,25 +357,12 @@ Los rangos varían según complejidad de la tarea. `†estimado` / `✓medido`
 
 **Qué sube el costo de cualquier agente:**
 - Cada `Read` call: ~700-1,400 tokens adicionales en el contexto aislado
-- Output format no forzado: 2-4x más tokens en la respuesta final
-- Más bugs/hipótesis simultáneas: más tokens de razonamiento
+- Output format no forzado: 2-4× más tokens en la respuesta final
 - Sin gotchas inline: 2-3 Read calls extra antes de empezar
 
-**Regla práctica:** `## Output — siempre este formato` con template compacto reduce el costo del output ~30-65%. Aplica a debugger, reviewer, postmortem y lead por igual.
-
-### Impacto del modelo
-
-| Modelo | Costo relativo | Cuándo |
-|---|---|---|
-| haiku | 1x | Tareas fijas: git, postmortem, reviewer de checklist |
-| sonnet | 5x | Implementación, debugging |
-| opus | 15x | Arquitectura con trade-offs complejos |
-
-Un reviewer en sonnet cuesta 5x más que en haiku — mismo resultado.
+**Regla práctica:** `## Output — siempre este formato` con template compacto reduce el costo del output ~30-65%.
 
 ### Ejemplo real — feature mediana
-
-Feature: sistema de checkpoints en Godot 2D.
 
 ```
 Costo fijo sesión:              ~1,000t
@@ -365,54 +378,26 @@ Sin setup óptimo (sin fragmentar, hub auto-trigger, modelos incorrectos): ~8,00
 El setup correcto reduce 2.5-3.5x el costo por feature.
 ```
 
-### Señales de consumo excesivo
+### Prompt Caching — detalles
 
-- Tarea simple tarda más de lo esperado → CLAUDE.md creció demasiado
-- El agente sabe cosas que no le dijiste → contenido duplicado entre archivos
-- Reviewer tarda igual que el implementador → está corriendo en sonnet
-- El lead ejecuta bash → tiene Bash en tools, no debería
-- El lead escribe código directamente → tiene Write/Edit en tools — quitarlos, la delegación debe ser garantía física
-- Cada agente hace 2-3 Read calls antes de empezar → gotchas deberían estar inline
-
-### Prompt Caching — el mayor multiplicador de ahorro
-
-El sistema cachea el prefix del contexto. Si los primeros N tokens son idénticos entre llamadas, la siguiente los lee desde cache: **~0.1x el costo** (90% de descuento).
-
-| Tipo | Costo relativo | Cuándo ocurre |
-|---|---|---|
-| Cache creation | ~1.25x | Primera llamada o después de expirar el TTL |
-| Cache read | ~0.1x | Llamada con mismo prefix dentro del TTL |
-| Sin cache (base) | 1x | Referencia |
-
-**TTL: 5 minutos.** Después de 5 min de inactividad el cache expira — la siguiente llamada paga recreación.
-
-**Qué se cachea en Claude Code:**
-- CLAUDE.md → estable entre llamadas → casi siempre cache hit después de la primera
-- System prompt de cada agente → mientras el agente esté activo
-- Historial de conversación hasta el punto de corte del prefix
-
-**Implicación de diseño — CLAUDE.md denso se amortiza:**
-
+**CLAUDE.md denso se amortiza — no penalizar el tamaño:**
 ```
 CLAUDE.md 500 líneas × sin cache = ~3,500t por llamada
 CLAUDE.md 500 líneas × con cache = ~350t por llamada (llamadas 2+)
 ```
-
-El costo real por llamada es ~10% del nominal. Por eso un CLAUDE.md bien estructurado es más barato de lo que parece.
-
-**Regla de prefix:** el cache invalida en cuanto cambia cualquier token del prefix. Contenido estable (reglas, convenciones, arquitectura) → CLAUDE.md o system prompt del agente. Contenido dinámico (paths, IDs, valores de runtime) → mensaje de usuario o `additionalContext` de hook. El primero se cachea; el segundo invalida.
+El costo real por llamada es ~10% del nominal después de la primera.
 
 **Implicación para `/loop` y sleeps:**
 - `delaySeconds < 300` → cache sigue caliente → siguiente iteración barata
 - `delaySeconds > 300` → cache expiró → recrea en la próxima llamada
-- Por eso `ScheduleWakeup` recomienda 270s sobre 300s — un segundo de diferencia, un ciclo de cache
+- `ScheduleWakeup` recomienda 270s sobre 300s por esta razón exacta
 
-**Ver hits/misses al final de sesión:**
+**Leer hits/misses al final de sesión:**
 ```
 Tokens: 12,450 input (8,200 cache read · 1,100 cache creation) · 2,450 output
                         ↑ amortizado              ↑ primer turno o post-TTL
 ```
-`cache read >> cache creation` → sesión bien amortizada. Si son iguales → el prefix cambia entre llamadas (revisar contenido dinámico en CLAUDE.md).
+`cache read >> cache creation` → sesión bien amortizada. Proporción similar → el prefix cambia entre llamadas — revisar contenido dinámico en CLAUDE.md.
 
 ---
 
@@ -3944,6 +3929,87 @@ Solo en Settings → Secrets → Actions. Nunca en código ni en el workflow fil
 
 Los integration tests de Atlas **no corren en CI por defecto**. Razón: Atlas M0 tiene rate limits; disparar tests de embedding en cada PR agota el free tier. Corren localmente.
 
+### Claude como agente en CI — `@claude` y reviews automáticos
+
+Además de testear el proyecto, Claude Code puede ejecutarse **dentro de CI** para hacer trabajo real: revisar PRs, responder a comentarios con `@claude`, o convertir issues en PRs.
+
+**Modo no-interactivo — flags obligatorios en CI:**
+
+```bash
+# --print: output a stdout, sin UI interactiva
+# --dangerously-skip-permissions: bypass de confirmaciones (solo en sandboxes CI)
+claude --print "Revisa este diff: $(cat pr.diff)" \
+       --model claude-haiku-4-5 \
+       --dangerously-skip-permissions
+```
+
+**Workflow: review automático en cada PR**
+
+```yaml
+# .github/workflows/claude-review.yml
+name: claude-review
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Claude review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr.diff
+          claude --print "$(cat /tmp/pr.diff)" \
+                 --model claude-haiku-4-5 \
+                 --dangerously-skip-permissions > /tmp/review.txt
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const r = require('fs').readFileSync('/tmp/review.txt','utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner, repo: context.repo.repo, body: r
+            });
+```
+
+**Trigger via comentario `@claude`:**
+
+```yaml
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  claude-task:
+    if: contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          claude --print "${{ github.event.comment.body }}" \
+                 --model claude-haiku-4-5 \
+                 --dangerously-skip-permissions
+```
+
+**Costo por trigger — elegir con criterio:**
+
+| Trigger | Runs/mes (repo activo) | Modelo recomendado | Por qué |
+|---|---|---|---|
+| Cada PR abierto/actualizado | ~50-100 | haiku | Review rápido, costo bajo |
+| Comentario `@claude` | Variable | haiku o sonnet según tarea | Controlable — solo cuando se necesita |
+| Push a main | ~20-50 | — | Duplica el review del PR — generalmente innecesario |
+
+**Regla:** haiku para reviews de CI. Sonnet solo si el comentario `@claude` pide implementar algo. Nunca opus en CI — no hay one-shot irreversible que lo justifique.
+
 ### Anti-overkill CI
 
 | Tentación | Por qué no |
@@ -3953,6 +4019,7 @@ Los integration tests de Atlas **no corren en CI por defecto**. Razón: Atlas M0
 | Deploy automático al marketplace | Plugins requieren revisión manual de Anthropic |
 | Coverage report + badge | No hay target de coverage — solo tests de fallos silenciosos |
 | Dependabot auto-update | Deps auto-actualizadas pueden romper agentes silenciosamente |
+| Claude en CI sin `--model` explícito | Usa el default (Fable 5 / sonnet) — costo impredecible por PR |
 
 ### Checklist §20
 
@@ -3964,6 +4031,9 @@ Los integration tests de Atlas **no corren en CI por defecto**. Razón: Atlas M0
 □ timeout-minutes en validator-smoke
 □ No matrix de versiones, no docker, no deploy automático
 □ tests/fixtures/sample-project.md existe para el smoke test
+□ Si Claude corre en CI: --print + --dangerously-skip-permissions + --model explícito
+□ Review automático en PR: haiku, no sonnet
+□ @claude trigger: workflow escucha issue_comment con contains(@claude)
 ```
 
 ---

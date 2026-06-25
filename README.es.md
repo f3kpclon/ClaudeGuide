@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.4 · Validada en producción · 2026-06-24
+**Versión:** v5.5 · Validada en producción · 2026-06-24
 
 ---
 
@@ -50,7 +50,17 @@
 
 ---
 
-## Novedades en v5.4
+## Novedades en v5.5
+
+> *§3 tiene ahora mostrador de triage (split quick/ref). §20 aprendió a contratar a Claude como operario en CI, no solo a testear la oficina. El resto completó los instrumentos que faltaban.*
+
+| Área | Cambio |
+|---|---|
+| **§3** | Split quick/ref — tablas de estimación al frente, benchmarks godot y detalles de caching en ref |
+| **§20** | Claude-en-CI: patrones `--print` + `--dangerously-skip-permissions`, trigger `@claude` por comentario, tabla de costo por trigger con guía de modelo |
+
+<details>
+<summary>Novedades en v5.4</summary>
 
 > *Cinco instrumentos nuevos en la orquesta: un medidor de costo (caching), un director más inteligente (routing de modelo), un sous-chef revisor (Advisor), salas de ensayo aisladas (worktrees), y una red de seguridad antes de que el escenario colapse (auto-compaction).*
 
@@ -61,6 +71,8 @@
 | **§31 NUEVO** | Advisor Pattern — haiku revisando output de sonnet a ~1.15× costo vs ~5× de subir a Opus |
 | **§10** | Worktrees — agentes paralelos con aislamiento git, `isolation: "worktree"` en Agent tool |
 | **§27** | Comportamiento de auto-compaction — qué sobrevive, qué no, cómo preparar el contexto antes de que ocurra |
+
+</details>
 
 <details>
 <summary>Novedades en v5.3</summary>
