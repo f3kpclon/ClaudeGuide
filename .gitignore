@@ -4,3 +4,4 @@ _discoveries.md
 .codebase-indexer-cache.json
 .claude/settings.local.json
 .claude/index/
+.claude/handoffs/

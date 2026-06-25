@@ -4586,15 +4586,15 @@ Disponible en cloud/Bedrock/Vertex. El costo escala linealmente — no es gratis
 ### Checklist §25
 
 ```
-□ Cada agente tiene model: especificado
-□ Reviewer → haiku
-□ git, postmortem, curador → haiku
-□ plan skill → haiku
+□ Cada agente tiene model: especificado con ID pinneado (ej. claude-haiku-4-5, NO haiku)
+□ Reviewer → claude-haiku-4-5
+□ git, postmortem, curador → claude-haiku-4-5
+□ plan skill → claude-haiku-4-5
 □ Antes de Opus → probar Sonnet con effort: xhigh (skill frontmatter o settings.json)
 □ Opus solo si: security/arch one-shot O contexto > 10k tokens O costo de error es irreversible
 □ Agentes Opus tienen tools mínimas (Read/Grep/Glob) — el costo extra debe estar en razonamiento, no en ejecución
 □ effort: xhigh no en settings.json global — solo en agentes/skills que lo necesitan
-□ Siempre pinear model: explícito — el default (hoy: claude-fable-5) puede cambiar con updates
+□ Siempre pinear model: con alias sin fecha (claude-haiku-4-5 ✅, haiku ❌, claude-haiku-4-5-20251001 ❌) — el default cambia
 □ Fast Mode: activar en generadores/git/postmortem, no en agentes con effort: xhigh o ultra
 □ Extended Context: calcular costo fragmentado vs costo extendido antes de activar
 ```
