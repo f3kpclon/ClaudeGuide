@@ -3931,19 +3931,44 @@ Los integration tests de Atlas **no corren en CI por defecto**. Razón: Atlas M0
 
 ### Claude como agente en CI — `@claude` y reviews automáticos
 
-Además de testear el proyecto, Claude Code puede ejecutarse **dentro de CI** para hacer trabajo real: revisar PRs, responder a comentarios con `@claude`, o convertir issues en PRs.
+Además de testear el proyecto, Claude Code puede ejecutarse **dentro de CI** para hacer trabajo real. El mecanismo oficial es `anthropics/claude-code-action@v1` — maneja instalación y autenticación, no necesitás `npm install` ni configurar el CLI manualmente.
 
-**Modo no-interactivo — flags obligatorios en CI:**
-
-```bash
-# --print: output a stdout, sin UI interactiva
-# --dangerously-skip-permissions: bypass de confirmaciones (solo en sandboxes CI)
-claude --print "Revisa este diff: $(cat pr.diff)" \
-       --model claude-haiku-4-5 \
-       --dangerously-skip-permissions
+```yaml
+- uses: anthropics/claude-code-action@v1
+  with:
+    anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+    prompt: "instrucción"
 ```
 
-**Workflow: review automático en cada PR**
+**Trigger via comentario `@claude`:**
+
+Alguien escribe `@claude fix this` en un PR o issue → la action lo toma como instrucción y responde.
+
+```yaml
+# .github/workflows/claude-on-comment.yml
+name: claude-on-comment
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+jobs:
+  claude:
+    if: contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+**Review automático en cada PR:**
 
 ```yaml
 # .github/workflows/claude-review.yml
@@ -3961,54 +3986,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
-      - name: Claude review
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr.diff
-          claude --print "$(cat /tmp/pr.diff)" \
-                 --model claude-haiku-4-5 \
-                 --dangerously-skip-permissions > /tmp/review.txt
-      - uses: actions/github-script@v7
+      - uses: anthropics/claude-code-action@v1
         with:
-          script: |
-            const r = require('fs').readFileSync('/tmp/review.txt','utf8');
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner, repo: context.repo.repo, body: r
-            });
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: "Review the changes in this PR. List critical bugs only — no style suggestions."
 ```
 
-**Trigger via comentario `@claude`:**
+**Modelo en CI:** la action usa el modelo configurado en el proyecto. Para reviews, forzar haiku en `.claude/settings.json`:
 
-```yaml
-on:
-  issue_comment:
-    types: [created]
-
-jobs:
-  claude-task:
-    if: contains(github.event.comment.body, '@claude')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          claude --print "${{ github.event.comment.body }}" \
-                 --model claude-haiku-4-5 \
-                 --dangerously-skip-permissions
+```json
+{ "model": "claude-haiku-4-5" }
 ```
 
-**Costo por trigger — elegir con criterio:**
+**Costo por trigger:**
 
-| Trigger | Runs/mes (repo activo) | Modelo recomendado | Por qué |
+| Trigger | Runs/mes (repo activo) | Modelo | Por qué |
 |---|---|---|---|
 | Cada PR abierto/actualizado | ~50-100 | haiku | Review rápido, costo bajo |
 | Comentario `@claude` | Variable | haiku o sonnet según tarea | Controlable — solo cuando se necesita |
 | Push a main | ~20-50 | — | Duplica el review del PR — generalmente innecesario |
 
-**Regla:** haiku para reviews de CI. Sonnet solo si el comentario `@claude` pide implementar algo. Nunca opus en CI — no hay one-shot irreversible que lo justifique.
+Nunca opus en CI — no hay one-shot irreversible que lo justifique.
 
 ### Anti-overkill CI
 
@@ -4031,9 +4029,10 @@ jobs:
 □ timeout-minutes en validator-smoke
 □ No matrix de versiones, no docker, no deploy automático
 □ tests/fixtures/sample-project.md existe para el smoke test
-□ Si Claude corre en CI: --print + --dangerously-skip-permissions + --model explícito
-□ Review automático en PR: haiku, no sonnet
-□ @claude trigger: workflow escucha issue_comment con contains(@claude)
+□ Si Claude corre en CI: usar anthropics/claude-code-action@v1, no claude --print manual
+□ anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }} — nunca hardcodeado
+□ Review automático en PR: model: claude-haiku-4-5 en .claude/settings.json
+□ @claude trigger: workflow escucha issue_comment + pull_request_review_comment
 ```
 
 ---
