@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.3 · Validada en producción · §7 seguridad + routing por complejidad + 5 modos de permiso · docs validados vs oficial (2026-06-24)
+**Versión:** v5.4 · Validada en producción · §3 caching + §25 Fable5/FastMode/ExtCtx + §31 Advisor + §10 worktrees + §27 auto-compaction · docs validados vs oficial (2026-06-24)
 
 ---
 
@@ -59,6 +59,7 @@
 - [§9 — Learnings](#9-learnings)
 - [§10 — Arquitectura multi-agente](#10-arquitectura-multi-agente)
 - [§11 — Plugin distribuible](#11-plugin-distribuible)
+- [§31 — Advisor Pattern (validación sin subir de modelo)](#31-advisor-pattern--validación-sin-subir-de-modelo)
 - [§17 — Plan + Invocation Templates](#17-plan--invocation-templates--eficiencia-máxima-de-prompts)
 - [§26 — Hook global de contexto](#26-hook-global-de-contexto)
 - [§28 — Prompt Library (shortcuts + recipes)](#28-prompt-library--shortcuts-para-claude-code)
@@ -372,6 +373,46 @@ El setup correcto reduce 2.5-3.5x el costo por feature.
 - El lead ejecuta bash → tiene Bash en tools, no debería
 - El lead escribe código directamente → tiene Write/Edit en tools — quitarlos, la delegación debe ser garantía física
 - Cada agente hace 2-3 Read calls antes de empezar → gotchas deberían estar inline
+
+### Prompt Caching — el mayor multiplicador de ahorro
+
+El sistema cachea el prefix del contexto. Si los primeros N tokens son idénticos entre llamadas, la siguiente los lee desde cache: **~0.1x el costo** (90% de descuento).
+
+| Tipo | Costo relativo | Cuándo ocurre |
+|---|---|---|
+| Cache creation | ~1.25x | Primera llamada o después de expirar el TTL |
+| Cache read | ~0.1x | Llamada con mismo prefix dentro del TTL |
+| Sin cache (base) | 1x | Referencia |
+
+**TTL: 5 minutos.** Después de 5 min de inactividad el cache expira — la siguiente llamada paga recreación.
+
+**Qué se cachea en Claude Code:**
+- CLAUDE.md → estable entre llamadas → casi siempre cache hit después de la primera
+- System prompt de cada agente → mientras el agente esté activo
+- Historial de conversación hasta el punto de corte del prefix
+
+**Implicación de diseño — CLAUDE.md denso se amortiza:**
+
+```
+CLAUDE.md 500 líneas × sin cache = ~3,500t por llamada
+CLAUDE.md 500 líneas × con cache = ~350t por llamada (llamadas 2+)
+```
+
+El costo real por llamada es ~10% del nominal. Por eso un CLAUDE.md bien estructurado es más barato de lo que parece.
+
+**Regla de prefix:** el cache invalida en cuanto cambia cualquier token del prefix. Contenido estable (reglas, convenciones, arquitectura) → CLAUDE.md o system prompt del agente. Contenido dinámico (paths, IDs, valores de runtime) → mensaje de usuario o `additionalContext` de hook. El primero se cachea; el segundo invalida.
+
+**Implicación para `/loop` y sleeps:**
+- `delaySeconds < 300` → cache sigue caliente → siguiente iteración barata
+- `delaySeconds > 300` → cache expiró → recrea en la próxima llamada
+- Por eso `ScheduleWakeup` recomienda 270s sobre 300s — un segundo de diferencia, un ciclo de cache
+
+**Ver hits/misses al final de sesión:**
+```
+Tokens: 12,450 input (8,200 cache read · 1,100 cache creation) · 2,450 output
+                        ↑ amortizado              ↑ primer turno o post-TTL
+```
+`cache read >> cache creation` → sesión bien amortizada. Si son iguales → el prefix cambia entre llamadas (revisar contenido dinámico en CLAUDE.md).
 
 ---
 
@@ -2351,6 +2392,35 @@ Checkpoint: [N/M completado] · Pendiente: [ComponentB] · Bloqueadores: [ningun
 Si el contexto se comprime, Claude puede grep el historial por `Checkpoint:` para reconstruir el estado sin `Write`. El estado vive en la conversación, no en el filesystem.
 
 > Si la tarea del lead requiere más de ~20 turnos para completarse, el problema no es falta de estado — es que la tarea era demasiado grande. Dividir en sub-tareas atómicas, no parchar con archivos de estado.
+
+### Worktrees — aislamiento git para agentes paralelos
+
+Cuando dos agentes trabajan sobre el mismo repo simultáneamente, el problema no es el contexto — es el filesystem compartido: un agente modifica un archivo mientras el otro lo lee. `git worktree` le da a cada agente su propia copia del repo en una rama distinta, sin conflictos.
+
+```bash
+# Crear worktree manual para un agente paralelo
+git worktree add ../repo-feature-b feature-b
+# El agente trabaja en ../repo-feature-b — filesystem completamente aislado
+```
+
+**Cuándo usar worktrees:**
+
+| Escenario | Sin worktree | Con worktree |
+|---|---|---|
+| 2 agentes modificando archivos distintos | Race condition posible | Cada uno en su rama — sin conflicto |
+| Feature A y feature B en paralelo | 1 espera al otro | Aislamiento completo |
+| Agent tool en Claude Code | Default (shared) | `isolation: "worktree"` — automático |
+
+**Con el Agent tool:**
+```python
+Agent({
+    isolation="worktree",   # el harness crea worktree temporal y lo limpia al terminar
+    ...
+})
+```
+Si el agente no hace cambios → el worktree se limpia solo. Si hace cambios → el path y la rama se devuelven en el resultado para merge manual.
+
+**Anti-patrón:** worktrees para agentes que deben ir en secuencia (A termina → B empieza). Si no hay paralelismo real, el worktree es overhead sin beneficio — usar flujo estándar.
 
 ---
 
@@ -4339,7 +4409,7 @@ La optimización más barata del sistema no es un hook ni un agente más eficien
 
 ```yaml
 # En el agente o en la skill
-effort: xhigh   # opciones: low | medium | high | xhigh | max
+effort: xhigh   # opciones: xlow | low | medium | high | xhigh | ultra
 model: claude-sonnet-4-6
 ```
 
@@ -4390,6 +4460,48 @@ tools: Read, Glob, Grep
 
 **Por qué no `effort: xhigh` en Sonnet:** patrones de seguridad sutiles (IDOR, timing attacks, second-order injection) requieren el nivel de razonamiento de Opus. En auditorías de seguridad, el costo del error justifica el modelo más capaz disponible.
 
+### Aliases y defaults actuales — Fable 5
+
+Los model IDs cambian entre versiones. La guía usa IDs explícitos — el default puede cambiar sin aviso:
+
+| ID explícito | Rol | ¿Default? |
+|---|---|---|
+| `claude-haiku-4-5` | Tareas estructuradas, bajo costo | — |
+| `claude-sonnet-4-6` | Implementación, debugging | — |
+| `claude-opus-4-8` | Razonamiento profundo, security | — |
+| `claude-fable-5` | Modelo más reciente / alias del CLI | ✅ si no se pineó |
+
+**Regla:** siempre pinear `model:` en el frontmatter del agente. Sin `model:`, el CLI usa el default actual (`claude-fable-5`) — que puede cambiar en cualquier update. Pinear = predecibilidad de costo.
+
+### Fast Mode — inferencia rápida
+
+Disponible en planes Team/Enterprise. No baja la calidad — optimiza la entrega de tokens para reducir latencia y costo en outputs largos.
+
+```json
+{ "fastMode": true }
+```
+
+| Escenario | Activar Fast Mode |
+|---|---|
+| Generador (N archivos en un turno), git, postmortem | ✅ — outputs largos y predecibles |
+| Agente con `effort: xhigh` o `ultra` | ❌ — el beneficio de velocidad compite con el throughput de razonamiento |
+| Reviewer / validator (output corto) | Beneficio marginal — indiferente |
+
+### Extended Context 1M — cuándo vale el costo
+
+Disponible en cloud/Bedrock/Vertex. El costo escala linealmente — no es gratis porque esté disponible.
+
+| Contexto activo | Costo relativo | Usar cuando |
+|---|---|---|
+| 100k (default) | 1× | Siempre como punto de partida |
+| 200k | ~2× | Codebase con N archivos interdependientes |
+| 500k | ~5× | Análisis one-shot de repositorio completo |
+| 1M | ~10× | Solo si fragmentar costaría más (múltiples sesiones + coordinación) |
+
+**Cálculo antes de activar:** ¿cuesta más 1 sesión de 900k (~9×) o 3 sesiones de 300k con coordinación manual? Si la coordinación pesa más → extended justificado. Si no → fragmentar.
+
+**Anti-patrón:** activar extended context "por las dudas" cuando el problema cabe en 100k. El costo es proporcional al contexto activo, no al usado.
+
 ### Anti-patrones frecuentes
 
 | Error | Fix |
@@ -4412,6 +4524,9 @@ tools: Read, Glob, Grep
 □ Opus solo si: security/arch one-shot O contexto > 10k tokens O costo de error es irreversible
 □ Agentes Opus tienen tools mínimas (Read/Grep/Glob) — el costo extra debe estar en razonamiento, no en ejecución
 □ effort: xhigh no en settings.json global — solo en agentes/skills que lo necesitan
+□ Siempre pinear model: explícito — el default (hoy: claude-fable-5) puede cambiar con updates
+□ Fast Mode: activar en generadores/git/postmortem, no en agentes con effort: xhigh o ultra
+□ Extended Context: calcular costo fragmentado vs costo extendido antes de activar
 ```
 
 ---
@@ -4716,6 +4831,29 @@ gh api repos/{owner}/{repo}/branches/main/protection \
 }
 EOF
 ```
+
+### Auto-compaction — qué resume, qué pierde
+
+Claude Code comprime automáticamente el historial cuando el contexto se acerca al límite. Ocurre **sin aviso visual** — la calidad del razonamiento baja antes de que el usuario lo note.
+
+**Qué hace la compaction:** resume el historial previo en un bloque comprimido y mantiene los mensajes recientes sin comprimir. El bloque comprimido es menos detallado que el original.
+
+**Qué sobrevive (y qué no):**
+
+| Tipo de información | ¿Sobrevive? | Por qué |
+|---|---|---|
+| El objetivo principal de la sesión | ✅ | Suficientemente prominente en el resumen |
+| Código escrito en disco | ✅ | No depende del contexto — está en el filesystem |
+| Decisiones de arquitectura mencionadas una vez | ❌ | Se resume a nivel alto, el detalle se pierde |
+| Gotchas y constraints del proyecto | ❌ | Se pierde si no está en CLAUDE.md |
+| Errores y sus fixes | ⚠️ | Solo si fueron recientes (no en la parte comprimida) |
+
+**Preparar el contexto para sobrevivir la compaction:**
+1. Constraints críticos → CLAUDE.md, no solo en el chat
+2. Decisiones one-shot → checkpoint explícito en el output del agente: `Checkpoint: [decisión] · Razón: [por qué]`
+3. Contexto ≥ 70% → activar `/handoff` antes de que la compaction ocurra sola
+
+**Señal de que ya ocurrió:** Claude "olvida" algo mencionado hace más de ~20 mensajes. No es alucinación — el dato quedó en la parte comprimida y no sobrevivió el resumen. Fix: reinjectar explícitamente o hacer handoff.
 
 ### Regla LowCost
 
@@ -5201,6 +5339,69 @@ Un prompt de CCR debe responder estas preguntas sin asumir contexto externo:
 □ Routine visible en https://claude.ai/code/routines
 □ `run_once_at` para tareas únicas en lugar de `cron_expression`
 ```
+
+<!-- §31 -->
+<!-- §31-quick -->
+## 31. Advisor Pattern — validación sin subir de modelo
+
+> Como un sous-chef que revisa el plato antes de que salga a la mesa: no cocina — solo dice si algo está mal. El chef sigue siendo sonnet; el revisor es haiku. El plato mejora sin cambiar al chef Michelin.
+
+El patrón resuelve el dilema "sonnet comete errores, pero opus es 5× más caro". La solución no es subir de modelo — es agregar un segundo agente barato que revisa el output del primero.
+
+### Cuándo aplicar
+
+| Síntoma | Sin advisor | Con advisor |
+|---|---|---|
+| Sonnet genera output que parece correcto pero tiene bugs sutiles | Iterar con sonnet hasta que funcione | haiku detecta y reporta el fallo en un turno |
+| El output de un agente es input del siguiente (pipeline) | Error se propaga silenciosamente | Advisor corta la cadena antes de que escale |
+| Subir a opus parece la única solución | ~5× costo | Sonnet + haiku advisor (~1.15× costo) |
+
+**No aplicar cuando:** ya existe un agente reviewer explícito en el sistema. Dos revisores para lo mismo = costo duplicado sin beneficio.
+
+### Implementación
+
+Dos agentes en secuencia: generator → advisor. El advisor tiene tools mínimas — si puede escribir, ya no es un advisor.
+
+```yaml
+# .claude/agents/advisor.md
+---
+name: advisor
+description: Revisa el output del agente anterior y emite veredicto PASS/FAIL con razón.
+  Invocar después de cualquier generator cuando el output va a ser usado por otro sistema.
+model: claude-haiku-4-5
+tools: Read
+---
+
+Tu único trabajo: revisar el output recibido y emitir un veredicto binario.
+
+Responder SOLO con:
+PASS — [razón en una línea]
+o
+FAIL — [problema específico] — [corrección mínima necesaria]
+
+No generar código. No proponer mejoras. Solo veredicto.
+```
+
+### Flujo en arquitectura multi-agente
+
+```
+@generator → produce output
+@advisor   → PASS o FAIL con razón
+  PASS → continuar al siguiente agente
+  FAIL → reinvocar @generator con el feedback (1 retry máximo)
+         Si vuelve a fallar → el problema es el generator, no el output
+```
+
+El advisor no itera — emite veredicto. Si hacés más de 1 retry, el problema es el design del generator.
+
+### Costo comparado
+
+| Estrategia | Costo relativo | Cuándo |
+|---|---|---|
+| Sonnet solo | 1× | Output predecible, stack conocido |
+| Sonnet + haiku advisor | ~1.15× | Output con consecuencias si está mal |
+| Opus solo | ~5× | Solo si sonnet + advisor sigue fallando |
+| Opus + advisor | ~6× | Raramente tiene sentido |
 
 ---
 

@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.3 · Production-validated · 2026-06-24
+**Author:** Félix Sotelo · **Version:** v5.4 · Production-validated · 2026-06-24
 
 ---
 
@@ -42,9 +42,34 @@
 
 ---
 
-## What's New in v5.3
+## What's New in v5.4
+
+> *Five new instruments in the orchestra: a cost meter (caching), a smarter conductor (model routing), a sous-chef reviewer (Advisor), isolated practice rooms (worktrees), and a safety net before the stage collapses (auto-compaction).*
+
+| Area | Change |
+|---|---|
+| **§3** | Prompt Caching — 90% cost discount on repeated system prompts, TTL behavior, cache read vs creation, design rules |
+| **§25** | Full effort scale (`xlow`→`ultra`), Fable 5 as default alias, Fast Mode toggle, Extended Context 1M cost/benefit framework |
+| **§31 NEW** | Advisor Pattern — haiku reviewing sonnet output at ~1.15× cost vs ~5× for Opus upgrade |
+| **§10** | Worktrees — git-isolated parallel agents, `isolation: "worktree"` in Agent tool |
+| **§27** | Auto-compaction behavior — what survives, what doesn't, how to prepare context before it happens |
+
+<details>
+<summary>v5.3 changes</summary>
 
 > *§7 went from a "no entry" sign to a full keycard system: triage nurse at the door, metal detector on every file write, VIP list at the permission window.*
+
+| Area | Change |
+|---|---|
+| **§7** | 5 permission modes — from read-only audit (`plan`) to full bypass (`bypassPermissions`), with when to use each |
+| **§7** | Complexity routing hook — like a triage nurse: reads the prompt, assigns haiku/sonnet/opus before Claude even starts planning. 0 tokens if no match |
+| **§7** | Secret detection guard — airport scanner for file writes: blocks API keys and credentials before they hit disk, skips `.env.example` and docs |
+| **§7** | PermissionRequest hook — VIP list pattern: Read/Glob/Grep walk in without waiting; everything else goes through the filter |
+
+</details>
+
+<details>
+<summary>v5.2 changes</summary>
 
 | Area | Change |
 |---|---|
