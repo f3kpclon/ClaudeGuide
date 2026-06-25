@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.2 · Validada en producción · §26 dos-tier keywords + §14 catalog anti-pattern + §10 checkpoint · docs validados vs oficial (2026-06-22)
+**Versión:** v5.3 · Validada en producción · §7 seguridad + routing por complejidad + 5 modos de permiso · docs validados vs oficial (2026-06-24)
 
 ---
 
@@ -1344,6 +1344,18 @@ La guía usa `"type": "command"` (Python/shell) en todos los ejemplos. Existen 3
 }
 ```
 
+### Modos de permiso — cuándo usar cada uno
+
+| Modo | Cómo activar | Comportamiento | Cuándo usar |
+|---|---|---|---|
+| `plan` | `"permissionMode": "plan"` | Solo Read/Glob/Grep — 0 writes ni Bash | Auditar antes de ejecutar |
+| `auto` | default | Pide confirmación en acciones destructivas | Trabajo interactivo normal |
+| `acceptEdits` | `"permissionMode": "acceptEdits"` | Auto-aprueba Write/Edit, pide Bash peligroso | Refactors grandes sin riesgo |
+| `dontAsk` | `--dangerously-skip-permissions` | Todo automático, sin interrupciones | CI/CD no interactivo |
+| `bypassPermissions` | Solo config interna | Bypasea hooks y permissions completamente | **Sandboxes aislados únicamente** |
+
+Regla: el modo más restrictivo que permita trabajar sin fricción innecesaria. En producción: nunca `bypassPermissions`.
+
 <!-- §7-ref -->
 ### Template — PreToolUse (bloquear o reescribir)
 
@@ -1790,6 +1802,169 @@ if __name__ == '__main__':
 | `npm install` | Reescribe a `npm ci` | Reproducible, no modifica lockfile |
 | `npm ci` | Permite sin intervención | Seguro por diseño |
 | `npm install <pkg> --ignore-scripts` | Permite | Usuario optó explícitamente |
+
+### Routing por complejidad — modelo según tarea
+
+`UserPromptSubmit` detecta complejidad en el prompt e inyecta una recomendación de modelo antes de que Claude planifique. 0 tokens si no hay match. Opera junto al hook de §26 sin conflicto — ambos usan `UserPromptSubmit` y coexisten.
+
+```python
+#!/usr/bin/env python3
+import json, sys
+
+COMPLEXITY_MAP = [
+    (["typo", "rename", "format", "lint", "mover", "copiar"],
+     "claude-haiku-4-5", None, "simple"),
+    (["bug", "fix", "test", "feature", "añadir", "agregar", "refactor"],
+     "claude-sonnet-4-6", "medium", "media"),
+    (["arquitectura", "diseño", "migración", "seguridad", "critico", "critical"],
+     "claude-sonnet-4-6", "xhigh", "compleja"),
+    (["irreversible", "producción", "production"],
+     "claude-opus-4-8", None, "crítica"),
+]
+
+try:
+    payload = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+
+p = payload.get("prompt", "").lower()
+for keywords, model, effort, label in COMPLEXITY_MAP:
+    if any(k in p for k in keywords):
+        effort_str = f" · effort: {effort}" if effort else ""
+        print(f"[Model hint — complejidad {label}] model: {model}{effort_str}")
+        sys.exit(0)
+```
+
+```json
+{"UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 .claude/hooks/complexity_router.py"}]}]}
+```
+
+**Alcance:** la recomendación llega a Claude como contexto — la usa al lanzar subagentes. No cambia el modelo del CLI (para eso: `/model`).
+
+| Keyword detectada | Modelo | Effort |
+|---|---|---|
+| typo, rename, format, lint | haiku | — |
+| bug, fix, feature, test | sonnet | medium |
+| arquitectura, diseño, seguridad | sonnet | xhigh |
+| irreversible, producción | opus | — |
+
+### Secret detection guard — credenciales en archivos
+
+Bloquea `Write`, `Edit` y `MultiEdit` si el contenido tiene API keys o credenciales antes de que se escriban al disco.
+
+```python
+#!/usr/bin/env python3
+import json, sys, re
+
+SECRET_PATTERNS = [
+    (r'AKIA[0-9A-Z]{16}',                'AWS Access Key'),
+    (r'sk-ant-api[A-Za-z0-9_\-]{80,}',   'Anthropic API Key'),
+    (r'sk-[A-Za-z0-9]{48}',              'OpenAI API Key'),
+    (r'ghp_[A-Za-z0-9]{36}',             'GitHub Personal Token'),
+    (r'(?i)(?:password|api_key|secret_key)\s*[=:]\s*["\']?[A-Za-z0-9+/=_\-]{12,}',
+     'Credential assignment'),
+]
+
+SAFE_PATHS = ('.env.example', '.env.template', 'README', '.md', 'docs/')
+
+def extract_content(tool: str, inp: dict) -> str:
+    if tool == 'MultiEdit':
+        return '\n'.join(e.get('new_str', '') for e in inp.get('edits', []) if isinstance(e, dict))
+    return inp.get('content', '') or inp.get('new_str', '')
+
+def main():
+    try:
+        data = json.load(sys.stdin)
+    except Exception:
+        sys.exit(0)
+
+    tool = data.get('tool_name', '')
+    if tool not in ('Write', 'Edit', 'MultiEdit'):
+        sys.exit(0)
+
+    inp     = data.get('tool_input', {})
+    path    = inp.get('file_path', '') or inp.get('path', '')
+    content = extract_content(tool, inp)
+
+    if not content or any(s in path for s in SAFE_PATHS):
+        sys.exit(0)
+
+    hits = [label for pattern, label in SECRET_PATTERNS if re.search(pattern, content)]
+    if not hits:
+        sys.exit(0)
+
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": (
+            f"Credencial detectada en {path or 'archivo'}:\n"
+            + "\n".join(f"• {h}" for h in hits)
+            + "\nUsar variables de entorno o secret manager — nunca hardcodear."
+        )
+    }}))
+    sys.exit(0)
+
+if __name__ == '__main__':
+    main()
+```
+
+```json
+{"PreToolUse": [{"matcher": "Write|Edit|MultiEdit",
+  "hooks": [{"type": "command", "command": "python3 .claude/hooks/secret_guard.py",
+    "statusMessage": "Verificando credenciales..."}]}]}
+```
+
+Paths excluidos: `.env.example`, `.env.template`, README, `.md`, `docs/` — pueden mostrar ejemplos sin riesgo real.
+
+### PermissionRequest — auto-aprobar acciones conocidas
+
+Reduce interrupciones aprobando herramientas y comandos read-only automáticamente, sin afectar el control sobre acciones destructivas.
+
+```python
+#!/usr/bin/env python3
+import json, sys, re
+
+AUTO_APPROVE_TOOLS = {'Read', 'Glob', 'Grep', 'LS'}
+
+SAFE_BASH_PATTERNS = [
+    r'^git\s+(status|log|diff|branch|show|fetch)',
+    r'^ls\b', r'^cat\b', r'^echo\b',
+    r'^python3?\s+-m\s+pytest\b',
+    r'^npm\s+(test|run\s+lint|run\s+build)\b',
+]
+
+def main():
+    try:
+        data = json.load(sys.stdin)
+    except Exception:
+        sys.exit(0)
+
+    tool = data.get('tool_name', '')
+
+    if tool in AUTO_APPROVE_TOOLS:
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PermissionRequest",
+            "permissionDecision": "allow"}}))
+        sys.exit(0)
+
+    if tool == 'Bash':
+        cmd   = data.get('tool_input', {}).get('command', '')
+        first = re.split(r'\s*&&|\s*\|\||\s*;', cmd)[0].strip()
+        if any(re.match(p, first) for p in SAFE_BASH_PATTERNS):
+            print(json.dumps({"hookSpecificOutput": {"hookEventName": "PermissionRequest",
+                "permissionDecision": "allow"}}))
+            sys.exit(0)
+
+    sys.exit(0)  # → pedir al usuario (default)
+
+if __name__ == '__main__':
+    main()
+```
+
+```json
+{"PermissionRequest": [{"hooks": [{"type": "command",
+  "command": "python3 .claude/hooks/permission_request.py"}]}]}
+```
+
+Cuándo extender `AUTO_APPROVE_TOOLS`: solo cuando el comando es objetivamente read-only y se ejecuta frecuentemente. Nunca auto-aprobar `Write`, `Bash(rm *)` ni pushes.
 
 ---
 
@@ -2460,7 +2635,6 @@ Estos componentes se crean **siempre**, sin pasar por el árbol de decisiones:
 
 | Componente | Por qué es always-YES |
 |---|---|
-| `curator` | Siempre se CREA cuando hay learnings. La restricción de §14 aplica a *correrlo* (< 3 meses), no a crearlo. |
 | `postmortem` | Necesario desde la primera sesión. Anti-overkill no aplica: no esperás a que ocurra para tenerlo. |
 | `learnings-general.md` | Siempre generar. Split por dominio solo cuando supera 150 líneas. |
 | `pre_write_guard` | Cualquier proyecto con file writes. Consecuencia real si se omite. |
@@ -2475,7 +2649,7 @@ Estos componentes se crean **siempre**, sin pasar por el árbol de decisiones:
 | Hook | La regla no tiene consecuencias reales si se ignora | Regla en el prompt del agente |
 | Pre-layer (preflight) | Solo dev con inputs claros | Dispatch directo desde CLAUDE.md |
 | Plugin | El código se usa en un solo proyecto | Agente/skill local |
-| Curador | Restricción: < 3 meses o < 150 líneas → no *correrlo* todavía (pero sí crearlo) | Esperar al primer umbral |
+| Curador | Proyecto corto (< 1 mes esperado) Y < 3 agentes en spec | Learnings file sin agente — curar manualmente si hace falta |
 | Learnings file nuevo | Hay < 5 entries que justifiquen el archivo | Agregarlas a `learnings-general.md` |
 | Scope file nuevo | El sistema tiene < 3 decisiones de diseño | Agregarlas al scope-index.md |
 | Hub skill | CLAUDE.md ya tiene el dispatch completo y ≤5 agentes | `skillOverrides: user-invocable-only` |
@@ -3895,7 +4069,14 @@ Cada token en el system prompt se cobra en cada llamada:
 | validator | haiku | ≤ 600 tokens | Solo checklist — debe ser compacto |
 | curator | haiku | ≤ 400 tokens | Lee archivos, poco contexto propio |
 
-Medir: `python -c "import anthropic; c=anthropic.Anthropic(); print(c.messages.count_tokens(model=\'claude-haiku-4-5-20251001\', system=open(\'.claude/agents/architect.md\').read(), messages=[]))"`
+Medir: `python -c "import anthropic; c=anthropic.Anthropic(); print(c.messages.count_tokens(model='claude-haiku-4-5', system=open('.claude/agents/architect.md').read(), messages=[]))"`
+
+**max_tokens por rol** — sin streaming el SDK hace timeout alrededor de 16K:
+
+| Agente | Streaming | max_tokens | Por qué |
+|---|---|---|---|
+| generator | ✅ sí | 64 000 | Escribe N archivos en un solo turn — sin streaming se trunca silenciosamente |
+| architect · validator | ❌ no | 4 096 | Turns cortos; streaming agrega complejidad sin beneficio |
 
 ### Anti-alucinación: checklist vs generación libre
 
@@ -4910,7 +5091,7 @@ Cada pieza tiene su sección de referencia. Nada se inventó solo — todo se co
 
 | Tarea | Modelo |
 |---|---|
-| Mantenimiento / curation / deduplicación | `claude-haiku-4-5-20251001` |
+| Mantenimiento / curation / deduplicación | `claude-haiku-4-5` |
 | Análisis de código / PR review automático | `claude-sonnet-4-6` |
 | Tareas complejas multi-step | `claude-sonnet-4-6` |
 
@@ -4938,7 +5119,7 @@ Sin GitHub conectado → el campo `sources: [{git_repository: {url: ...}}]` del 
     "ccr": {
       "environment_id": "env_XXXXX",
       "session_context": {
-        "model": "claude-haiku-4-5-20251001",
+        "model": "claude-haiku-4-5",
         "sources": [
           {"git_repository": {"url": "https://github.com/org/repo"}}
         ],

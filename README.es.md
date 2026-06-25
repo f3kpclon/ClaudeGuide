@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.2 · Validada en producción · 2026-06-22
+**Versión:** v5.3 · Validada en producción · 2026-06-24
 
 ---
 
@@ -33,7 +33,7 @@
 |---|---|
 | Crear un agente | §5 — formato, modelo, tools, trigger list |
 | Crear una skill | §6 — tipos, lifecycle, `context:fork`, frontmatter completo |
-| Crear un hook | §7 — 10 eventos, `updatedInput`, npm security guard |
+| Crear un hook | §7 — 10 eventos, 5 modos de permiso, secret guard, routing por complejidad |
 | Armar un plugin distribuible | §11 — estructura, plugin.json, instalación |
 | Configurar learnings + curador | §9 — flujo postmortem → learnings → curador |
 | Diseñar arquitectura multi-agente | §10 — lead, especialistas, flujo de trabajo |
@@ -50,7 +50,19 @@
 
 ---
 
-## Novedades en v5.2
+## Novedades en v5.3
+
+> *§7 pasó de ser el cartel de "prohibido entrar" a un sistema completo: enfermera de triage en la puerta, escáner en cada escritura, lista VIP en la ventanilla de permisos.*
+
+| Área | Cambio |
+|---|---|
+| **§7** | 5 modos de permiso — desde auditoría read-only (`plan`) hasta bypass total (`bypassPermissions`), con cuándo usar cada uno |
+| **§7** | Routing por complejidad — como la enfermera de triage: lee el prompt, asigna haiku/sonnet/opus antes de que Claude empiece a planificar. 0 tokens si no hay match |
+| **§7** | Secret detection guard — escáner de aeropuerto para escrituras: bloquea API keys y credenciales antes de que toquen el disco, ignora `.env.example` y docs |
+| **§7** | Hook PermissionRequest — patrón lista VIP: Read/Glob/Grep entran directo; el resto pasa por el filtro |
+
+<details>
+<summary>Novedades en v5.2</summary>
 
 | Área | Cambio |
 |---|---|
@@ -58,6 +70,8 @@
 | **§26** | Detección en dos tiers para hooks `UserPromptSubmit` de plugin (símbolos + proximidad) |
 | **§14** | Nuevo anti-patrón: agente con secciones `## Catalog` que almacenan API shapes completas |
 | **§10** | Checkpoint de delegación del lead — el estado vive en la conversación, no en el filesystem |
+
+</details>
 
 <details>
 <summary>Novedades en v5.0</summary>

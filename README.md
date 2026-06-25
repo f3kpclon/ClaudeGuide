@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.2 · Production-validated · 2026-06-22
+**Author:** Félix Sotelo · **Version:** v5.3 · Production-validated · 2026-06-24
 
 ---
 
@@ -27,7 +27,7 @@
 |---|---|
 | Create an agent | §5 — Agents |
 | Create a skill | §6 — Skills (types, lifecycle, `context:fork`) |
-| Create a hook | §7 — Hooks (10 events, npm security guard) |
+| Create a hook | §7 — Hooks (10 events, 5 permission modes, secret guard, complexity routing) |
 | Build a distributable plugin | §11 — Plugin |
 | Design multi-agent architecture | §10 — Multi-agent |
 | Choose the right model | §25 — Model selection + `effort` |
@@ -42,7 +42,19 @@
 
 ---
 
-## What's New in v5.2
+## What's New in v5.3
+
+> *§7 went from a "no entry" sign to a full keycard system: triage nurse at the door, metal detector on every file write, VIP list at the permission window.*
+
+| Area | Change |
+|---|---|
+| **§7** | 5 permission modes — from read-only audit (`plan`) to full bypass (`bypassPermissions`), with when to use each |
+| **§7** | Complexity routing hook — like a triage nurse: reads the prompt, assigns haiku/sonnet/opus before Claude even starts planning. 0 tokens if no match |
+| **§7** | Secret detection guard — airport scanner for file writes: blocks API keys and credentials before they hit disk, skips `.env.example` and docs |
+| **§7** | PermissionRequest hook — VIP list pattern: Read/Glob/Grep walk in without waiting; everything else goes through the filter |
+
+<details>
+<summary>v5.2 changes</summary>
 
 | Area | Change |
 |---|---|
@@ -50,6 +62,8 @@
 | **§26** | Two-tier keyword detection for plugin-level `UserPromptSubmit` hooks (domain symbols + proximity) |
 | **§14** | New anti-pattern: agent with `## Catalog` sections storing full API shapes |
 | **§10** | Lead delegation checkpoint — state lives in conversation, not filesystem |
+
+</details>
 
 <details>
 <summary>v5.0 changes</summary>
