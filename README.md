@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.7 · Production-validated · 2026-06-24
+**Author:** Félix Sotelo · **Version:** v5.8 · Production-validated · 2026-06-25
 
 ---
 
@@ -42,7 +42,16 @@
 
 ---
 
-## What's New in v5.5
+## What's New in v5.8
+
+> *§6 now explains the two visibility axes (`disable-model-invocation` × `user-invocable`) as orthogonal flags, adds the 2×2 combination matrix, and introduces the "internal library" skill pattern with its template.*
+
+| Area | Change |
+|---|---|
+| **§6** | Two-axis visibility model — `disable-model-invocation` vs `user-invocable` explained as independent flags, 2×2 matrix of the 4 combinations, new "Librería interna" template |
+
+<details>
+<summary>v5.7 changes</summary>
 
 > *§3 got a triage desk (quick/ref split). §20 learned to hire Claude as a contractor, not just test the office. The rest filled in the missing instruments from last round.*
 
@@ -50,6 +59,20 @@
 |---|---|
 | **§3** | quick/ref split — estimation tables up front, godot benchmarks and detailed caching examples in ref |
 | **§20** | Claude-in-CI: `--print` + `--dangerously-skip-permissions` patterns, `@claude` comment trigger, cost-per-trigger table with model guidance |
+
+</details>
+
+<details>
+<summary>v5.5 changes</summary>
+
+> *§3 got a triage desk (quick/ref split). §20 learned to hire Claude as a contractor, not just test the office.*
+
+| Area | Change |
+|---|---|
+| **§3** | quick/ref split — estimation tables up front, godot benchmarks and detailed caching examples in ref |
+| **§20** | Claude-in-CI: `--print` + `--dangerously-skip-permissions` patterns, `@claude` comment trigger, cost-per-trigger table with model guidance |
+
+</details>
 
 <details>
 <summary>v5.4 changes</summary>

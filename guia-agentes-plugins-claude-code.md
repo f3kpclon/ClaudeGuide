@@ -938,6 +938,22 @@ Investigar $ARGUMENTS:
 3. Resumir hallazgos con referencias exactas de archivo:línea
 ```
 
+---
+
+**Librería interna** — invocada solo por otra skill o agente, nunca directamente:
+```markdown
+---
+name: <dominio>-lib
+description: "<Qué contiene> — uso interno del hub, no invocar directamente."
+disable-model-invocation: true   # el modelo no la ve ni la activa sola
+user-invocable: false            # el usuario no puede /nombre
+allowed-tools: []
+---
+
+<Contenido compartido entre skills — convenciones, mapas, constantes>
+```
+> Solo tiene sentido si otra skill o CLAUDE.md la menciona por nombre explícitamente. Sin esa referencia, es inalcanzable.
+
 ### Tipos y configuración
 
 | Tipo | `disable-model-invocation` | Tamaño | Qué ve Claude en contexto |
@@ -947,6 +963,30 @@ Investigar $ARGUMENTS:
 | Template | `true` | Sin límite práctico | **Nada** — igual que referencia, nunca en contexto activo |
 
 > **Analogía:** `disable-model-invocation: true` no es "no activar" — es quitar la etiqueta del estante. El recetario sigue ahí, pero Claude no sabe ni que existe. Un hub con `false` es el libro de recetas abierto en la cocina — visible siempre. Una skill de referencia con `true` es el manual técnico en el cajón — gratis en tokens hasta que alguien lo pide.
+
+### Los dos ejes de visibilidad
+
+Son flags independientes en el frontmatter — cada uno controla un eje distinto:
+
+| Flag | Eje que controla | `true` = |
+|---|---|---|
+| `disable-model-invocation` | Si el **modelo** puede auto-invocarla | El modelo no ve nombre ni descripción — la skill no existe para él |
+| `user-invocable` | Si el **usuario** puede `/nombre` | No aparece en autocomplete — el usuario no puede invocarla directamente |
+
+**Las 4 combinaciones:**
+
+| `disable-model-invocation` | `user-invocable` | Patrón | Quién la activa |
+|---|---|---|---|
+| `false` | `true` (omitir) | Hub / dispatch | Modelo o usuario |
+| `true` | `true` (omitir) | Referencia | Solo el usuario con `/nombre` |
+| `false` | `false` | Auto-cargada | Solo el modelo — el usuario no puede sobreescribir |
+| `true` | `false` | Librería interna | Solo otra skill/agente que la nombre explícitamente |
+
+> La combinación `disable-model-invocation: true` + `user-invocable: false` es el "ingrediente secreto" en la alacena: ni el cocinero principal ni el cliente lo ven en el menú. Solo el sous-chef que sabe que existe lo busca directamente.
+
+**Cuándo usar `user-invocable: false`:** cuando la skill es un componente interno (convenciones compartidas, mapas de constantes) que no debe aparecer como comando disponible para el usuario, pero que el hub o CLAUDE.md referencian por nombre. Sin esa referencia explícita, la skill es inalcanzable.
+
+> `skillOverrides` en `settings.json` sobreescribe estos flags en runtime sin editar el archivo — útil para desactivar una skill en un proyecto específico sin tocar el plugin.
 
 ### Controlar cuándo una skill se activa — `skillOverrides`
 
