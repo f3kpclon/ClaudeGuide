@@ -2,7 +2,7 @@
 *Haz que Claude sepa dónde está parado antes de que digas una sola palabra.*
 
 **Autor:** Félix Sotelo
-**Versión:** v1.0 · 2026-06-05
+**Versión:** v1.1 · 2026-06-25
 
 ---
 
@@ -21,6 +21,8 @@
 5. **§5 — Búsqueda cross-repo** → encuentra módulos en todos tus proyectos
 6. **§6 — Filosofía LowCost** → por qué esto importa en tokens y dinero
 7. **§7 — Referencia rápida** → comandos y flags
+8. **§8 — Comandos avanzados** → watch, status, clear, index-all
+9. **§9 — Servidor MCP** → integración con Claude Desktop y otros clientes
 
 ---
 
@@ -131,15 +133,17 @@ Claude lee este archivo al inicio de cada sesión. Es su mapa del territorio.
 | `pyproject.toml`, `setup.py`, `requirements.txt` | Python |
 | `go.mod` | Go |
 | `Package.swift` | Swift (SPM) |
-| `*.xcodeproj`, `*.xcworkspace` | Swift (Xcode) |
 | `Cargo.toml` | Rust |
-| `package.json` | Node |
+| `package.json` | Node / TypeScript |
 | `project.godot` | Godot |
 | `Gemfile` | Ruby |
 | `mix.exs` | Elixir |
+| `build.gradle`, `pom.xml` | Java / Kotlin |
+| `pubspec.yaml` | Dart / Flutter |
+| `CMakeLists.txt` | C / C++ |
 | `Dockerfile` | Docker |
 
-Si no hay ningún manifiesto conocido pero hay una carpeta `.claude/`, también indexa.
+Si no hay manifiesto conocido, el stack se infiere por extensiones de archivo (`.cs` → C#, `.lua` → Lua, etc.).
 
 ### El cache
 
@@ -160,11 +164,13 @@ El hook es la pieza que convierte la herramienta en algo invisible y automático
 
 ### Cómo funciona
 
-Cada vez que abres Claude Code en un proyecto, el hook corre `index index .` automáticamente. Si el proyecto cambió (nuevo manifiesto, contenido modificado), regenera el INDEX.md. Si no cambió, termina en milisegundos.
+Cada vez que abres Claude Code en un proyecto, el hook SessionStart lee el `INDEX.md` del proyecto y lo inyecta como `additionalContext` en la sesión. El INDEX.md lo regenera `index index .` — el hook solo lo sirve, no lo genera.
 
-El hook activa si:
-- Encuentra un manifiesto conocido (`Package.swift`, `go.mod`, `project.godot`, `*.xcodeproj`, etc.)
-- O existe una carpeta `.claude/` en el directorio
+Para que el flujo sea completamente automático, lo recomendado es combinar ambos:
+- Hook SessionStart → inyecta el INDEX.md existente
+- Hook PostToolUse/PreToolUse (opcional) → llama `index index .` para mantener el INDEX.md fresco
+
+`index install` configura ambas piezas automáticamente.
 
 ```bash
 # ~/.claude/hooks/inject-index.sh — se corre en cada SessionStart
@@ -255,8 +261,8 @@ index index /ruta/al/proyecto
 # Indexar y forzar regeneración aunque no haya cambios
 index index /ruta/al/proyecto --force
 
-# Indexar con output personalizado
-index index /ruta/al/proyecto --output /ruta/INDEX.md
+# Indexar con directorio de output personalizado
+index index /ruta/al/proyecto --output /ruta/al/directorio
 
 # Buscar módulos en todos los repos indexados
 index search "query"
@@ -285,3 +291,105 @@ cd ~/Desktop/codebase-indexer
 git pull
 pipx install . --force
 ```
+
+---
+
+<!-- §8 -->
+## §8 — Comandos avanzados
+
+### `index-all` — indexar múltiples repos de una vez
+
+```bash
+index index-all ~/Desktop          # busca repos git hasta 4 niveles de profundidad
+index index-all ~/Desktop --depth 2
+index index-all ~/Desktop --json   # output JSON con lista de repos indexados
+```
+
+Útil para el setup inicial cuando tienes muchos proyectos. Detecta automáticamente carpetas con `.git/`.
+
+### `watch` — modo vigilante
+
+```bash
+index watch .
+index watch ~/Desktop/mi-proyecto --delay 3   # 3 segundos de debounce
+```
+
+Mantiene el INDEX.md siempre actualizado mientras trabajas. Detecta cambios en manifiestos y estructura de carpetas y re-indexa automáticamente. Requiere `watchdog`:
+
+```bash
+pip install 'claude-index[watch]'
+```
+
+### `status` — ver qué repos están indexados
+
+```bash
+index status
+index status --json
+```
+
+Muestra cada repo con su último timestamp y si el caché está al día (`[current]`) o desactualizado (`[stale]`).
+
+### `clear` — limpiar el índice
+
+```bash
+index clear .          # borra este repo del índice
+index clear            # borra todos los repos del índice
+```
+
+No borra el INDEX.md del proyecto, solo la entrada en SQLite.
+
+---
+
+<!-- §9 -->
+## §9 — Servidor MCP
+
+`codebase-indexer` incluye un servidor MCP que expone la búsqueda como herramienta para cualquier cliente compatible (Claude Desktop, agentes, etc.).
+
+### Instalación
+
+```bash
+pip install 'claude-index[mcp]'
+```
+
+### Herramientas disponibles
+
+| Herramienta | Descripción |
+|---|---|
+| `search_index(query, repo_path?)` | FTS5 sobre módulos, símbolos y eventos. `repo_path` opcional para filtrar por repo. |
+| `get_event_graph(repo_path?)` | Grafo de eventos agrupado por nombre: quién emite y quién escucha. |
+
+### Configurar en Claude Desktop
+
+```json
+{
+  "mcpServers": {
+    "codebase-indexer": {
+      "command": "index-mcp"
+    }
+  }
+}
+```
+
+Si la DB está en una ruta no estándar:
+
+```json
+{
+  "mcpServers": {
+    "codebase-indexer": {
+      "command": "index-mcp",
+      "env": { "CODEBASE_INDEXER_DB": "/ruta/a/index.db" }
+    }
+  }
+}
+```
+
+### Ejemplo de uso
+
+Con el servidor activo, Claude puede responder preguntas como:
+
+```
+Tú: ¿en qué repos tengo algo relacionado con "auth"?
+Claude: [llama search_index("auth")] → encontré AuthService en mach-ios y auth_middleware en backend-api
+```
+
+> El MCP comparte la misma DB SQLite que el CLI. Un `index index .` actualiza ambos.
