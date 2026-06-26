@@ -55,6 +55,7 @@
 - [§5 — Agentes](#5-agentes)
 - [§7 — Hooks](#7-hooks)
 - [§6 — Skills](#6-skills)
+  - [Los dos ejes de visibilidad](#los-dos-ejes-de-visibilidad)
 - [§8 — Scope del proyecto](#8-scope-del-proyecto)
 - [§9 — Learnings](#9-learnings)
 - [§10 — Arquitectura multi-agente](#10-arquitectura-multi-agente)
