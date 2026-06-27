@@ -2189,6 +2189,24 @@ No todo learning tiene que estar en el archivo. Los más críticos deben vivir i
 
 El archivo de learnings es la **fuente de verdad histórica** — contiene todas las entradas con fecha y causa. El inline es un **subconjunto activo** — los top 5-10 gotchas que no deben olvidarse en ninguna tarea.
 
+### Learnings en plugins distribuibles
+
+Si usas un plugin distribuible, los learnings viven en el **proyecto que instaló el plugin**, no en el repo del plugin:
+
+```
+proyecto-nebula/
+└── .claude/
+    └── learnings/          ← aquí, no en el repo del plugin
+        ├── learnings-api.md
+        └── learnings-general.md
+```
+
+Esto significa que:
+- `claude plugin sync` nunca sobreescribe los learnings del dev
+- Cada proyecto tiene su propia historia — los errores de Nebula no aparecen en otro proyecto
+- El curador (`@design-curador`) corre localmente con `Path.cwd() / ".claude" / "learnings"` como base
+- Un CCR **no puede** curar estos learnings — viven en el filesystem local, no en el repo
+
 ### Template — learnings-\<dominio\>.md
 
 No arrancar con archivos vacíos — poblar con lecciones conocidas del stack desde el día 1:
@@ -2529,6 +2547,37 @@ claude --plugin-dir ./plugins/mi-plugin   # cargar sin instalar
 ```
 
 > **[2026-06-02] design-ios:** `marketplace.json` en la raíz es REQUERIDO para el flujo "Browse plugins" del desktop app — no es un archivo opcional ni de metadata. Eliminarlo rompe la instalación UI para todos los usuarios del equipo. Error: confundirlo con dead weight porque la guía no lo mencionaba.
+
+### Trampas de distribución
+
+**Learnings no van en el repo del plugin.**
+Si los learnings están en git dentro del plugin, `claude plugin sync` los sobreescribe en todos los repos que lo usan. Los learnings deben vivir en `.claude/learnings/` del **proyecto que instaló el plugin**.
+
+En hooks, reemplazar:
+```python
+PLUGIN_ROOT = Path(__file__).parent.parent          # ❌ apunta al plugin
+PLUGIN_ROOT.glob("learnings/learnings-*.md")
+```
+Por:
+```python
+LEARNINGS_DIR = Path.cwd() / ".claude" / "learnings" # ✅ proyecto destino
+LEARNINGS_DIR.glob("learnings-*.md")
+```
+
+**Plan flags deben scopearse por proyecto.**
+`~/.claude/design-plan-approved.flag` es global — si hay dos proyectos abiertos, el plan de uno habilita el gate del otro. Scopear con hash del CWD:
+```python
+_proj = hashlib.md5(str(Path.cwd()).encode()).hexdigest()[:8]
+_PLAN_FLAG = Path.home() / ".claude" / f"design-plan-approved-{_proj}.flag"
+```
+
+**Los CCR no pueden curar learnings per-project.**
+Un cloud agent clona el repo desde GitHub — no tiene acceso a `.claude/learnings/` local del dev. Si los learnings son per-project, el curador debe correr localmente (hook de SessionStart con aviso por fecha) o invocarse manualmente.
+
+**Agentes leen archivos innecesarios sin constraint explícito.**
+Sin instrucción de "no leas componentes existentes", el modelo lee 2-4 archivos de referencia antes de crear uno nuevo — aunque la template ya contenga el patrón. Fix: añadir sección `## Archivos a leer (y nada más)` en cada agente especialista.
+
+> **[2026-06-27] design-ios:** `PLUGIN_ROOT = Path(__file__).parent.parent` en hooks apunta al directorio del plugin instalado, no al proyecto destino. Todos los paths que deben ser per-project (learnings, plan flags) necesitan usar `Path.cwd()` como base.
 
 ---
 
@@ -5408,7 +5457,9 @@ Cada pieza tiene su sección de referencia. Nada se inventó solo — todo se co
 
 | Caso | Solución correcta |
 |---|---|
-| Tarea periódica sobre el repo (curar learnings, health check) | CCR — `/schedule` |
+| Tarea periódica sobre el repo (health check, análisis de código) | CCR — `/schedule` |
+| Curar learnings per-project (en `.claude/learnings/`) | Hook local — CCR no tiene acceso al filesystem local |
+| Curar learnings en el repo (si están en git) | CCR — clona el repo y los lee directamente |
 | Acción automática en respuesta a un evento del usuario | Hook local `UserPromptSubmit`/`PostToolUse` |
 | Tarea única programada ("mañana a las 9am") | CCR con `run_once_at` |
 | Acción que necesita acceso al filesystem local | Hook local — los CCR no tienen acceso |
