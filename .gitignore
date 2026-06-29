@@ -1,6 +1,7 @@
 DS_Store
 _discoveries.md
 *.tmp
+CLAUDE.local.md
 .codebase-indexer-cache.json
 .claude/settings.local.json
 .claude/index/

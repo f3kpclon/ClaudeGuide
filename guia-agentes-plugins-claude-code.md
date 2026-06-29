@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.9 · §32 nuevo — CLAUDE.local.md, output-styles/, rules/ con ejemplos, settings.local.json + tabla de distribución en plugins (2026-06-28)
+**Versión:** v5.9 · §32 nuevo — CLAUDE.local.md, output-styles/, rules/ con ejemplos, settings.local.json + tabla de distribución en plugins · hooks globales + README actualizados (2026-06-28)
 
 ---
 

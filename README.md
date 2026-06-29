@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.8 · Production-validated · 2026-06-25
+**Author:** Félix Sotelo · **Version:** v5.9 · Production-validated · 2026-06-28
 
 ---
 
@@ -39,16 +39,32 @@
 | Know when to stop optimizing | §23 — Real token ceilings |
 | Validate what I built | §13 — Quality checklist |
 | Avoid the most expensive mistakes | §12 — Common errors |
+| Use CLAUDE.local.md / output-styles / rules / settings.local.json | §32 — The undocumented files |
 
 ---
 
-## What's New in v5.8
+## What's New in v5.9
+
+> *§32 maps the four files nobody talks about: CLAUDE.local.md (personal gitignored overrides), output-styles/ (response shape on tap, 30-50% output token savings), rules/ (glob-scoped domain rules with practical examples), and settings.local.json (personal permissions). Includes a plugin distribution table so you know what to ship and what to keep local.*
+
+| Area | Change |
+|---|---|
+| **§32 NEW** | `CLAUDE.local.md` — personal gitignored override, wins over `CLAUDE.md` on conflict |
+| **§32 NEW** | `output-styles/` — `terse.md` / `verbose.md` templates, 30-50% output token savings in code agents |
+| **§32 NEW** | `rules/` — glob-scoped with `api.md` and `tests.md` practical examples, decision table vs `CLAUDE.md` |
+| **§32 NEW** | `settings.local.json` — personal permissions, gitignored by design |
+| **§32 NEW** | Plugin distribution table — what to ship (`rules/`, `output-styles/`, `settings.json`) vs what to keep local |
+
+<details>
+<summary>v5.8 changes</summary>
 
 > *§6 now explains the two visibility axes (`disable-model-invocation` × `user-invocable`) as orthogonal flags, adds the 2×2 combination matrix, and introduces the "internal library" skill pattern with its template.*
 
 | Area | Change |
 |---|---|
 | **§6** | Two-axis visibility model — `disable-model-invocation` vs `user-invocable` explained as independent flags, 2×2 matrix of the 4 combinations, new "Librería interna" template |
+
+</details>
 
 <details>
 <summary>v5.7 changes</summary>

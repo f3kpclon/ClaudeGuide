@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.7 · Validada en producción · 2026-06-24
+**Versión:** v5.9 · Validada en producción · 2026-06-28
 
 ---
 
@@ -47,10 +47,35 @@
 | Saber cuándo parar de optimizar | §23 — techos reales de tokens y palancas por impacto |
 | Evitar los errores más caros | §12 — primera tabla |
 | Validar lo que construí | §13 — checklist de calidad |
+| Usar CLAUDE.local.md / output-styles / rules / settings.local.json | §32 — Archivos que nadie documenta |
 
 ---
 
-## Novedades en v5.5
+## Novedades en v5.9
+
+> *§32 mapea los cuatro archivos que nadie documenta: CLAUDE.local.md (override personal gitignored), output-styles/ (formato de respuesta on tap, 30-50% menos tokens de output), rules/ (reglas glob-scoped con ejemplos prácticos), y settings.local.json (permissions personales). Incluye tabla de distribución en plugins.*
+
+| Área | Cambio |
+|---|---|
+| **§32 NUEVO** | `CLAUDE.local.md` — override personal gitignored, gana sobre `CLAUDE.md` en conflicto |
+| **§32 NUEVO** | `output-styles/` — templates `terse.md` / `verbose.md`, 30-50% menos tokens de output en agentes de código |
+| **§32 NUEVO** | `rules/` — glob-scoped con ejemplos `api.md` y `tests.md`, tabla de decisión vs `CLAUDE.md` |
+| **§32 NUEVO** | `settings.local.json` — permissions personales gitignored por diseño |
+| **§32 NUEVO** | Tabla de distribución en plugins — qué se distribuye (`rules/`, `output-styles/`, `settings.json`) vs qué se queda local |
+
+<details>
+<summary>Novedades en v5.8</summary>
+
+> *§6 explica los dos ejes de visibilidad (`disable-model-invocation` × `user-invocable`) como flags ortogonales, agrega la matriz 2×2 y el patrón "librería interna" con template.*
+
+| Área | Cambio |
+|---|---|
+| **§6** | Modelo de dos ejes de visibilidad — `disable-model-invocation` vs `user-invocable` como flags independientes, matriz 2×2, template "Librería interna" |
+
+</details>
+
+<details>
+<summary>Novedades en v5.5</summary>
 
 > *§3 tiene ahora mostrador de triage (split quick/ref). §20 aprendió a contratar a Claude como operario en CI, no solo a testear la oficina. El resto completó los instrumentos que faltaban.*
 
