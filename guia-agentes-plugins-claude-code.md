@@ -4823,8 +4823,15 @@ try:
 except Exception:
     sys.exit(0)
 
-sections = detect_sections(payload.get("prompt", ""))
-max_lines = LINES_BUDGET // len(sections) if sections else LINES_BUDGET
+sid = payload.get("session_id") or payload.get("transcript_path", "").split("/")[-1].replace(".jsonl", "")
+seen_file = Path(f"/tmp/guia_seen_{sid}.json") if sid else None
+already_seen = set(json.loads(seen_file.read_text())) if seen_file and seen_file.exists() else set()
+
+sections = [n for n in detect_sections(payload.get("prompt", "")) if n not in already_seen]
+if not sections:
+    sys.exit(0)
+
+max_lines = LINES_BUDGET // len(sections)
 parts = []
 for n in sections:
     content = extract_section(n, max_lines)
@@ -4833,6 +4840,8 @@ for n in sections:
 
 if parts:
     print("\n\n".join(parts))
+    if seen_file:
+        seen_file.write_text(json.dumps(list(already_seen | set(sections))))
 ````
 
 **2. Permisos**
@@ -4874,12 +4883,28 @@ El KEYWORD_MAP no se actualiza solo — cada sección nueva que no tenga entry q
 
 **Budget adaptativo — cómo funciona:**
 ```python
-LINES_BUDGET = 120  # presupuesto total fijo
-# 1 sección encontrada → 120 líneas (máximo detalle)
-# 2 secciones encontradas → 60 líneas cada una (120 total)
+LINES_BUDGET = 80   # presupuesto total fijo
+# 1 sección encontrada → 80 líneas (máximo detalle)
+# 2 secciones encontradas → 40 líneas cada una (80 total)
 ```
 
-Si una sección quick tiene < 60 líneas, se sirve completa. El budget solo limita secciones largas — no trunca lo que ya es conciso.
+Si una sección quick tiene < 40 líneas, se sirve completa. El budget solo limita secciones largas — no trunca lo que ya es conciso.
+
+### Deduplicación por sesión
+
+Sin deduplicación, un tema recurrente (ej. "handoff") inyecta la misma sección en cada turno — ~1,500 tokens desperdiciados por mensaje. El hook trackea qué secciones ya se inyectaron en `/tmp/guia_seen_{session_id}.json`.
+
+| Situación | Comportamiento |
+|---|---|
+| §27 pedido, sesión nueva | Inyecta §27, guarda en seen |
+| §27 pedido, ya en seen | `sys.exit(0)` — 0 bytes, 0 tokens |
+| Falla al leer archivo temp | `already_seen = set()` — funciona como antes |
+
+**Impacto en sesión de 15 turnos sobre handoff:**
+- Antes: 15 × ~1,500 tokens = ~22,500 tokens extra
+- Después: 1 × ~1,500 tokens = ~1,500 tokens extra
+
+El archivo temp se elimina automáticamente al reiniciar el sistema. No requiere limpieza manual.
 
 ### Checklist §26
 
@@ -4890,6 +4915,7 @@ Si una sección quick tiene < 60 líneas, se sirve completa. El budget solo limi
 □ Prompt con "agente" → §5 inyectado como contexto
 □ Prompt cruzado ("agente" + "hook") → §5 + §7 inyectados
 □ Prompt sin keywords → sin inyección (0 bytes stdout)
+□ Misma keyword en turno 2+ → sin inyección (deduplicación por sesión)
 □ Nueva sección → entry en KEYWORD_MAP + test de smoke
 ```
 
