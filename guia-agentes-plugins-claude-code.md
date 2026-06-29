@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.7 · Validada en producción · §26 budget adaptativo + protocolo mantenimiento KEYWORD_MAP + §13 checklist actualizado · docs validados vs oficial (2026-06-24)
+**Versión:** v5.9 · §32 nuevo — CLAUDE.local.md, output-styles/, rules/ con ejemplos, settings.local.json + tabla de distribución en plugins (2026-06-28)
 
 ---
 
@@ -61,6 +61,7 @@
 - [§10 — Arquitectura multi-agente](#10-arquitectura-multi-agente)
 - [§11 — Plugin distribuible](#11-plugin-distribuible)
 - [§31 — Advisor Pattern (validación sin subir de modelo)](#31-advisor-pattern--validación-sin-subir-de-modelo)
+- [§32 — Archivos que nadie documenta (CLAUDE.local.md, output-styles/, rules/, settings.local.json)](#32-archivos-que-nadie-documenta--el-resto-del-claude)
 - [§17 — Plan + Invocation Templates](#17-plan--invocation-templates--eficiencia-máxima-de-prompts)
 - [§26 — Hook global de contexto](#26-hook-global-de-contexto)
 - [§28 — Prompt Library (shortcuts + recipes)](#28-prompt-library--shortcuts-para-claude-code)
@@ -5642,6 +5643,236 @@ El advisor no itera — emite veredicto. Si hacés más de 1 retry, el problema 
 | Sonnet + haiku advisor | ~1.15× | Output con consecuencias si está mal |
 | Opus solo | ~5× | Solo si sonnet + advisor sigue fallando |
 | Opus + advisor | ~6× | Raramente tiene sentido |
+
+---
+
+<!-- §32 -->
+<!-- §32-quick -->
+## 32. Archivos que nadie documenta — el resto del .claude/
+
+> La imagen del .claude/ siempre muestra agents/, skills/ y hooks/. Nadie habla de los otros cuatro. Pero CLAUDE.local.md, output-styles/, rules/ y settings.local.json resuelven problemas reales que sin ellos se parchean con prompts repetidos o CLAUDE.md inflado.
+
+### Árbol de decisión — cuándo usar cada uno
+
+```
+¿Instrucciones que NO deben subir al repo (rutas locales, tokens, prefs personales)?
+  → CLAUDE.local.md
+
+¿Quieres que Claude cambie el formato de respuesta sin repetirlo en cada prompt?
+  → output-styles/
+
+¿Tienes reglas que solo aplican a un subdirectorio (src/api/, tests/, migrations/)?
+  → rules/
+
+¿Permissions personales que no aplican a todo el equipo?
+  → settings.local.json
+```
+
+---
+
+### 1. CLAUDE.local.md — tu override personal
+
+Variante gitignored de CLAUDE.md. Claude carga ambos; .local.md gana en conflicto.
+
+| | `CLAUDE.md` | `CLAUDE.local.md` |
+|---|---|---|
+| Se commitea | ✅ | ❌ gitignored |
+| Lo ve el equipo | ✅ | Solo vos |
+| Propósito | Reglas del proyecto | Overrides personales de máquina |
+
+**En `.gitignore`:**
+```
+CLAUDE.local.md
+.claude/settings.local.json
+```
+
+**Qué va aquí:**
+```markdown
+# CLAUDE.local.md
+
+## Paths de esta máquina
+- Python: /opt/homebrew/bin/python3
+- DB local: postgresql://localhost:5432/myapp_dev
+
+## Preferencias personales
+- Al terminar tarea larga: notificar con terminal-notifier
+- No usar npm audit en este repo — rompe mi hook de postinstall
+```
+
+**Nunca en CLAUDE.local.md:** reglas de arquitectura del proyecto (→ `CLAUDE.md`) ni secrets reales (→ `.env`).
+
+**En plugins:** no existe — es personal por definición. Si el plugin necesita config por-usuario, usar `settings.local.json`.
+
+---
+
+### 2. output-styles/ — formato de respuesta on tap
+
+Archivos Markdown que definen la forma del output. Claude los aplica cuando un agente los referencia o el usuario los menciona.
+
+```
+.claude/output-styles/
+├── terse.md      ← código only, sin prose
+├── verbose.md    ← explicaciones + código
+└── report.md     ← tabla de hallazgos estructurada
+```
+
+**Template — `terse.md`:**
+```markdown
+# Estilo: terse
+- Solo código, sin explicaciones
+- Sin encabezados salvo que haya más de 3 archivos
+- Sin "aquí está el fix" ni resumen al final
+- Si el cambio es obvio por el diff, no comentar
+```
+
+**Template — `verbose.md`:**
+```markdown
+# Estilo: verbose
+- Explicar el porqué antes del código
+- Un párrafo de contexto por cada decisión no obvia
+- Incluir alternativas descartadas con razón
+```
+
+**Cómo invocar desde el chat:**
+```
+Seguí output-styles/terse.md para esta respuesta.
+```
+
+**Desde un agente:**
+```yaml
+---
+name: code-fixer
+description: Arregla bugs. Responde siempre en estilo terse.
+---
+Seguí siempre .claude/output-styles/terse.md para tus respuestas.
+```
+
+**LowCost:** `terse.md` en agentes de code-only ahorra 30-50% de tokens de output en runs largos sin cambiar el modelo.
+
+**En plugins:** ✅ sí va en plugins. Consistencia de formato para el equipo sin que cada dev configure lo mismo. Un plugin `design-ios` puede incluir `output-styles/swift-only.md` para que todos los agentes respondan sin prose.
+
+---
+
+### 3. rules/ — instrucciones glob-scoped
+
+Archivos que Claude carga automáticamente cuando trabaja en archivos que hacen match con el glob. No tenés que pedirlo — carga solo.
+
+```
+.claude/rules/
+├── api.md         ← carga al tocar src/api/**
+├── tests.md       ← carga al tocar **/*.test.ts
+└── migrations.md  ← carga al tocar db/migrations/**
+```
+
+**Diferencia con CLAUDE.md:**
+
+| | `CLAUDE.md` | `rules/api.md` |
+|---|---|---|
+| Cuándo carga | Siempre, cada turno | Solo al tocar `src/api/**` |
+| Tokens gastados | Fijo — siempre | Solo cuando es relevante |
+| Propósito | Reglas universales | Reglas de dominio específico |
+
+**Cuándo usar rules/ en vez de CLAUDE.md:**
+- Instrucciones de un subsistema que no aplican al resto del repo
+- CLAUDE.md ya pasa las 150 líneas y no todo es siempre relevante
+- Distintos devs trabajan en distintos dominios — rules/ los mantiene aislados
+
+**Ejemplo práctico — `rules/api.md`**
+
+```markdown
+---
+glob: src/api/**
+---
+# Reglas — src/api/
+
+## Autenticación
+- Toda ruta nueva requiere middleware `authGuard` — sin excepción
+- Tokens en headers, nunca en query params
+
+## Formato de respuesta
+- Siempre `ApiResponse<T>` como wrapper
+- Errores: `{ error: string, code: HTTP_STATUS }`
+
+## Imports
+- No importar desde `../db/` directamente — usar el repo layer
+- No lanzar excepciones crudas — usar `ApiError`
+
+## Tests requeridos por endpoint
+- Test de auth (401) + happy path (200) como mínimo
+```
+
+**Ejemplo práctico — `rules/tests.md`**
+
+```markdown
+---
+glob: "**/*.test.ts"
+---
+# Reglas — archivos de test
+
+- No mockear la DB — usar instancia de test real (Q1 2025: mocks pasaban pero prod fallaba)
+- Cada test independiente: arrange → act → assert, sin estado compartido
+- Naming: `describe('NombreClase') > it('debería [comportamiento] cuando [condición]')`
+- No usar `test.only` — bloquea CI sin error visible
+```
+
+**En plugins:** ✅ sí va en plugins. Es la forma correcta de empaquetar domain rules sin contaminar el CLAUDE.md del proyecto destino.
+
+```
+plugins/mi-plugin/
+└── rules/
+    ├── api.md        ← se instala en .claude/rules/api.md
+    └── tests.md      ← se instala en .claude/rules/tests.md
+```
+
+---
+
+### 4. settings.local.json — permissions personales
+
+Hermano gitignored de `settings.json`. Misma estructura, solo aplica a tu máquina.
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(psql:*)"
+    ]
+  }
+}
+```
+
+**Qué va aquí:** comandos que solo existen en tu entorno local, permissions de tu flujo personal que serían ruido en el settings.json compartido.
+
+**Qué NO va aquí:** permissions que todo el equipo necesita (→ `settings.json`), hooks (→ `hooks/` + `settings.json`).
+
+**En plugins:** no se distribuye — es local por diseño. El plugin incluye `settings.json` con permissions base que el equipo comparte; cada dev agrega las suyas en `settings.local.json`.
+
+---
+
+<!-- §32-ref -->
+### Resumen — qué distribuir en un plugin
+
+| Archivo | ¿Va en plugin? | Razón |
+|---|---|---|
+| `CLAUDE.local.md` | ❌ | Personal — no tiene sentido distribuirlo |
+| `output-styles/` | ✅ | Consistencia de formato para el equipo |
+| `rules/` | ✅ | Domain rules empaquetadas, instalación limpia |
+| `settings.json` | ✅ parcial | Solo permissions que el equipo comparte |
+| `settings.local.json` | ❌ | Personal — gitignored por diseño |
+
+**Estructura de plugin con los archivos correctos:**
+```
+plugins/mi-plugin/
+├── .claude-plugin/
+│   └── plugin.json
+├── agents/
+├── skills/
+├── hooks/
+│   └── hooks.json
+├── rules/              ← ✅ domain rules del dominio del plugin
+├── output-styles/      ← ✅ formato compartido para el equipo
+└── settings.json       ← ✅ permissions base del equipo
+```
 
 ---
 
