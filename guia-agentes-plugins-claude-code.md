@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.9 · §32 nuevo — CLAUDE.local.md, output-styles/, rules/ con ejemplos, settings.local.json + tabla de distribución en plugins · hooks globales + README actualizados (2026-06-28)
+**Versión:** v5.10 · §6 gotcha skill silenciosa · §13 checklist output-styles + rules · §32 patrón auditoría agents (2026-06-28)
 
 ---
 
@@ -1295,6 +1295,8 @@ git status --short
 ````
 
 **`ultrathink` — razonamiento extendido en una palabra:** incluir `ultrathink` en cualquier parte del body activa pensamiento profundo para esa invocación. Usar en skills de auditoría o decisiones de arquitectura donde el costo del error justifica el costo del reasoning.
+
+> **[2026-06-28] design-ios:** Skill con `disable-model-invocation: true` que no aparece en la lista de usuario — diagnosticar en orden: (1) `user-invocable: true` declarado explícitamente — algunos combos de flags la silencian sin error visible; (2) `argument-hint` presente si recibe argumentos; (3) `/reload-plugins` ejecutado post-cambio. El campo tiene default `true` según la tabla, pero la declaración explícita es más confiable.
 
 ---
 
@@ -2685,6 +2687,8 @@ Skills
 □ Skill invocada en sesión larga → re-invocar con /nombre si "se olvidó" post-compact
 □ model / effort solo cuando el override está justificado (no usar sonnet donde haiku alcanza)
 □ user-invocable: false para background knowledge que no es acción del usuario
+□ Code-writer agents referencian `output-styles/[estilo].md` — ahorra 30-65% tokens de output sin cambiar modelo
+□ Reglas universales del dominio (idioma, compilación, constantes) en `rules/` con glob — no duplicadas en cada agente
 
 Scope
 □ scope-index.md < 20 líneas
@@ -4958,16 +4962,13 @@ statusLine (cada evento)
 Stop hook (cada respuesta de Claude)
   → lee ctx_pct.txt
   → si ≥ 70%: dialog nativo del OS (una sola vez por sesión)
-    → Sí: escribe /tmp/handoff_pending
-    → No: continúa
-
-UserPromptSubmit hook (próximo mensaje del usuario)
-  → si /tmp/handoff_pending existe: inyecta "HANDOFF REQUESTED"
-  → Claude invoca el skill /handoff
+    → No: continúa normalmente
+    → Sí: emite {"decision": "block", "reason": "HANDOFF REQUESTED + contexto git"}
+          Claude recibe el reason en el mismo turno e invoca el skill /handoff
 
 /handoff skill
   → Claude compone snapshot internamente (no se muestra en chat)
-  → Bash escribe a {repo}/.claude/handoffs/YYYY-MM-DD_HHmm.md + latest.md
+  → Bash escribe a ~/.claude/handoffs/{repo}/YYYY-MM-DD_HHmm.md + latest.md
   → .gitignore actualizado automáticamente
   → snapshot copiado al clipboard
   → Claude imprime una línea de confirmación en el chat
@@ -4980,8 +4981,7 @@ UserPromptSubmit hook (próximo mensaje del usuario)
 | `CLAUDE.md` | Triggers manuales (`handoff`, `snapshot`, `pausa`) + resume behavior |
 | `commands/handoff.md` | Skill `/handoff` — compone snapshot internamente, escribe a disco vía Bash, imprime una línea de confirmación |
 | `hooks/statusline-context.sh` | Barra de progreso con niveles y mensajes |
-| `hooks/handoff-monitor.sh` | Detecta 70%, muestra dialog cross-platform |
-| `hooks/handoff-inject.sh` | Inyecta el request en el siguiente mensaje |
+| `hooks/handoff-monitor.sh` | Detecta 70%, muestra dialog cross-platform; en confirmación emite `decision: block` con "HANDOFF REQUESTED" para disparar el skill en el mismo turno |
 
 ### Dialog cross-platform
 
@@ -5748,6 +5748,8 @@ Seguí siempre .claude/output-styles/terse.md para tus respuestas.
 ```
 
 **LowCost:** `terse.md` en agentes de code-only ahorra 30-50% de tokens de output en runs largos sin cambiar el modelo.
+
+**Patrón de auditoría — agents existentes:** antes de distribuir un plugin, revisar cada agente por reglas universales duplicadas (idioma, compilación, constantes de tamaño). Cada regla en el agente se paga en cada tool call; en `rules/` con el glob apropiado solo se paga cuando se tocan archivos del dominio. Combinado con `output-styles/`: hasta 40-70% de reducción de tokens por sesión de implementación.
 
 **En plugins:** ✅ sí va en plugins. Consistencia de formato para el equipo sin que cada dev configure lo mismo. Un plugin `design-ios` puede incluir `output-styles/swift-only.md` para que todos los agentes respondan sin prose.
 
