@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.11 · Validada en producción · 2026-06-30
+**Versión:** v5.12 · Validada en producción · 2026-06-30
 
 ---
 
@@ -51,7 +51,16 @@
 
 ---
 
-## Novedades en v5.11
+## Novedades en v5.12
+
+> *ID de modelo pinneado de Sonnet actualizado a su release actual. Sin cambios estructurales.*
+
+| Área | Cambio |
+|---|---|
+| **§25** | ID de modelo pinneado `claude-sonnet-4-6` → `claude-sonnet-5` (ejemplo del hook de routing por complejidad, tabla de modelos de Cloud Agents, tabla de aliases/defaults) |
+
+<details>
+<summary>Novedades en v5.11</summary>
 
 > *Sin contenido nuevo. La guía quedó más rápida de navegar y más limpia de leer: el orden físico de secciones ahora coincide con el Índice, los ejemplos aplican a cualquier stack, y el hook de contexto cubre 4 secciones más.*
 
@@ -62,6 +71,8 @@
 | **§5** | Tabla de modelo redundante eliminada — pointer a §25, que ahora está 2 secciones antes |
 | **§2 §5 §17** | Template CLAUDE.md, ejemplos de gotchas y `/plan` generalizados — aplican a cualquier stack |
 | **`guia_context.py`** | §12, §13, §22, §23 añadidos a KEYWORD_MAP — el hook cubre ahora 27/32 secciones |
+
+</details>
 
 <details>
 <summary>Novedades en v5.10</summary>

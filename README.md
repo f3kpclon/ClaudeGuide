@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.11 · Production-validated · 2026-06-30
+**Author:** Félix Sotelo · **Version:** v5.12 · Production-validated · 2026-06-30
 
 ---
 
@@ -43,7 +43,16 @@
 
 ---
 
-## What's New in v5.11
+## What's New in v5.12
+
+> *Sonnet's pinned model ID bumped to its current release. No structural changes.*
+
+| Area | Change |
+|---|---|
+| **§25** | Pinned model ID `claude-sonnet-4-6` → `claude-sonnet-5` (complexity-routing hook example, Cloud Agents model table, alias/defaults table) |
+
+<details>
+<summary>v5.11 changes</summary>
 
 > *No new content. The guide got faster to navigate and cleaner to read: physical section order now matches the Index grouping, examples work for any stack (not just Godot), and the context hook covers 4 more sections.*
 
@@ -54,6 +63,8 @@
 | **§5** | Redundant model table removed — replaced with pointer to §25, which is now 2 sections earlier |
 | **§2 §5 §17** | CLAUDE.md template, gotcha examples, and `/plan` example generalized — applies to any stack |
 | **`guia_context.py`** | §12, §13, §22, §23 added to KEYWORD_MAP — context hook now covers 27/32 sections |
+
+</details>
 
 <details>
 <summary>v5.10 changes</summary>
