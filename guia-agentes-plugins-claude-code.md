@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.10 · §6 gotcha skill silenciosa · §13 checklist output-styles + rules · §32 patrón auditoría agents (2026-06-28)
+**Versión:** v5.11 · reorder §1-§32 por prioridad de lectura · §27 añadido al Índice (2026-06-30)
 
 ---
 
@@ -64,6 +64,7 @@
 - [§32 — Archivos que nadie documenta (CLAUDE.local.md, output-styles/, rules/, settings.local.json)](#32-archivos-que-nadie-documenta--el-resto-del-claude)
 - [§17 — Plan + Invocation Templates](#17-plan--invocation-templates--eficiencia-máxima-de-prompts)
 - [§26 — Hook global de contexto](#26-hook-global-de-contexto)
+- [§27 — Handoff Protocol](#27-handoff-protocol)
 - [§28 — Prompt Library (shortcuts + recipes)](#28-prompt-library--shortcuts-para-claude-code)
 - [§29 — Contexto global propio](#29-contexto-global-propio--construir-tu-sistema)
 - [§30 — Cloud Agents programados — /schedule y /web-setup](#30-cloud-agents-programados--schedule-y-web-setup)
@@ -83,6 +84,123 @@
 - [§21 — Observabilidad y debugging](#21-observabilidad-y-debugging)
 - [§22 — Prompt engineering avanzado](#22-prompt-engineering-avanzado)
 - [§15 — Glosario](#15-glosario)
+
+---
+
+<!-- §4 -->
+## 4. Analogía — cómo pensar el sistema
+
+> Si la documentación oficial no tiene sentido todavía, empieza aquí. Una vez que entiendes el restaurante, todo lo demás hace clic solo.
+
+Antes de construir cualquier cosa, esta analogía explica por qué el sistema funciona así.
+
+### El restaurante
+
+Imagina que Claude Code es un **restaurante de cocina**.
+
+```
+CLAUDE.md         → el pizarrón de reglas en la cocina
+                    Todos lo leen antes de empezar el turno.
+                    Si tiene 200 reglas nadie las sigue bien.
+                    Si tiene 10 reglas claras, todos las siguen.
+
+Agentes           → los cocineros especializados
+                    El pastelero solo hace postres.
+                    El parrillero solo hace carnes.
+                    Ninguno hace el trabajo del otro.
+                    Cada uno tiene sus propias herramientas (tools).
+
+Lead (orchestrador) → el jefe de cocina
+                    No cocina — coordina quién hace qué y en qué orden.
+                    Si necesita un postre llama al pastelero.
+                    Si necesita carne llama al parrillero.
+                    No tiene cuchillos (sin Bash) — solo da instrucciones.
+
+Skills            → los recetarios
+                    No cocinan solos — son referencia cuando se necesita.
+                    El pastelero consulta el recetario de postres.
+                    El parrillero consulta el de carnes.
+                    Nadie lee todos los recetarios al mismo tiempo.
+
+Hooks             → el sistema de control de calidad
+                    Antes de que un plato salga (PreToolUse):
+                    verificar temperatura, presentación, ingredientes.
+                    Si no cumple → devolver a la cocina.
+                    Si cumple → dejar pasar.
+
+Scope             → el menú del día
+                    Qué platos existen, cuáles faltan, qué viene después.
+                    El jefe lo lee antes de organizar la jornada.
+                    Los cocineros no lo necesitan — reciben instrucciones del jefe.
+
+Learnings         → el cuaderno de errores de la cocina
+                    "El horno 3 tarda 5 min más de lo normal."
+                    "La masa de pizza necesita reposar 2h, no 1h."
+                    Cada área tiene su propio cuaderno.
+                    Los errores más comunes están pegados en la pared (inline).
+                    El cuaderno completo solo se lee cuando hay un problema nuevo.
+
+Tokens            → el tiempo del turno
+                    Cada cosa en contexto consume tiempo antes de cocinar.
+                    Un pizarrón con 200 reglas tarda 10 min en leer.
+                    Un pizarrón con 10 reglas tarda 1 min.
+                    Cuanto menos tiempo leyendo → más tiempo cocinando.
+```
+
+### Cómo crear un agente nuevo
+
+Pregunta: ¿necesito un cocinero nuevo?
+
+```
+¿Hay una tarea que se repite y contamina a otros cocineros?
+    SÍ → crear agente
+
+¿Esa tarea requiere razonar sobre contexto variable?
+    SÍ → sonnet
+    NO → haiku
+
+¿Qué herramientas necesita realmente?
+    Solo leer → Read, Glob, Grep
+    Leer y escribir → + Write, Edit
+    Ejecutar comandos → + Bash (solo si es imprescindible)
+
+¿Qué NO debe tocar?
+    Definir límites claros en el system prompt.
+    "No modificar escenas — eso es @godot-scene."
+
+¿Qué gotchas necesita saber siempre?
+    Si son < 10 items → inline en el agente (sin Read call).
+    Si son > 10 o cambian seguido → mantener en learnings file.
+```
+
+### Cómo crear un plugin
+
+Un plugin es simplemente **empaquetar tu cocina para llevártela a otro restaurante**.
+
+```
+Tienes agentes locales que funcionan bien en proyecto A.
+Quieres usarlos en proyecto B y C.
+    → Convertir a plugin.
+
+La estructura es la misma — solo cambia dónde vive:
+
+  Antes (local):              Después (plugin):
+  .claude/agents/             mi-plugin/agents/
+  .claude/skills/             mi-plugin/skills/
+  .claude/settings.json       mi-plugin/hooks/hooks.json
+                              mi-plugin/.claude-plugin/plugin.json  ← nuevo
+
+Instalar en cualquier proyecto:
+  claude plugin add github:usuario/mi-plugin
+```
+
+### La regla de oro
+
+> Un agente que hace una sola cosa bien
+> vale más que un agente que hace todo más o menos.
+
+El pastelero que intenta también hacer carne termina haciendo las dos mal.
+Divide las responsabilidades hasta que cada agente tenga **una sola razón para existir**.
 
 ---
 
@@ -124,6 +242,157 @@
 | Compartir | Solo via el repo | Solo via el repo | `claude plugin add github:...` |
 
 **Regla:** empezar con agentes y skills locales. Convertir a plugin solo cuando se reutiliza en otro proyecto.
+
+---
+
+<!-- §25 -->
+## 25. Modelo correcto — tabla de decisión única
+
+> haiku/sonnet/opus está mencionado en §2, §5, §12 y §22. Esta sección es el único lookup necesario.
+
+> **Analogía:** el modelo es el nivel del chef que contratás. Haiku = cocinero de comida rápida — rápido, económico, perfecto para tareas repetibles. Sonnet = chef de restaurante — para platos que requieren técnica. Opus = chef Michelin — para cuando el costo de arruinar el plato supera el costo del chef.
+
+### Tabla maestra
+
+| Tarea | Modelo | Razón |
+|---|---|---|
+| Checklist / validator / reviewer | **haiku** | Input fijo, output binario — no necesita razonamiento |
+| Postmortem / curador / git | **haiku** | Tarea estructurada, output predecible |
+| plan skill | **haiku** | Solo lectura + formato fijo |
+| Implementador (≤3 archivos, stack conocido) | **sonnet** | Necesita razonamiento, no creatividad extrema |
+| Lead / orchestrador | **sonnet** | Coordina, no implementa |
+| Debugger (multi-capa, async, runtime) | **sonnet** | Diagnosis requiere razonamiento medio |
+| Architect (nuevo proyecto, decisiones de diseño) | **sonnet** | Decisiones de estructura, no triviales |
+| Refactor masivo / investigación profunda | **opus** | Solo cuando sonnet falla O el costo del error es irreversible |
+| Contexto > 10k tokens activos | **opus** | Sonnet pierde coherencia en contextos muy largos |
+
+**Regla de oro:** ¿Sonnet lo hace bien? → no usar opus. ¿Haiku lo hace bien? → no usar sonnet.
+
+### Antes de Opus — probar `effort` primero
+
+`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar. ~5× más barato que subir a Opus.
+
+```yaml
+# En el agente o en la skill
+effort: xhigh   # opciones: xlow | low | medium | high | xhigh | ultra
+model: claude-sonnet-4-6
+```
+
+```json
+// En settings.json para toda la sesión
+{ "effortLevel": "high" }
+```
+
+**Cuándo `effort: xhigh` resuelve lo que parecía Opus:**
+
+| Síntoma | Primer intento | Si sigue fallando |
+|---|---|---|
+| Razonamiento superficial en tarea compleja | Sonnet + `effort: xhigh` | Opus |
+| Pierde el hilo en contexto largo | Fragmentar el problema | Opus |
+| Alucinaciones en decisiones de arquitectura | Sonnet + `effort: xhigh` + `/plan` | Opus one-shot |
+
+### El marco de decisión para Opus
+
+La pregunta no es "¿es una tarea difícil?" — es:
+
+> **¿El costo de que Sonnet se equivoque supera el costo de Opus?**
+
+Opus cuesta ~5× más por token que Sonnet. Si un error de Sonnet cuesta 30 minutos de corrección → Opus vale la pena. Si cuesta 5 minutos → no.
+
+**Cuándo Opus tiene justificación real:**
+
+| Caso | Por qué Opus | Por qué no Sonnet |
+|---|---|---|
+| Security audit antes de merge a main | Falso negativo = brecha de producción | Puede pasar por alto patrones de ataque sutiles |
+| Arquitectura inicial de sistema > 2 años de vida | Error = meses de refactor | Con effort:xhigh puede no ver trade-offs a largo plazo |
+| Debug multi-capa con contexto > 10k tokens activos | Coherencia en contexto largo | Sonnet pierde el hilo — documentado |
+| Decisión one-shot sin segunda oportunidad | No hay iteración posible | Sonnet en loop con validator es alternativa |
+
+### Ejemplo concreto — security-auditor con Opus justificado
+
+```yaml
+# .claude/agents/security-auditor.md
+---
+name: security-auditor
+description: Audit de seguridad antes de merge a main. Invocar SOLO en PRs con cambios
+  de auth, permisos, storage o inputs de usuario. NO usar para linting o code style.
+model: claude-opus-4-8
+tools: Read, Glob, Grep
+---
+```
+
+**Por qué Opus aquí y no Sonnet:** el audit corre una vez por PR. El delta de costo es ~$0.04 por run. Un falso negativo (vulnerabilidad que pasa a producción) vale órdenes de magnitud más. El agente tiene `tools: Read, Glob, Grep` — sin Write ni Bash — para que el costo extra sea solo en razonamiento, no en ejecución.
+
+**Por qué no `effort: xhigh` en Sonnet:** patrones de seguridad sutiles (IDOR, timing attacks, second-order injection) requieren el nivel de razonamiento de Opus. En auditorías de seguridad, el costo del error justifica el modelo más capaz disponible.
+
+### Aliases y defaults actuales — Fable 5
+
+Los model IDs cambian entre versiones. La guía usa IDs explícitos — el default puede cambiar sin aviso:
+
+| ID explícito | Rol | ¿Default? |
+|---|---|---|
+| `claude-haiku-4-5` | Tareas estructuradas, bajo costo | — |
+| `claude-sonnet-4-6` | Implementación, debugging | — |
+| `claude-opus-4-8` | Razonamiento profundo, security | — |
+| `claude-fable-5` | Modelo más reciente / alias del CLI | ✅ si no se pineó |
+
+**Regla:** siempre pinear `model:` en el frontmatter del agente. Sin `model:`, el CLI usa el default actual (`claude-fable-5`) — que puede cambiar en cualquier update. Pinear = predecibilidad de costo.
+
+### Fast Mode — inferencia rápida
+
+Disponible en planes Team/Enterprise. No baja la calidad — optimiza la entrega de tokens para reducir latencia y costo en outputs largos.
+
+```json
+{ "fastMode": true }
+```
+
+| Escenario | Activar Fast Mode |
+|---|---|
+| Generador (N archivos en un turno), git, postmortem | ✅ — outputs largos y predecibles |
+| Agente con `effort: xhigh` o `ultra` | ❌ — el beneficio de velocidad compite con el throughput de razonamiento |
+| Reviewer / validator (output corto) | Beneficio marginal — indiferente |
+
+### Extended Context 1M — cuándo vale el costo
+
+Disponible en cloud/Bedrock/Vertex. El costo escala linealmente — no es gratis porque esté disponible.
+
+| Contexto activo | Costo relativo | Usar cuando |
+|---|---|---|
+| 100k (default) | 1× | Siempre como punto de partida |
+| 200k | ~2× | Codebase con N archivos interdependientes |
+| 500k | ~5× | Análisis one-shot de repositorio completo |
+| 1M | ~10× | Solo si fragmentar costaría más (múltiples sesiones + coordinación) |
+
+**Cálculo antes de activar:** ¿cuesta más 1 sesión de 900k (~9×) o 3 sesiones de 300k con coordinación manual? Si la coordinación pesa más → extended justificado. Si no → fragmentar.
+
+**Anti-patrón:** activar extended context "por las dudas" cuando el problema cabe en 100k. El costo es proporcional al contexto activo, no al usado.
+
+### Anti-patrones frecuentes
+
+| Error | Fix |
+|---|---|
+| Reviewer con sonnet | haiku — compara contra lista fija |
+| Opus para git/postmortem | haiku — tarea estructurada |
+| Sin `model:` en el agente | Todos usan el modelo más caro disponible → especificar siempre |
+| Sonnet para triage/dispatch | haiku — decisión simple sobre keywords |
+| Opus por defecto "para estar seguros" | Sonnet + `effort: xhigh` primero — 5× más barato |
+| `effort: xhigh` global en settings.json | Solo en agentes o skills específicas — el costo se multiplica por cada tool call |
+
+### Checklist §25
+
+```
+□ Cada agente tiene model: especificado con ID pinneado (ej. claude-haiku-4-5, NO haiku)
+□ Reviewer → claude-haiku-4-5
+□ git, postmortem, curador → claude-haiku-4-5
+□ plan skill → claude-haiku-4-5
+□ Antes de Opus → probar Sonnet con effort: xhigh (skill frontmatter o settings.json)
+□ Opus solo si: security/arch one-shot O contexto > 10k tokens O costo de error es irreversible
+□ Agentes Opus tienen tools mínimas (Read/Grep/Glob) — el costo extra debe estar en razonamiento, no en ejecución
+□ effort: xhigh no en settings.json global — solo en agentes/skills que lo necesitan
+□ Siempre pinear model: con alias sin fecha (claude-haiku-4-5 ✅, haiku ❌, claude-haiku-4-5-20251001 ❌) — el default cambia
+□ Fast Mode: activar en generadores/git/postmortem, no en agentes con effort: xhigh o ultra
+□ Extended Context: calcular costo fragmentado vs costo extendido antes de activar
+```
 
 ---
 
@@ -257,266 +526,79 @@ Leer `.claude/scope/scope-index.md` antes de cualquier tarea.
 
 ---
 
-<!-- §3 -->
-<!-- §3-quick -->
-## 3. Estimados de consumo
+<!-- §24 -->
+## 24. El contrato del contexto — el factor humano
 
-> Antes de arrancar cualquier tarea, el dev pobre hace una estimación. Estos números son aproximados pero suficientes para saber si vas a gastar $0.02 o $0.50 antes de escribir una línea.
+> El agente es tan bueno como el contexto que recibe. Esta es la variable más subestimada del sistema.
 
-### Costo fijo por sesión
-
-| Componente | Tokens | Notas |
-|---|---|---|
-| CLAUDE.md (~30 líneas) | ~200 | Se re-inyecta en cada tool call |
-| Hub skill (~40 líneas) | ~280 | Solo si auto-trigger está activo |
-| Agent descriptions (×10) | ~400 | ~40t por agente registrado |
-| scope-index.md (~20 líneas) | ~120 | Si está en CLAUDE.md |
-| **Total fijo mínimo** | **~1,000** | Por sesión, antes de cualquier tarea |
-
-Si el hub tiene `skillOverrides: user-invocable-only`, los ~280 tokens no se gastan.
-
-### Costo por tipo de tarea
-
-| Tarea | Agentes | Tokens extra (contexto principal) | Tokens subagente (aislado) |
-|---|---|---|---|
-| Bug simple (1 bug, ≤3 archivos) | debugger + reviewer | ~600 | ~6-10k |
-| Bug complejo (2+ bugs, 5+ archivos) | debugger + reviewer | ~800 | ~14-18k |
-| Feature simple (1 sistema) | especialista + reviewer | ~800 | ~4-8k |
-| Feature mediana (2 sistemas) | lead + 2 especialistas + reviewer | ~1,400 | ~10-16k |
-| Feature compleja (3+ sistemas) | lead + 3 especialistas + reviewer | ~2,200 | ~18-28k |
-| Refactor cross-cutting | lead + todos los especialistas | ~3,000 | ~30-40k |
-| Fin de sesión | postmortem + git | ~500 | ~2-4k |
-
-"Tokens subagente (aislado)" = consumo interno del agente — no se acumula en el hilo principal (Capa 3).
-
-### Impacto del modelo
-
-| Modelo | Costo relativo | Cuándo |
-|---|---|---|
-| haiku | 1× | Tareas fijas: git, postmortem, reviewer de checklist |
-| sonnet | 5× | Implementación, debugging |
-| opus | 15× | Arquitectura con trade-offs complejos |
-
-Un reviewer en sonnet cuesta 5× más que en haiku — mismo resultado.
-
-### Prompt Caching — reglas clave
-
-| Tipo | Costo relativo | Cuándo ocurre |
-|---|---|---|
-| Cache creation | ~1.25× | Primera llamada o después de expirar el TTL |
-| Cache read | ~0.1× | Mismo prefix dentro del TTL |
-| Sin cache (base) | 1× | Referencia |
-
-- **TTL: 5 minutos** — después de 5 min de inactividad el cache expira
-- **Qué se cachea:** CLAUDE.md, system prompts de agentes, historial hasta el corte del prefix
-- **Regla de prefix:** contenido estable → CLAUDE.md. Contenido dinámico (paths, IDs, runtime) → `additionalContext` de hook. El dinámico invalida el cache si entra en el prefix.
-
-### Señales de consumo excesivo
-
-- Tarea simple tarda más de lo esperado → CLAUDE.md creció demasiado
-- El agente sabe cosas que no le dijiste → contenido duplicado entre archivos
-- Reviewer tarda igual que el implementador → está corriendo en sonnet
-- El lead ejecuta bash → tiene Bash en tools, no debería
-- El lead escribe código directamente → tiene Write/Edit en tools — quitarlos, la delegación debe ser garantía física
-- Cada agente hace 2-3 Read calls antes de empezar → gotchas deberían estar inline
-
-<!-- §3-ref -->
-### Costo por archivo bajo demanda
-
-| Archivo | Tokens |
-|---|---|
-| Learnings por dominio (~100 líneas) | ~700 |
-| Scope por sistema (~50 líneas) | ~350 |
-| Doc de referencia (~100 líneas) | ~700 |
-| Skill de convenciones (~80 líneas) | ~560 |
-| Read tool call (overhead del wrapper) | ~300-600 |
-
-### Estimados por agente (tokens internos — contexto aislado)
-
-Los agentes corren en contexto aislado (Capa 3). Estos tokens **no se acumulan** en el hilo principal.
-`†estimado` / `✓medido`
-
-| Agente | Modelo | Rango típico | Factores principales |
-|---|---|---|---|
-| godot-git (crear rama — inicio de sesión) | haiku | ~2-4k† | 1-2 tool calls, comando fijo |
-| godot-git (commit + push + PR + merge — fin de sesión, commit en prompt) | haiku | ~5-7k✓ | Medido: 7.3k · 4 tool calls (2026-06-02) — 3 bash encadenados con `&&` |
-| godot-git (commit + push + PR + merge — fin de sesión, inferir commit) | haiku | ~8-12k✓ | Medido: 9.2k full flow (2026-06-01) — 1 diff call extra para inferir |
-| godot-git (1 archivo, commit explícito) | haiku | ≤5k | Target mínimo — si supera, el agente está explorando de más |
-| godot-git (flujo cortado en 2 invocaciones separadas) | haiku | ~20-25k✓ | Anti-pattern — medido: 22.3k (2026-06-01) · ver §12 |
-| godot-reviewer (≤4 archivos, protocolo activo) | haiku | ~4-8k† | Lee cada archivo una vez, sin cruzar contexto |
-| godot-reviewer (≥7 archivos, sin protocolo) | haiku | ~20-25k✓ | Usa Grep/Glob para cruzar contexto — medido: 22.7k, 34 tool uses (2026-05-31) |
-| godot-postmortem (prompt corto, ≤3 dominios) | haiku | ~5-10k† | 1 bash + ≤3 reads + ≤3 writes |
-| godot-postmortem (prompt largo con contexto completo) | haiku | ~20-25k✓ | Medido: 24.2k, 14 tool uses (2026-05-31) — prompt de 50 líneas infla input |
-| godot-curador | haiku | ~6-12k† | Lee todos los learnings (4-6 archivos), edita |
-| godot-scene | sonnet | ~6-12k† | Lee scope + escenas existentes, escribe .tscn |
-| godot-script | sonnet | ~8-14k† | Lee scope + scripts relacionados, razona + escribe .gd |
-| godot-ui | sonnet | ~8-14k† | Similar a script/scene combinados |
-| godot-physics | sonnet | ~8-14k† | Lee collision layers + scripts de body |
-| godot-audio | sonnet | ~6-10k† | Menos archivos que script, más acotado |
-| godot-debugger simple (1 bug, ≤4 archivos) | sonnet | ~6-10k† | Pocas hipótesis, pocos Read calls |
-| godot-debugger complejo (2+ bugs, 10 tool uses) | sonnet | ~14-18k✓ | Medido: 14.5k (2026-05-31) |
-| godot-lead | sonnet | ~10-18k† | Lee scope + múltiples archivos, planifica, delega |
-
-**Qué sube el costo de cualquier agente:**
-- Cada `Read` call: ~700-1,400 tokens adicionales en el contexto aislado
-- Output format no forzado: 2-4× más tokens en la respuesta final
-- Sin gotchas inline: 2-3 Read calls extra antes de empezar
-
-**Regla práctica:** `## Output — siempre este formato` con template compacto reduce el costo del output ~30-65%.
-
-### Ejemplo real — feature mediana
+### La fórmula real
 
 ```
-Costo fijo sesión:              ~1,000t
-@godot-lead (planifica):          ~500t  ← lee scope-game-systems.md
-@godot-scene (Checkpoint.tscn):   ~600t  ← gotchas inline, sin Read de learnings
-@godot-script (GameManager.gd):   ~700t  ← gotchas inline, sin Read de learnings
-@godot-reviewer (revisión):       ~400t  ← haiku, solo lectura
-@godot-git (commit + PR):         ~200t  ← haiku, comandos fijos
-─────────────────────────────────────────
-Total estimado:                 ~3,400t
-
-Sin setup óptimo (sin fragmentar, hub auto-trigger, modelos incorrectos): ~8,000-12,000t
-El setup correcto reduce 2.5-3.5x el costo por feature.
+éxito_del_agente = f(calidad_del_contexto_humano)
 ```
 
-### Prompt Caching — detalles
+Contexto malo → el agente asume → suposición incorrecta → el humano corrige → más tokens → resultado mediocre. El loop se repite hasta que el contexto está claro — pero el costo ya se pagó.
 
-**CLAUDE.md denso se amortiza — no penalizar el tamaño:**
-```
-CLAUDE.md 500 líneas × sin cache = ~3,500t por llamada
-CLAUDE.md 500 líneas × con cache = ~350t por llamada (llamadas 2+)
-```
-El costo real por llamada es ~10% del nominal después de la primera.
+### La paradoja
 
-**Implicación para `/loop` y sleeps:**
-- `delaySeconds < 300` → cache sigue caliente → siguiente iteración barata
-- `delaySeconds > 300` → cache expiró → recrea en la próxima llamada
-- `ScheduleWakeup` recomienda 270s sobre 300s por esta razón exacta
+Las personas que más necesitan los agentes (sin experiencia técnica) son las que menos saben estructurar el input. Las que mejor saben usarlos (con experiencia técnica) podrían hacer el trabajo ellas mismas.
 
-**Leer hits/misses al final de sesión:**
-```
-Tokens: 12,450 input (8,200 cache read · 1,100 cache creation) · 2,450 output
-                        ↑ amortizado              ↑ primer turno o post-TTL
-```
-`cache read >> cache creation` → sesión bien amortizada. Proporción similar → el prefix cambia entre llamadas — revisar contenido dinámico en CLAUDE.md.
+La solución no es mejorar el agente — es desarrollar la habilidad de **dar contexto**.
 
----
-
-<!-- §4 -->
-## 4. Analogía — cómo pensar el sistema
-
-> Si la documentación oficial no tiene sentido todavía, empieza aquí. Una vez que entiendes el restaurante, todo lo demás hace clic solo.
-
-Antes de construir cualquier cosa, esta analogía explica por qué el sistema funciona así.
-
-### El restaurante
-
-Imagina que Claude Code es un **restaurante de cocina**.
+### Checklist pre-invocación — lo que el humano debe definir ANTES de invocar
 
 ```
-CLAUDE.md         → el pizarrón de reglas en la cocina
-                    Todos lo leen antes de empezar el turno.
-                    Si tiene 200 reglas nadie las sigue bien.
-                    Si tiene 10 reglas claras, todos las siguen.
+□ ¿Qué quiero exactamente?
+    Output concreto, no vago. "Arregla el bug" ≠ "El botón X no responde al click en iOS 17"
 
-Agentes           → los cocineros especializados
-                    El pastelero solo hace postres.
-                    El parrillero solo hace carnes.
-                    Ninguno hace el trabajo del otro.
-                    Cada uno tiene sus propias herramientas (tools).
+□ ¿Cuál es la arquitectura del proyecto?
+    Si no está en scope/, escribirla primero. El agente no puede adivinarla.
 
-Lead (orchestrador) → el jefe de cocina
-                    No cocina — coordina quién hace qué y en qué orden.
-                    Si necesita un postre llama al pastelero.
-                    Si necesita carne llama al parrillero.
-                    No tiene cuchillos (sin Bash) — solo da instrucciones.
+□ ¿Cuál es el scope de esta tarea?
+    Qué toca. Qué NO toca. Los límites importan tanto como el objetivo.
 
-Skills            → los recetarios
-                    No cocinan solos — son referencia cuando se necesita.
-                    El pastelero consulta el recetario de postres.
-                    El parrillero consulta el de carnes.
-                    Nadie lee todos los recetarios al mismo tiempo.
-
-Hooks             → el sistema de control de calidad
-                    Antes de que un plato salga (PreToolUse):
-                    verificar temperatura, presentación, ingredientes.
-                    Si no cumple → devolver a la cocina.
-                    Si cumple → dejar pasar.
-
-Scope             → el menú del día
-                    Qué platos existen, cuáles faltan, qué viene después.
-                    El jefe lo lee antes de organizar la jornada.
-                    Los cocineros no lo necesitan — reciben instrucciones del jefe.
-
-Learnings         → el cuaderno de errores de la cocina
-                    "El horno 3 tarda 5 min más de lo normal."
-                    "La masa de pizza necesita reposar 2h, no 1h."
-                    Cada área tiene su propio cuaderno.
-                    Los errores más comunes están pegados en la pared (inline).
-                    El cuaderno completo solo se lee cuando hay un problema nuevo.
-
-Tokens            → el tiempo del turno
-                    Cada cosa en contexto consume tiempo antes de cocinar.
-                    Un pizarrón con 200 reglas tarda 10 min en leer.
-                    Un pizarrón con 10 reglas tarda 1 min.
-                    Cuanto menos tiempo leyendo → más tiempo cocinando.
+□ ¿Cuál es el criterio de éxito?
+    ¿Cómo sé que está hecho? Sin esto, el agente decide — y puede decidir mal.
 ```
 
-### Cómo crear un agente nuevo
+Si no puedes responder estas 4 preguntas, no invoques el agente todavía.
 
-Pregunta: ¿necesito un cocinero nuevo?
+### Anti-patrón: "cuéntame qué necesitas"
 
-```
-¿Hay una tarea que se repite y contamina a otros cocineros?
-    SÍ → crear agente
-
-¿Esa tarea requiere razonar sobre contexto variable?
-    SÍ → sonnet
-    NO → haiku
-
-¿Qué herramientas necesita realmente?
-    Solo leer → Read, Glob, Grep
-    Leer y escribir → + Write, Edit
-    Ejecutar comandos → + Bash (solo si es imprescindible)
-
-¿Qué NO debe tocar?
-    Definir límites claros en el system prompt.
-    "No modificar escenas — eso es @godot-scene."
-
-¿Qué gotchas necesita saber siempre?
-    Si son < 10 items → inline en el agente (sin Read call).
-    Si son > 10 o cambian seguido → mantener en learnings file.
-```
-
-### Cómo crear un plugin
-
-Un plugin es simplemente **empaquetar tu cocina para llevártela a otro restaurante**.
+Síntoma de contexto mal formado: el humano invoca el agente esperando que **el agente descubra** qué hay que hacer. El agente empieza a preguntar, el humano responde a medias, el agente asume el resto.
 
 ```
-Tienes agentes locales que funcionan bien en proyecto A.
-Quieres usarlos en proyecto B y C.
-    → Convertir a plugin.
-
-La estructura es la misma — solo cambia dónde vive:
-
-  Antes (local):              Después (plugin):
-  .claude/agents/             mi-plugin/agents/
-  .claude/skills/             mi-plugin/skills/
-  .claude/settings.json       mi-plugin/hooks/hooks.json
-                              mi-plugin/.claude-plugin/plugin.json  ← nuevo
-
-Instalar en cualquier proyecto:
-  claude plugin add github:usuario/mi-plugin
+❌ "Mejora el sistema de autenticación"
+✅ "El login falla cuando el token expira en mobile. Archivo: auth/token_refresh.ts.
+    Scope: solo el retry logic, no el flujo de login. Éxito: refresh automático sin logout visible."
 ```
 
-### La regla de oro
+### `/plan` como forcing function
 
-> Un agente que hace una sola cosa bien
-> vale más que un agente que hace todo más o menos.
+`/plan` obliga al humano a articular el contexto antes de que el agente ejecute. Si no puedes describir la tarea para el plan, no estás listo para invocar el agente.
 
-El pastelero que intenta también hacer carne termina haciendo las dos mal.
-Divide las responsabilidades hasta que cada agente tenga **una sola razón para existir**.
+El costo del plan (~500-800t) es el precio de **no** gastar 10-20k en la dirección equivocada.
+
+**Regla:** si dudas de si necesitas `/plan` → lo necesitas.
+
+### El costo real de contexto malo
+
+```
+Tarea con contexto claro:     ~4-8k tokens (techo normal del agente)
+Tarea con contexto vago:      ~12-30k tokens (loops de corrección)
+Diferencia:                   3-5× — pagado en tokens, no en calidad
+```
+
+La optimización más barata del sistema no es un hook ni un agente más eficiente — es que el humano sepa qué quiere antes de pedirlo.
+
+### Checklist §24
+
+```
+□ Antes de invocar: ¿puedo describir el output exacto en 1-2 líneas?
+□ ¿El scope está escrito (qué toca / qué NO toca)?
+□ ¿El criterio de éxito es verificable?
+□ Si no puedo responder las 3: /plan primero, invocación después
+```
 
 ---
 
@@ -861,442 +943,6 @@ Mantenimiento mensual de learnings. No correr en cada sesión.
 - No eliminar entradas marcadas [BLOCKER] o [CRÍTICO]
 - Siempre archivar, nunca borrar permanentemente
 ```
-
----
-
-<!-- §6 -->
-<!-- §6-quick -->
-## 6. Skills
-
-> Una skill es un recetario: no cocina sola, pero cuando el agente la necesita la consulta. La diferencia con un agente es que no tiene contexto propio — comparte el hilo principal. Úsalas para referencia, templates y triage. Nunca para código que se ejecuta.
-
-### Cuándo crear una skill
-
-La pregunta no es "¿puedo hacer esto con una skill?" — es "¿dónde vive mejor este contenido?"
-
-| Contenido | Dónde va | Por qué |
-|---|---|---|
-| Regla que aplica **siempre**, en toda tarea | `CLAUDE.md` | Costo fijo justificado — es el contrato del restaurante en la pared |
-| Procedimiento que se carga **bajo demanda** | Skill | Gratis en tokens hasta que se invoca — el menú del día |
-| Tarea con **contexto propio** o que contaminaría el hilo | Agente (`context: fork`) | El sous-chef trabaja en su cocina aparte — el hilo principal no se ensucia |
-
-**Trigger práctico (oficial):** creá una skill cuando seguís pegando las mismas instrucciones en el chat, o cuando una sección de CLAUDE.md creció hasta ser un procedimiento en vez de un hecho.
-
-```
-CLAUDE.md tiene ≥ 5 líneas sobre cómo hacer X  →  mover X a una skill
-Pegaste las mismas instrucciones más de 2 veces  →  skill de referencia
-La tarea contamina el hilo con logs/diffs largos →  skill con context: fork
-```
-
-### Templates por tipo de skill
-
-**Hub** — dispatch automático, siempre visible para Claude:
-```markdown
----
-name: <proyecto>-hub
-description: "<Proyecto> dispatch. [caso A] → @<agente-a> | [caso B] → @<agente-b>."
-disable-model-invocation: false     # Claude lo activa solo — descripción siempre en contexto
-allowed-tools: Read
----
-
-# <Proyecto> — Dispatch
-| Tarea | Agente | Cuándo |
-|---|---|---|
-| <tarea-1> | @<agente> | <condición> |
-| <tarea-2> | @<agente> | <condición> |
-```
-> Límite: < 40 líneas. Si CLAUDE.md ya tiene el dispatch → `skillOverrides: "user-invocable-only"`.
-
----
-
-**Referencia** — conocimiento bajo demanda, invisible hasta que se invoca:
-```markdown
----
-name: <dominio>-conventions
-description: "<Qué contiene>. Cargar cuando: <condición concreta>."
-disable-model-invocation: true      # Claude no lo activa — gratis en tokens hasta que el usuario lo pide
-allowed-tools: []
----
-
-<Convenciones, patrones, API — sin prosa de relleno>
-```
-> Límite: < 200 líneas. Si supera → dividir en `SKILL.md` + `reference.md`.
-
----
-
-**Fork** — tarea aislada en subagente, no contamina el hilo:
-```markdown
----
-name: <tarea>-research
-description: "<Qué investiga>. Usar cuando la tarea lee > 3 archivos o produce output voluminoso."
-disable-model-invocation: false
-context: fork
-agent: Explore                      # solo lectura, no carga CLAUDE.md — contexto limpio y económico
----
-
-Investigar $ARGUMENTS:
-1. <paso concreto con Glob/Grep>
-2. <paso concreto con Read>
-3. Resumir hallazgos con referencias exactas de archivo:línea
-```
-
----
-
-**Librería interna** — invocada solo por otra skill o agente, nunca directamente:
-```markdown
----
-name: <dominio>-lib
-description: "<Qué contiene> — uso interno del hub, no invocar directamente."
-disable-model-invocation: true   # el modelo no la ve ni la activa sola
-user-invocable: false            # el usuario no puede /nombre
-allowed-tools: []
----
-
-<Contenido compartido entre skills — convenciones, mapas, constantes>
-```
-> Solo tiene sentido si otra skill o CLAUDE.md la menciona por nombre explícitamente. Sin esa referencia, es inalcanzable.
-
-### Tipos y configuración
-
-| Tipo | `disable-model-invocation` | Tamaño | Qué ve Claude en contexto |
-|---|---|---|---|
-| Hub / dispatch | `false` | < 40 líneas | Nombre + descripción siempre visibles — triage automático |
-| Referencia | `true` | < 200 líneas | **Nada** — ni nombre ni descripción — Claude no sabe que existe hasta que el usuario la invoca |
-| Template | `true` | Sin límite práctico | **Nada** — igual que referencia, nunca en contexto activo |
-
-> **Analogía:** `disable-model-invocation: true` no es "no activar" — es quitar la etiqueta del estante. El recetario sigue ahí, pero Claude no sabe ni que existe. Un hub con `false` es el libro de recetas abierto en la cocina — visible siempre. Una skill de referencia con `true` es el manual técnico en el cajón — gratis en tokens hasta que alguien lo pide.
-
-### Los dos ejes de visibilidad
-
-Son flags independientes en el frontmatter — cada uno controla un eje distinto:
-
-| Flag | Eje que controla | `true` = |
-|---|---|---|
-| `disable-model-invocation` | Si el **modelo** puede auto-invocarla | El modelo no ve nombre ni descripción — la skill no existe para él |
-| `user-invocable` | Si el **usuario** puede `/nombre` | No aparece en autocomplete — el usuario no puede invocarla directamente |
-
-**Las 4 combinaciones:**
-
-| `disable-model-invocation` | `user-invocable` | Patrón | Quién la activa |
-|---|---|---|---|
-| `false` | `true` (omitir) | Hub / dispatch | Modelo o usuario |
-| `true` | `true` (omitir) | Referencia | Solo el usuario con `/nombre` |
-| `false` | `false` | Auto-cargada | Solo el modelo — el usuario no puede sobreescribir |
-| `true` | `false` | Librería interna | Solo otra skill/agente que la nombre explícitamente |
-
-> La combinación `disable-model-invocation: true` + `user-invocable: false` es el "ingrediente secreto" en la alacena: ni el cocinero principal ni el cliente lo ven en el menú. Solo el sous-chef que sabe que existe lo busca directamente.
-
-**Cuándo usar `user-invocable: false`:** cuando la skill es un componente interno (convenciones compartidas, mapas de constantes) que no debe aparecer como comando disponible para el usuario, pero que el hub o CLAUDE.md referencian por nombre. Sin esa referencia explícita, la skill es inalcanzable.
-
-> `skillOverrides` en `settings.json` sobreescribe estos flags en runtime sin editar el archivo — útil para desactivar una skill en un proyecto específico sin tocar el plugin.
-
-### Controlar cuándo una skill se activa — `skillOverrides`
-
-Por defecto, el modelo puede invocar cualquier skill según su `description`. Para controlar esto:
-
-```json
-// .claude/settings.json
-{
-  "skillOverrides": {
-    "mi-hub": "user-invocable-only",
-    "mi-referencia": "off"
-  }
-}
-```
-
-| Valor | Claude la ve | Usuario puede `/nombre` | Analogía |
-|---|---|---|---|
-| `"on"` (default) | Nombre + descripción | Sí | Recetario en la repisa con etiqueta y resumen — Claude sabe cuándo abrirlo |
-| `"name-only"` | Solo el nombre | Sí | Recetario con solo el título — Claude sabe que existe pero no cuándo usarlo |
-| `"user-invocable-only"` | Nada | Sí | Recetario en el cajón — el cocinero (usuario) lo busca, el modelo no lo ve |
-| `"off"` | Nada | No | Recetario en el sótano — nadie lo ve, cero tokens |
-
-**Cuándo usar `user-invocable-only` en el hub:**
-Si CLAUDE.md ya contiene la tabla de dispatch completa, el hub es redundante para el modelo. Desactivar el auto-trigger evita un LLM call innecesario (~280 tokens) por cada tarea sin perder la skill para uso manual.
-
-```json
-// hub innecesario si CLAUDE.md ya tiene el dispatch
-"skillOverrides": {
-  "mi-hub": "user-invocable-only"
-}
-```
-
-**Cuándo usar `"off"` — limpiar skills que ya no se usan:**
-Una skill con `"on"` (default) consume tokens en el system prompt aunque nunca se active. Si una skill quedó obsoleta o fue reemplazada por otra, ponerla en `"off"` en vez de borrar el archivo:
-
-```json
-"skillOverrides": {
-  "mi-skill-vieja": "off",        // obsoleta — invisible para todos
-  "mi-skill-reemplazada": "off"   // reemplazada por mi-skill-nueva
-}
-```
-
-Ventaja sobre borrar: el archivo sigue existiendo como referencia histórica, pero no consume tokens.
-
-### Lifecycle — qué pasa después de invocar una skill
-
-Una skill invocada entra al contexto como un mensaje y **se queda toda la sesión** — Claude no vuelve a leer el archivo. Es el pan de ajo en la mesa: una vez que llega, se queda hasta que te vas.
-
-Auto-compaction reencuaderna las skills más recientes con un budget de **5,000 tokens por skill, 25,000 tokens compartidos**. Si invocaste muchas skills, las más antiguas se caen primero. Señal de problema: la skill "deja de funcionar" después de mucho intercambio — re-invocarla con `/nombre` la restaura.
-
-```
-□ Skill grande (> 200 líneas) → dividir en SKILL.md + reference.md cargado bajo demanda
-□ Skill que "se olvidó" → re-invocar con /nombre después de auto-compact
-□ Muchas skills en una sesión → usar name-only en las menos críticas para liberar budget
-```
-
-<!-- §6-ref -->
-
-### Skill ↔ Agente — árbol de decisión
-
-> Skill y agente usan el mismo mecanismo por debajo. La diferencia es quién dirige: si la skill elige el agente (`context: fork`), la skill controla. Si el agente precarga skills (`skills:`), el agente controla.
-
-```
-¿El trabajo contaminaría el hilo principal con output voluminoso?
-├── No → Skill (comparte contexto)
-│       ¿Necesita tools propias o razonamiento prolongado?
-│       ├── No → Skill regular (referencia / hub / fork-ligero)
-│       └── Sí → Skill con context: fork + agent: Explore
-│                (skill elige el agente, su contenido = la tarea)
-└── Sí → Agente (contexto propio aislado)
-        ¿Siempre necesita cierto conocimiento de referencia al arrancar?
-        ├── No → Agente regular
-        └── Sí → Agente con skills: [skill-name]
-                 (agente precarga skill content, no lo descubre en runtime)
-```
-
-**Los 4 patrones con sus casos de uso:**
-
-| Patrón | Cuándo | Cómo |
-|---|---|---|
-| Skill regular | Referencia, convenciones, triage — comparte hilo | `disable-model-invocation: true/false` sin `context:` |
-| Skill con `context: fork` | Trabajo pesado que ensuciaría el hilo (diffs largos, búsquedas) | `context: fork` + `agent: Explore` en SKILL.md |
-| Agente regular | Tarea multi-step con contexto propio | `.claude/agents/<nombre>.md` sin `skills:` |
-| Agente con `skills:` | Agente que siempre necesita convenciones al arrancar | `skills: [api-conventions, error-patterns]` en frontmatter |
-
-**La nota clave de la doc oficial:**
-> *"Con `skills:` en un agente, el agente controla el sistema prompt y carga el contenido de la skill. Con `context: fork` en una skill, el contenido de la skill se inyecta en el agente elegido. Ambos usan el mismo mecanismo subyacente."*
-
-### Ejemplos — los 4 patrones en código
-
-**Patrón 1 — Skill regular (referencia, comparte hilo):**
-```yaml
-# .claude/skills/api-conventions/SKILL.md
----
-name: api-conventions
-description: "Convenciones de API REST del proyecto. Cargar cuando se implementan endpoints."
-disable-model-invocation: true   # Claude no la activa sola — cero tokens hasta que el usuario la pide
-allowed-tools: []
----
-Cuando escribas endpoints:
-- Usar kebab-case en rutas: /user-profiles, no /userProfiles
-- Errores siempre con {error: string, code: string}
-- Paginación con ?page=&limit= (max 100)
-```
-
-**Patrón 2 — Skill con `context: fork` (tarea aislada, skill dirige):**
-```yaml
-# .claude/skills/audit-deps/SKILL.md
----
-name: audit-deps
-description: "Auditar dependencias del proyecto. Usar cuando el usuario pide revisar paquetes o seguridad de dependencias."
-context: fork
-agent: Explore             # solo lectura — no carga CLAUDE.md, contexto limpio
----
-Auditar dependencias de $ARGUMENTS o del proyecto completo si no se especifica:
-1. Leer package.json y package-lock.json
-2. Identificar paquetes con versiones pinned vs ranges
-3. Buscar paquetes deprecados o sin mantenimiento (último commit > 2 años)
-4. Reportar: paquete · versión actual · riesgo · acción recomendada
-```
-> La skill dirige: elige el agente (`Explore`), su contenido se convierte en la tarea del subagente. El hilo principal recibe solo el resumen.
-
-**Patrón 3 — Agente regular (contexto propio, sin skills precargadas):**
-```yaml
-# .claude/agents/implementador.md
----
-name: implementador
-description: "Implementa features según el scope del sistema activo. Usar cuando hay una tarea concreta de código definida."
-model: sonnet
-tools: Read, Write, Edit, Glob, Grep
----
-Implementar la tarea recibida siguiendo las convenciones del proyecto.
-Si necesitás convenciones de API → invocar /api-conventions antes de empezar.
-```
-
-**Patrón 4 — Agente con `skills:` (contexto propio + conocimiento precargado):**
-```yaml
-# .claude/agents/api-developer.md
----
-name: api-developer
-description: "Implementa endpoints REST siguiendo las convenciones del proyecto. Usar cuando el task involucra crear o modificar endpoints."
-model: sonnet
-tools: Read, Write, Edit, Glob, Grep
-skills:
-  - api-conventions        # inyectado al arrancar — el agente ya sabe las convenciones
-  - error-handling-patterns
----
-Implementar el endpoint descrito. Las convenciones ya están cargadas en contexto — no hace falta invocar /api-conventions.
-```
-> El agente dirige: controla su propio sistema prompt y precarga el contenido de las skills al iniciar. No necesita descubrirlas en runtime. Solo funciona con skills que tienen `disable-model-invocation: false`.
-
-**¿Cuándo elegir Patrón 3 vs Patrón 4?**
-- Patrón 3 si las convenciones cambian frecuentemente o el agente no siempre las necesita
-- Patrón 4 si el agente **siempre** trabaja en el mismo dominio y las convenciones son estables — evita que el agente tenga que invocar la skill manualmente en cada sesión
-
-### Frontmatter completo — todos los campos
-
-| Campo | Default | Uso |
-|---|---|---|
-| `name` | nombre del directorio | Display en listado — no cambia el comando `/` |
-| `description` | primer párrafo | Trigger de activación automática. **Primero el caso más importante.** |
-| `when_to_use` | — | Contexto adicional — se suma a `description` hacia el límite de 1,536 chars |
-| `argument-hint` | — | Hint en autocompletado: `[issue-number]`, `[archivo] [formato]` |
-| `arguments` | — | Nombres para `$name` substitution: `arguments: [issue, branch]` |
-| `disable-model-invocation` | `false` | `true` = quita la etiqueta del estante — Claude no sabe que existe |
-| `user-invocable` | `true` | `false` = oculta del menú `/` — Claude puede invocarla, el usuario no |
-| `allowed-tools` | — | Tools sin prompt de permiso mientras la skill está activa |
-| `disallowed-tools` | — | Tools bloqueadas mientras la skill está activa (se limpia al próximo mensaje) |
-| `model` | hereda sesión | Override de modelo **solo para este turno** |
-| `effort` | hereda sesión | Override de esfuerzo: `low\|medium\|high\|xhigh\|max` |
-| `context` | — | `fork` = corre en subagente aislado |
-| `agent` | `general-purpose` | Qué subagente usa `context: fork` (`Explore`, `Plan`, o custom) |
-| `hooks` | — | Hooks scoped al ciclo de vida de la skill |
-| `paths` | — | Glob — skill se activa solo cuando se trabaja con archivos que coinciden |
-| `shell` | `bash` | Shell para comandos `!`: `bash` o `powershell` |
-
-### String substitutions
-
-```markdown
-$ARGUMENTS          → todos los args como string ("123 --verbose")
-$ARGUMENTS[N]/$N   → arg por posición 0-based ($0 = primero)
-$nombre             → arg nombrado (con arguments: [issue, branch] → $issue, $branch)
-${CLAUDE_SESSION_ID} → ID de sesión actual (para logs, archivos por sesión)
-${CLAUDE_EFFORT}    → nivel de esfuerzo activo en este momento
-${CLAUDE_SKILL_DIR} → directorio de la skill — para referenciar scripts bundleados
-```
-
-**Ejemplo con args nombrados:**
-```yaml
----
-name: fix-issue
-arguments: [issue, branch]
-disable-model-invocation: true
----
-Fixear issue $issue en la branch $branch siguiendo nuestros estándares.
-```
-Invocación: `/fix-issue 42 feat/auth` → `$issue=42`, `$branch=feat/auth`.
-
-### context: fork — skill aislada en subagente
-
-Usá `context: fork` cuando la skill haría trabajo pesado que contaminaría el hilo principal (diffs largos, búsquedas exhaustivas, análisis de archivos). El contenido de SKILL.md se vuelve el prompt del subagente — el hilo principal solo recibe el resumen.
-
-```yaml
----
-name: deep-research
-description: Investigar un tema en el codebase. Usar cuando el usuario pide análisis profundo de código.
-context: fork
-agent: Explore       # solo lectura, no carga CLAUDE.md — contexto limpio y económico
----
-
-Investigar $ARGUMENTS:
-1. Encontrar archivos relevantes con Glob y Grep
-2. Leer y analizar el código
-3. Resumir hallazgos con referencias exactas de archivo:línea
-```
-
-> **Regla:** Si la skill busca o lee más de 3 archivos, considerar `context: fork`. El subagente paga su propio contexto — el hilo principal no se ensucia con los resultados intermedios.
-
-`agent: Explore` es el más económico para lectura: no carga CLAUDE.md ni git status. `agent: general-purpose` cuando necesitás más capacidad.
-
-### Supporting files — skill como directorio
-
-Una skill puede ser un directorio con archivos de soporte. SKILL.md es el entrypoint; el resto solo se carga cuando se referencia explícitamente:
-
-```
-mi-skill/
-├── SKILL.md          # < 500 líneas — entrypoint y navegación
-├── reference.md      # docs detalladas — no carga sola, Claude la lee cuando la necesita
-├── examples/
-│   └── sample.md     # output esperado — útil para few-shot en el body
-└── scripts/
-    └── helper.py     # script ejecutable — no se lee, se corre con !
-```
-
-Referenciar desde SKILL.md:
-```markdown
-Para especificación completa de la API → ver [reference.md](reference.md)
-Para ejemplos de output → ver [examples/sample.md](examples/sample.md)
-```
-
-**Cuándo usar:** cuando SKILL.md supera 200 líneas. La regla es la misma que para cualquier archivo en el sistema: un archivo de 500 líneas siempre se lee completo; dividido en partes se lee solo lo que aplica.
-
-### Hub — qué va y qué no
-
-```
-✅ Tabla de triage por tipo de tarea
-✅ Reglas de una línea que aplican a TODO
-❌ Tablas de datos o nomenclatura → van en skills de referencia
-❌ Ejemplos de código → van en docs de referencia
-❌ Contenido que ya está en CLAUDE.md  ← duplicación silenciosa de tokens
-```
-
-Si el hub supera 40 líneas → hay contenido que no le pertenece.
-Si CLAUDE.md ya tiene el dispatch → usar `user-invocable-only` y eliminar el hub del flujo automático.
-
-### Patrón: scaffold-questions skill
-
-Cuando un tool-specific project tiene un flujo de `AskUserQuestion` definido (onboarding, scaffold, configuración), formalizar las preguntas exactas en una skill de referencia en lugar de improvisar en cada sesión.
-
-```markdown
----
-name: scaffold-questions
-description: Exact AskUserQuestion format for [flow name]. Load before Call 1/2/3.
-disable-model-invocation: true
-allowed-tools: []
----
-# [Flow] Questions
-## Call 1 — [Pregunta] (×1)
-question: "…"
-header: "…"
-options:
-  - [Label] | [description]
-  - [Label] | [description]
-## Call 2 — … (×4)
-…
-```
-
-**Por qué:** sin este skill, el modelo improvisa opciones distintas en cada sesión — inconsistente y difícil de testear. Con el skill cargado, las preguntas son idénticas siempre.
-
-**Cuándo usar:** cualquier flujo que tenga `AskUserQuestion` repetibles (onboarding, scaffold, configuración inicial).
-
-> **[2026-06-02] artifact-factory:** patrón implementado en `.claude/skills/scaffold-questions/SKILL.md`. Eliminó 3 iteraciones de preguntas incorrectas en la misma sesión.
-
-> **Anti-pattern "in notes":** opciones con label `"type X in notes"` confunden — el usuario no ve ningún campo llamado "notes". Usar siempre `"Other" field (option 3 below)` para que apunte al campo visible de la UI. Validado en prueba de flujo 2026-06-02.
-
-### Dynamic context injection
-
-Prefix `!` ejecuta un comando y pega el output en el contexto **antes** de que Claude lea la skill — Claude recibe datos reales, no el comando:
-
-```markdown
-## Estado actual
-!`git diff HEAD --stat`
-!`git log --oneline -3`
-```
-
-Usar solo cuando el output es esencial — cada línea cuesta tokens. Para comandos multi-línea:
-
-````markdown
-```!
-node --version
-npm --version
-git status --short
-```
-````
-
-**`ultrathink` — razonamiento extendido en una palabra:** incluir `ultrathink` en cualquier parte del body activa pensamiento profundo para esa invocación. Usar en skills de auditoría o decisiones de arquitectura donde el costo del error justifica el costo del reasoning.
-
-> **[2026-06-28] design-ios:** Skill con `disable-model-invocation: true` que no aparece en la lista de usuario — diagnosticar en orden: (1) `user-invocable: true` declarado explícitamente — algunos combos de flags la silencian sin error visible; (2) `argument-hint` presente si recibe argumentos; (3) `/reload-plugins` ejecutado post-cambio. El campo tiene default `true` según la tabla, pero la declaración explícita es más confiable.
 
 ---
 
@@ -2038,6 +1684,442 @@ Cuándo extender `AUTO_APPROVE_TOOLS`: solo cuando el comando es objetivamente r
 
 ---
 
+<!-- §6 -->
+<!-- §6-quick -->
+## 6. Skills
+
+> Una skill es un recetario: no cocina sola, pero cuando el agente la necesita la consulta. La diferencia con un agente es que no tiene contexto propio — comparte el hilo principal. Úsalas para referencia, templates y triage. Nunca para código que se ejecuta.
+
+### Cuándo crear una skill
+
+La pregunta no es "¿puedo hacer esto con una skill?" — es "¿dónde vive mejor este contenido?"
+
+| Contenido | Dónde va | Por qué |
+|---|---|---|
+| Regla que aplica **siempre**, en toda tarea | `CLAUDE.md` | Costo fijo justificado — es el contrato del restaurante en la pared |
+| Procedimiento que se carga **bajo demanda** | Skill | Gratis en tokens hasta que se invoca — el menú del día |
+| Tarea con **contexto propio** o que contaminaría el hilo | Agente (`context: fork`) | El sous-chef trabaja en su cocina aparte — el hilo principal no se ensucia |
+
+**Trigger práctico (oficial):** creá una skill cuando seguís pegando las mismas instrucciones en el chat, o cuando una sección de CLAUDE.md creció hasta ser un procedimiento en vez de un hecho.
+
+```
+CLAUDE.md tiene ≥ 5 líneas sobre cómo hacer X  →  mover X a una skill
+Pegaste las mismas instrucciones más de 2 veces  →  skill de referencia
+La tarea contamina el hilo con logs/diffs largos →  skill con context: fork
+```
+
+### Templates por tipo de skill
+
+**Hub** — dispatch automático, siempre visible para Claude:
+```markdown
+---
+name: <proyecto>-hub
+description: "<Proyecto> dispatch. [caso A] → @<agente-a> | [caso B] → @<agente-b>."
+disable-model-invocation: false     # Claude lo activa solo — descripción siempre en contexto
+allowed-tools: Read
+---
+
+# <Proyecto> — Dispatch
+| Tarea | Agente | Cuándo |
+|---|---|---|
+| <tarea-1> | @<agente> | <condición> |
+| <tarea-2> | @<agente> | <condición> |
+```
+> Límite: < 40 líneas. Si CLAUDE.md ya tiene el dispatch → `skillOverrides: "user-invocable-only"`.
+
+---
+
+**Referencia** — conocimiento bajo demanda, invisible hasta que se invoca:
+```markdown
+---
+name: <dominio>-conventions
+description: "<Qué contiene>. Cargar cuando: <condición concreta>."
+disable-model-invocation: true      # Claude no lo activa — gratis en tokens hasta que el usuario lo pide
+allowed-tools: []
+---
+
+<Convenciones, patrones, API — sin prosa de relleno>
+```
+> Límite: < 200 líneas. Si supera → dividir en `SKILL.md` + `reference.md`.
+
+---
+
+**Fork** — tarea aislada en subagente, no contamina el hilo:
+```markdown
+---
+name: <tarea>-research
+description: "<Qué investiga>. Usar cuando la tarea lee > 3 archivos o produce output voluminoso."
+disable-model-invocation: false
+context: fork
+agent: Explore                      # solo lectura, no carga CLAUDE.md — contexto limpio y económico
+---
+
+Investigar $ARGUMENTS:
+1. <paso concreto con Glob/Grep>
+2. <paso concreto con Read>
+3. Resumir hallazgos con referencias exactas de archivo:línea
+```
+
+---
+
+**Librería interna** — invocada solo por otra skill o agente, nunca directamente:
+```markdown
+---
+name: <dominio>-lib
+description: "<Qué contiene> — uso interno del hub, no invocar directamente."
+disable-model-invocation: true   # el modelo no la ve ni la activa sola
+user-invocable: false            # el usuario no puede /nombre
+allowed-tools: []
+---
+
+<Contenido compartido entre skills — convenciones, mapas, constantes>
+```
+> Solo tiene sentido si otra skill o CLAUDE.md la menciona por nombre explícitamente. Sin esa referencia, es inalcanzable.
+
+### Tipos y configuración
+
+| Tipo | `disable-model-invocation` | Tamaño | Qué ve Claude en contexto |
+|---|---|---|---|
+| Hub / dispatch | `false` | < 40 líneas | Nombre + descripción siempre visibles — triage automático |
+| Referencia | `true` | < 200 líneas | **Nada** — ni nombre ni descripción — Claude no sabe que existe hasta que el usuario la invoca |
+| Template | `true` | Sin límite práctico | **Nada** — igual que referencia, nunca en contexto activo |
+
+> **Analogía:** `disable-model-invocation: true` no es "no activar" — es quitar la etiqueta del estante. El recetario sigue ahí, pero Claude no sabe ni que existe. Un hub con `false` es el libro de recetas abierto en la cocina — visible siempre. Una skill de referencia con `true` es el manual técnico en el cajón — gratis en tokens hasta que alguien lo pide.
+
+### Los dos ejes de visibilidad
+
+Son flags independientes en el frontmatter — cada uno controla un eje distinto:
+
+| Flag | Eje que controla | `true` = |
+|---|---|---|
+| `disable-model-invocation` | Si el **modelo** puede auto-invocarla | El modelo no ve nombre ni descripción — la skill no existe para él |
+| `user-invocable` | Si el **usuario** puede `/nombre` | No aparece en autocomplete — el usuario no puede invocarla directamente |
+
+**Las 4 combinaciones:**
+
+| `disable-model-invocation` | `user-invocable` | Patrón | Quién la activa |
+|---|---|---|---|
+| `false` | `true` (omitir) | Hub / dispatch | Modelo o usuario |
+| `true` | `true` (omitir) | Referencia | Solo el usuario con `/nombre` |
+| `false` | `false` | Auto-cargada | Solo el modelo — el usuario no puede sobreescribir |
+| `true` | `false` | Librería interna | Solo otra skill/agente que la nombre explícitamente |
+
+> La combinación `disable-model-invocation: true` + `user-invocable: false` es el "ingrediente secreto" en la alacena: ni el cocinero principal ni el cliente lo ven en el menú. Solo el sous-chef que sabe que existe lo busca directamente.
+
+**Cuándo usar `user-invocable: false`:** cuando la skill es un componente interno (convenciones compartidas, mapas de constantes) que no debe aparecer como comando disponible para el usuario, pero que el hub o CLAUDE.md referencian por nombre. Sin esa referencia explícita, la skill es inalcanzable.
+
+> `skillOverrides` en `settings.json` sobreescribe estos flags en runtime sin editar el archivo — útil para desactivar una skill en un proyecto específico sin tocar el plugin.
+
+### Controlar cuándo una skill se activa — `skillOverrides`
+
+Por defecto, el modelo puede invocar cualquier skill según su `description`. Para controlar esto:
+
+```json
+// .claude/settings.json
+{
+  "skillOverrides": {
+    "mi-hub": "user-invocable-only",
+    "mi-referencia": "off"
+  }
+}
+```
+
+| Valor | Claude la ve | Usuario puede `/nombre` | Analogía |
+|---|---|---|---|
+| `"on"` (default) | Nombre + descripción | Sí | Recetario en la repisa con etiqueta y resumen — Claude sabe cuándo abrirlo |
+| `"name-only"` | Solo el nombre | Sí | Recetario con solo el título — Claude sabe que existe pero no cuándo usarlo |
+| `"user-invocable-only"` | Nada | Sí | Recetario en el cajón — el cocinero (usuario) lo busca, el modelo no lo ve |
+| `"off"` | Nada | No | Recetario en el sótano — nadie lo ve, cero tokens |
+
+**Cuándo usar `user-invocable-only` en el hub:**
+Si CLAUDE.md ya contiene la tabla de dispatch completa, el hub es redundante para el modelo. Desactivar el auto-trigger evita un LLM call innecesario (~280 tokens) por cada tarea sin perder la skill para uso manual.
+
+```json
+// hub innecesario si CLAUDE.md ya tiene el dispatch
+"skillOverrides": {
+  "mi-hub": "user-invocable-only"
+}
+```
+
+**Cuándo usar `"off"` — limpiar skills que ya no se usan:**
+Una skill con `"on"` (default) consume tokens en el system prompt aunque nunca se active. Si una skill quedó obsoleta o fue reemplazada por otra, ponerla en `"off"` en vez de borrar el archivo:
+
+```json
+"skillOverrides": {
+  "mi-skill-vieja": "off",        // obsoleta — invisible para todos
+  "mi-skill-reemplazada": "off"   // reemplazada por mi-skill-nueva
+}
+```
+
+Ventaja sobre borrar: el archivo sigue existiendo como referencia histórica, pero no consume tokens.
+
+### Lifecycle — qué pasa después de invocar una skill
+
+Una skill invocada entra al contexto como un mensaje y **se queda toda la sesión** — Claude no vuelve a leer el archivo. Es el pan de ajo en la mesa: una vez que llega, se queda hasta que te vas.
+
+Auto-compaction reencuaderna las skills más recientes con un budget de **5,000 tokens por skill, 25,000 tokens compartidos**. Si invocaste muchas skills, las más antiguas se caen primero. Señal de problema: la skill "deja de funcionar" después de mucho intercambio — re-invocarla con `/nombre` la restaura.
+
+```
+□ Skill grande (> 200 líneas) → dividir en SKILL.md + reference.md cargado bajo demanda
+□ Skill que "se olvidó" → re-invocar con /nombre después de auto-compact
+□ Muchas skills en una sesión → usar name-only en las menos críticas para liberar budget
+```
+
+<!-- §6-ref -->
+
+### Skill ↔ Agente — árbol de decisión
+
+> Skill y agente usan el mismo mecanismo por debajo. La diferencia es quién dirige: si la skill elige el agente (`context: fork`), la skill controla. Si el agente precarga skills (`skills:`), el agente controla.
+
+```
+¿El trabajo contaminaría el hilo principal con output voluminoso?
+├── No → Skill (comparte contexto)
+│       ¿Necesita tools propias o razonamiento prolongado?
+│       ├── No → Skill regular (referencia / hub / fork-ligero)
+│       └── Sí → Skill con context: fork + agent: Explore
+│                (skill elige el agente, su contenido = la tarea)
+└── Sí → Agente (contexto propio aislado)
+        ¿Siempre necesita cierto conocimiento de referencia al arrancar?
+        ├── No → Agente regular
+        └── Sí → Agente con skills: [skill-name]
+                 (agente precarga skill content, no lo descubre en runtime)
+```
+
+**Los 4 patrones con sus casos de uso:**
+
+| Patrón | Cuándo | Cómo |
+|---|---|---|
+| Skill regular | Referencia, convenciones, triage — comparte hilo | `disable-model-invocation: true/false` sin `context:` |
+| Skill con `context: fork` | Trabajo pesado que ensuciaría el hilo (diffs largos, búsquedas) | `context: fork` + `agent: Explore` en SKILL.md |
+| Agente regular | Tarea multi-step con contexto propio | `.claude/agents/<nombre>.md` sin `skills:` |
+| Agente con `skills:` | Agente que siempre necesita convenciones al arrancar | `skills: [api-conventions, error-patterns]` en frontmatter |
+
+**La nota clave de la doc oficial:**
+> *"Con `skills:` en un agente, el agente controla el sistema prompt y carga el contenido de la skill. Con `context: fork` en una skill, el contenido de la skill se inyecta en el agente elegido. Ambos usan el mismo mecanismo subyacente."*
+
+### Ejemplos — los 4 patrones en código
+
+**Patrón 1 — Skill regular (referencia, comparte hilo):**
+```yaml
+# .claude/skills/api-conventions/SKILL.md
+---
+name: api-conventions
+description: "Convenciones de API REST del proyecto. Cargar cuando se implementan endpoints."
+disable-model-invocation: true   # Claude no la activa sola — cero tokens hasta que el usuario la pide
+allowed-tools: []
+---
+Cuando escribas endpoints:
+- Usar kebab-case en rutas: /user-profiles, no /userProfiles
+- Errores siempre con {error: string, code: string}
+- Paginación con ?page=&limit= (max 100)
+```
+
+**Patrón 2 — Skill con `context: fork` (tarea aislada, skill dirige):**
+```yaml
+# .claude/skills/audit-deps/SKILL.md
+---
+name: audit-deps
+description: "Auditar dependencias del proyecto. Usar cuando el usuario pide revisar paquetes o seguridad de dependencias."
+context: fork
+agent: Explore             # solo lectura — no carga CLAUDE.md, contexto limpio
+---
+Auditar dependencias de $ARGUMENTS o del proyecto completo si no se especifica:
+1. Leer package.json y package-lock.json
+2. Identificar paquetes con versiones pinned vs ranges
+3. Buscar paquetes deprecados o sin mantenimiento (último commit > 2 años)
+4. Reportar: paquete · versión actual · riesgo · acción recomendada
+```
+> La skill dirige: elige el agente (`Explore`), su contenido se convierte en la tarea del subagente. El hilo principal recibe solo el resumen.
+
+**Patrón 3 — Agente regular (contexto propio, sin skills precargadas):**
+```yaml
+# .claude/agents/implementador.md
+---
+name: implementador
+description: "Implementa features según el scope del sistema activo. Usar cuando hay una tarea concreta de código definida."
+model: sonnet
+tools: Read, Write, Edit, Glob, Grep
+---
+Implementar la tarea recibida siguiendo las convenciones del proyecto.
+Si necesitás convenciones de API → invocar /api-conventions antes de empezar.
+```
+
+**Patrón 4 — Agente con `skills:` (contexto propio + conocimiento precargado):**
+```yaml
+# .claude/agents/api-developer.md
+---
+name: api-developer
+description: "Implementa endpoints REST siguiendo las convenciones del proyecto. Usar cuando el task involucra crear o modificar endpoints."
+model: sonnet
+tools: Read, Write, Edit, Glob, Grep
+skills:
+  - api-conventions        # inyectado al arrancar — el agente ya sabe las convenciones
+  - error-handling-patterns
+---
+Implementar el endpoint descrito. Las convenciones ya están cargadas en contexto — no hace falta invocar /api-conventions.
+```
+> El agente dirige: controla su propio sistema prompt y precarga el contenido de las skills al iniciar. No necesita descubrirlas en runtime. Solo funciona con skills que tienen `disable-model-invocation: false`.
+
+**¿Cuándo elegir Patrón 3 vs Patrón 4?**
+- Patrón 3 si las convenciones cambian frecuentemente o el agente no siempre las necesita
+- Patrón 4 si el agente **siempre** trabaja en el mismo dominio y las convenciones son estables — evita que el agente tenga que invocar la skill manualmente en cada sesión
+
+### Frontmatter completo — todos los campos
+
+| Campo | Default | Uso |
+|---|---|---|
+| `name` | nombre del directorio | Display en listado — no cambia el comando `/` |
+| `description` | primer párrafo | Trigger de activación automática. **Primero el caso más importante.** |
+| `when_to_use` | — | Contexto adicional — se suma a `description` hacia el límite de 1,536 chars |
+| `argument-hint` | — | Hint en autocompletado: `[issue-number]`, `[archivo] [formato]` |
+| `arguments` | — | Nombres para `$name` substitution: `arguments: [issue, branch]` |
+| `disable-model-invocation` | `false` | `true` = quita la etiqueta del estante — Claude no sabe que existe |
+| `user-invocable` | `true` | `false` = oculta del menú `/` — Claude puede invocarla, el usuario no |
+| `allowed-tools` | — | Tools sin prompt de permiso mientras la skill está activa |
+| `disallowed-tools` | — | Tools bloqueadas mientras la skill está activa (se limpia al próximo mensaje) |
+| `model` | hereda sesión | Override de modelo **solo para este turno** |
+| `effort` | hereda sesión | Override de esfuerzo: `low\|medium\|high\|xhigh\|max` |
+| `context` | — | `fork` = corre en subagente aislado |
+| `agent` | `general-purpose` | Qué subagente usa `context: fork` (`Explore`, `Plan`, o custom) |
+| `hooks` | — | Hooks scoped al ciclo de vida de la skill |
+| `paths` | — | Glob — skill se activa solo cuando se trabaja con archivos que coinciden |
+| `shell` | `bash` | Shell para comandos `!`: `bash` o `powershell` |
+
+### String substitutions
+
+```markdown
+$ARGUMENTS          → todos los args como string ("123 --verbose")
+$ARGUMENTS[N]/$N   → arg por posición 0-based ($0 = primero)
+$nombre             → arg nombrado (con arguments: [issue, branch] → $issue, $branch)
+${CLAUDE_SESSION_ID} → ID de sesión actual (para logs, archivos por sesión)
+${CLAUDE_EFFORT}    → nivel de esfuerzo activo en este momento
+${CLAUDE_SKILL_DIR} → directorio de la skill — para referenciar scripts bundleados
+```
+
+**Ejemplo con args nombrados:**
+```yaml
+---
+name: fix-issue
+arguments: [issue, branch]
+disable-model-invocation: true
+---
+Fixear issue $issue en la branch $branch siguiendo nuestros estándares.
+```
+Invocación: `/fix-issue 42 feat/auth` → `$issue=42`, `$branch=feat/auth`.
+
+### context: fork — skill aislada en subagente
+
+Usá `context: fork` cuando la skill haría trabajo pesado que contaminaría el hilo principal (diffs largos, búsquedas exhaustivas, análisis de archivos). El contenido de SKILL.md se vuelve el prompt del subagente — el hilo principal solo recibe el resumen.
+
+```yaml
+---
+name: deep-research
+description: Investigar un tema en el codebase. Usar cuando el usuario pide análisis profundo de código.
+context: fork
+agent: Explore       # solo lectura, no carga CLAUDE.md — contexto limpio y económico
+---
+
+Investigar $ARGUMENTS:
+1. Encontrar archivos relevantes con Glob y Grep
+2. Leer y analizar el código
+3. Resumir hallazgos con referencias exactas de archivo:línea
+```
+
+> **Regla:** Si la skill busca o lee más de 3 archivos, considerar `context: fork`. El subagente paga su propio contexto — el hilo principal no se ensucia con los resultados intermedios.
+
+`agent: Explore` es el más económico para lectura: no carga CLAUDE.md ni git status. `agent: general-purpose` cuando necesitás más capacidad.
+
+### Supporting files — skill como directorio
+
+Una skill puede ser un directorio con archivos de soporte. SKILL.md es el entrypoint; el resto solo se carga cuando se referencia explícitamente:
+
+```
+mi-skill/
+├── SKILL.md          # < 500 líneas — entrypoint y navegación
+├── reference.md      # docs detalladas — no carga sola, Claude la lee cuando la necesita
+├── examples/
+│   └── sample.md     # output esperado — útil para few-shot en el body
+└── scripts/
+    └── helper.py     # script ejecutable — no se lee, se corre con !
+```
+
+Referenciar desde SKILL.md:
+```markdown
+Para especificación completa de la API → ver [reference.md](reference.md)
+Para ejemplos de output → ver [examples/sample.md](examples/sample.md)
+```
+
+**Cuándo usar:** cuando SKILL.md supera 200 líneas. La regla es la misma que para cualquier archivo en el sistema: un archivo de 500 líneas siempre se lee completo; dividido en partes se lee solo lo que aplica.
+
+### Hub — qué va y qué no
+
+```
+✅ Tabla de triage por tipo de tarea
+✅ Reglas de una línea que aplican a TODO
+❌ Tablas de datos o nomenclatura → van en skills de referencia
+❌ Ejemplos de código → van en docs de referencia
+❌ Contenido que ya está en CLAUDE.md  ← duplicación silenciosa de tokens
+```
+
+Si el hub supera 40 líneas → hay contenido que no le pertenece.
+Si CLAUDE.md ya tiene el dispatch → usar `user-invocable-only` y eliminar el hub del flujo automático.
+
+### Patrón: scaffold-questions skill
+
+Cuando un tool-specific project tiene un flujo de `AskUserQuestion` definido (onboarding, scaffold, configuración), formalizar las preguntas exactas en una skill de referencia en lugar de improvisar en cada sesión.
+
+```markdown
+---
+name: scaffold-questions
+description: Exact AskUserQuestion format for [flow name]. Load before Call 1/2/3.
+disable-model-invocation: true
+allowed-tools: []
+---
+# [Flow] Questions
+## Call 1 — [Pregunta] (×1)
+question: "…"
+header: "…"
+options:
+  - [Label] | [description]
+  - [Label] | [description]
+## Call 2 — … (×4)
+…
+```
+
+**Por qué:** sin este skill, el modelo improvisa opciones distintas en cada sesión — inconsistente y difícil de testear. Con el skill cargado, las preguntas son idénticas siempre.
+
+**Cuándo usar:** cualquier flujo que tenga `AskUserQuestion` repetibles (onboarding, scaffold, configuración inicial).
+
+> **[2026-06-02] artifact-factory:** patrón implementado en `.claude/skills/scaffold-questions/SKILL.md`. Eliminó 3 iteraciones de preguntas incorrectas en la misma sesión.
+
+> **Anti-pattern "in notes":** opciones con label `"type X in notes"` confunden — el usuario no ve ningún campo llamado "notes". Usar siempre `"Other" field (option 3 below)` para que apunte al campo visible de la UI. Validado en prueba de flujo 2026-06-02.
+
+### Dynamic context injection
+
+Prefix `!` ejecuta un comando y pega el output en el contexto **antes** de que Claude lea la skill — Claude recibe datos reales, no el comando:
+
+```markdown
+## Estado actual
+!`git diff HEAD --stat`
+!`git log --oneline -3`
+```
+
+Usar solo cuando el output es esencial — cada línea cuesta tokens. Para comandos multi-línea:
+
+````markdown
+```!
+node --version
+npm --version
+git status --short
+```
+````
+
+**`ultrathink` — razonamiento extendido en una palabra:** incluir `ultrathink` en cualquier parte del body activa pensamiento profundo para esa invocación. Usar en skills de auditoría o decisiones de arquitectura donde el costo del error justifica el costo del reasoning.
+
+> **[2026-06-28] design-ios:** Skill con `disable-model-invocation: true` que no aparece en la lista de usuario — diagnosticar en orden: (1) `user-invocable: true` declarado explícitamente — algunos combos de flags la silencian sin error visible; (2) `argument-hint` presente si recibe argumentos; (3) `/reload-plugins` ejecutado post-cambio. El campo tiene default `true` según la tabla, pero la declaración explícita es más confiable.
+
+---
+
 <!-- §8 -->
 ## 8. Scope del proyecto
 
@@ -2584,6 +2666,1568 @@ Sin instrucción de "no leas componentes existentes", el modelo lee 2-4 archivos
 
 ---
 
+<!-- §31 -->
+<!-- §31-quick -->
+## 31. Advisor Pattern — validación sin subir de modelo
+
+> Como un sous-chef que revisa el plato antes de que salga a la mesa: no cocina — solo dice si algo está mal. El chef sigue siendo sonnet; el revisor es haiku. El plato mejora sin cambiar al chef Michelin.
+
+El patrón resuelve el dilema "sonnet comete errores, pero opus es 5× más caro". La solución no es subir de modelo — es agregar un segundo agente barato que revisa el output del primero.
+
+### Cuándo aplicar
+
+| Síntoma | Sin advisor | Con advisor |
+|---|---|---|
+| Sonnet genera output que parece correcto pero tiene bugs sutiles | Iterar con sonnet hasta que funcione | haiku detecta y reporta el fallo en un turno |
+| El output de un agente es input del siguiente (pipeline) | Error se propaga silenciosamente | Advisor corta la cadena antes de que escale |
+| Subir a opus parece la única solución | ~5× costo | Sonnet + haiku advisor (~1.15× costo) |
+
+**No aplicar cuando:** ya existe un agente reviewer explícito en el sistema. Dos revisores para lo mismo = costo duplicado sin beneficio.
+
+### Implementación
+
+Dos agentes en secuencia: generator → advisor. El advisor tiene tools mínimas — si puede escribir, ya no es un advisor.
+
+```yaml
+# .claude/agents/advisor.md
+---
+name: advisor
+description: Revisa el output del agente anterior y emite veredicto PASS/FAIL con razón.
+  Invocar después de cualquier generator cuando el output va a ser usado por otro sistema.
+model: claude-haiku-4-5
+tools: Read
+---
+
+Tu único trabajo: revisar el output recibido y emitir un veredicto binario.
+
+Responder SOLO con:
+PASS — [razón en una línea]
+o
+FAIL — [problema específico] — [corrección mínima necesaria]
+
+No generar código. No proponer mejoras. Solo veredicto.
+```
+
+### Flujo en arquitectura multi-agente
+
+```
+@generator → produce output
+@advisor   → PASS o FAIL con razón
+  PASS → continuar al siguiente agente
+  FAIL → reinvocar @generator con el feedback (1 retry máximo)
+         Si vuelve a fallar → el problema es el generator, no el output
+```
+
+El advisor no itera — emite veredicto. Si hacés más de 1 retry, el problema es el design del generator.
+
+### Costo comparado
+
+| Estrategia | Costo relativo | Cuándo |
+|---|---|---|
+| Sonnet solo | 1× | Output predecible, stack conocido |
+| Sonnet + haiku advisor | ~1.15× | Output con consecuencias si está mal |
+| Opus solo | ~5× | Solo si sonnet + advisor sigue fallando |
+| Opus + advisor | ~6× | Raramente tiene sentido |
+
+---
+
+<!-- §32 -->
+<!-- §32-quick -->
+## 32. Archivos que nadie documenta — el resto del .claude/
+
+> La imagen del .claude/ siempre muestra agents/, skills/ y hooks/. Nadie habla de los otros cuatro. Pero CLAUDE.local.md, output-styles/, rules/ y settings.local.json resuelven problemas reales que sin ellos se parchean con prompts repetidos o CLAUDE.md inflado.
+
+### Árbol de decisión — cuándo usar cada uno
+
+```
+¿Instrucciones que NO deben subir al repo (rutas locales, tokens, prefs personales)?
+  → CLAUDE.local.md
+
+¿Quieres que Claude cambie el formato de respuesta sin repetirlo en cada prompt?
+  → output-styles/
+
+¿Tienes reglas que solo aplican a un subdirectorio (src/api/, tests/, migrations/)?
+  → rules/
+
+¿Permissions personales que no aplican a todo el equipo?
+  → settings.local.json
+```
+
+---
+
+### 1. CLAUDE.local.md — tu override personal
+
+Variante gitignored de CLAUDE.md. Claude carga ambos; .local.md gana en conflicto.
+
+| | `CLAUDE.md` | `CLAUDE.local.md` |
+|---|---|---|
+| Se commitea | ✅ | ❌ gitignored |
+| Lo ve el equipo | ✅ | Solo vos |
+| Propósito | Reglas del proyecto | Overrides personales de máquina |
+
+**En `.gitignore`:**
+```
+CLAUDE.local.md
+.claude/settings.local.json
+```
+
+**Qué va aquí:**
+```markdown
+# CLAUDE.local.md
+
+## Paths de esta máquina
+- Python: /opt/homebrew/bin/python3
+- DB local: postgresql://localhost:5432/myapp_dev
+
+## Preferencias personales
+- Al terminar tarea larga: notificar con terminal-notifier
+- No usar npm audit en este repo — rompe mi hook de postinstall
+```
+
+**Nunca en CLAUDE.local.md:** reglas de arquitectura del proyecto (→ `CLAUDE.md`) ni secrets reales (→ `.env`).
+
+**En plugins:** no existe — es personal por definición. Si el plugin necesita config por-usuario, usar `settings.local.json`.
+
+---
+
+### 2. output-styles/ — formato de respuesta on tap
+
+Archivos Markdown que definen la forma del output. Claude los aplica cuando un agente los referencia o el usuario los menciona.
+
+```
+.claude/output-styles/
+├── terse.md      ← código only, sin prose
+├── verbose.md    ← explicaciones + código
+└── report.md     ← tabla de hallazgos estructurada
+```
+
+**Template — `terse.md`:**
+```markdown
+# Estilo: terse
+- Solo código, sin explicaciones
+- Sin encabezados salvo que haya más de 3 archivos
+- Sin "aquí está el fix" ni resumen al final
+- Si el cambio es obvio por el diff, no comentar
+```
+
+**Template — `verbose.md`:**
+```markdown
+# Estilo: verbose
+- Explicar el porqué antes del código
+- Un párrafo de contexto por cada decisión no obvia
+- Incluir alternativas descartadas con razón
+```
+
+**Cómo invocar desde el chat:**
+```
+Seguí output-styles/terse.md para esta respuesta.
+```
+
+**Desde un agente:**
+```yaml
+---
+name: code-fixer
+description: Arregla bugs. Responde siempre en estilo terse.
+---
+Seguí siempre .claude/output-styles/terse.md para tus respuestas.
+```
+
+**LowCost:** `terse.md` en agentes de code-only ahorra 30-50% de tokens de output en runs largos sin cambiar el modelo.
+
+**Patrón de auditoría — agents existentes:** antes de distribuir un plugin, revisar cada agente por reglas universales duplicadas (idioma, compilación, constantes de tamaño). Cada regla en el agente se paga en cada tool call; en `rules/` con el glob apropiado solo se paga cuando se tocan archivos del dominio. Combinado con `output-styles/`: hasta 40-70% de reducción de tokens por sesión de implementación.
+
+**En plugins:** ✅ sí va en plugins. Consistencia de formato para el equipo sin que cada dev configure lo mismo. Un plugin `design-ios` puede incluir `output-styles/swift-only.md` para que todos los agentes respondan sin prose.
+
+---
+
+### 3. rules/ — instrucciones glob-scoped
+
+Archivos que Claude carga automáticamente cuando trabaja en archivos que hacen match con el glob. No tenés que pedirlo — carga solo.
+
+```
+.claude/rules/
+├── api.md         ← carga al tocar src/api/**
+├── tests.md       ← carga al tocar **/*.test.ts
+└── migrations.md  ← carga al tocar db/migrations/**
+```
+
+**Diferencia con CLAUDE.md:**
+
+| | `CLAUDE.md` | `rules/api.md` |
+|---|---|---|
+| Cuándo carga | Siempre, cada turno | Solo al tocar `src/api/**` |
+| Tokens gastados | Fijo — siempre | Solo cuando es relevante |
+| Propósito | Reglas universales | Reglas de dominio específico |
+
+**Cuándo usar rules/ en vez de CLAUDE.md:**
+- Instrucciones de un subsistema que no aplican al resto del repo
+- CLAUDE.md ya pasa las 150 líneas y no todo es siempre relevante
+- Distintos devs trabajan en distintos dominios — rules/ los mantiene aislados
+
+**Ejemplo práctico — `rules/api.md`**
+
+```markdown
+---
+glob: src/api/**
+---
+# Reglas — src/api/
+
+## Autenticación
+- Toda ruta nueva requiere middleware `authGuard` — sin excepción
+- Tokens en headers, nunca en query params
+
+## Formato de respuesta
+- Siempre `ApiResponse<T>` como wrapper
+- Errores: `{ error: string, code: HTTP_STATUS }`
+
+## Imports
+- No importar desde `../db/` directamente — usar el repo layer
+- No lanzar excepciones crudas — usar `ApiError`
+
+## Tests requeridos por endpoint
+- Test de auth (401) + happy path (200) como mínimo
+```
+
+**Ejemplo práctico — `rules/tests.md`**
+
+```markdown
+---
+glob: "**/*.test.ts"
+---
+# Reglas — archivos de test
+
+- No mockear la DB — usar instancia de test real (Q1 2025: mocks pasaban pero prod fallaba)
+- Cada test independiente: arrange → act → assert, sin estado compartido
+- Naming: `describe('NombreClase') > it('debería [comportamiento] cuando [condición]')`
+- No usar `test.only` — bloquea CI sin error visible
+```
+
+**En plugins:** ✅ sí va en plugins. Es la forma correcta de empaquetar domain rules sin contaminar el CLAUDE.md del proyecto destino.
+
+```
+plugins/mi-plugin/
+└── rules/
+    ├── api.md        ← se instala en .claude/rules/api.md
+    └── tests.md      ← se instala en .claude/rules/tests.md
+```
+
+---
+
+### 4. settings.local.json — permissions personales
+
+Hermano gitignored de `settings.json`. Misma estructura, solo aplica a tu máquina.
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(psql:*)"
+    ]
+  }
+}
+```
+
+**Qué va aquí:** comandos que solo existen en tu entorno local, permissions de tu flujo personal que serían ruido en el settings.json compartido.
+
+**Qué NO va aquí:** permissions que todo el equipo necesita (→ `settings.json`), hooks (→ `hooks/` + `settings.json`).
+
+**En plugins:** no se distribuye — es local por diseño. El plugin incluye `settings.json` con permissions base que el equipo comparte; cada dev agrega las suyas en `settings.local.json`.
+
+---
+
+<!-- §32-ref -->
+### Resumen — qué distribuir en un plugin
+
+| Archivo | ¿Va en plugin? | Razón |
+|---|---|---|
+| `CLAUDE.local.md` | ❌ | Personal — no tiene sentido distribuirlo |
+| `output-styles/` | ✅ | Consistencia de formato para el equipo |
+| `rules/` | ✅ | Domain rules empaquetadas, instalación limpia |
+| `settings.json` | ✅ parcial | Solo permissions que el equipo comparte |
+| `settings.local.json` | ❌ | Personal — gitignored por diseño |
+
+**Estructura de plugin con los archivos correctos:**
+```
+plugins/mi-plugin/
+├── .claude-plugin/
+│   └── plugin.json
+├── agents/
+├── skills/
+├── hooks/
+│   └── hooks.json
+├── rules/              ← ✅ domain rules del dominio del plugin
+├── output-styles/      ← ✅ formato compartido para el equipo
+└── settings.json       ← ✅ permissions base del equipo
+```
+
+---
+
+## Recursos oficiales
+
+- [Agents](https://code.claude.com/docs/en/sub-agents)
+- [Skills](https://code.claude.com/docs/en/skills)
+- [Hooks](https://code.claude.com/docs/en/hooks-guide)
+- [Plugins](https://code.claude.com/docs/en/plugins)
+- [Agent Teams](https://code.claude.com/docs/en/agent-teams)
+
+
+<!-- §17 -->
+## 17. Plan + Invocation Templates — Eficiencia máxima de prompts
+
+> Dos problemas distintos, dos soluciones distintas. El `/plan` evita gastar tokens en la dirección equivocada. Las templates eliminan la variabilidad de los prompts de invocación.
+
+---
+
+### Parte A — Skill `/plan`: preview antes de ejecutar
+
+#### El problema
+
+Invocar un agente sin saber exactamente qué va a tocar cuesta 10-20k tokens si va en la dirección equivocada. Un plan previo cuesta ~500-800 tokens en haiku y evita ese riesgo.
+
+#### La solución: skill de solo lectura
+
+```
+.claude/skills/plan/SKILL.md
+```
+
+```markdown
+---
+name: plan
+description: Preview de implementación antes de ejecutar cualquier agente. Invocar
+  con /plan [tarea] ANTES de @especialista o @lead. Muestra archivos a tocar,
+  approach, riesgo y agente recomendado. No modifica nada — solo planifica.
+disable-model-invocation: false
+allowed-tools: Read, Glob, Grep
+---
+
+# Plan — Preview antes de ejecutar
+
+No modificar archivos. No escribir código. Solo planificar y reportar.
+
+## Qué hacer
+1. Leer `.claude/scope/scope-index.md` — entender estado actual
+2. Usar Glob/Grep para confirmar paths reales que la tarea involucra
+3. Producir el output en el formato exacto de abajo — nada más
+
+## Output — siempre este formato, nada más
+
+​```
+PLAN: [nombre de la tarea]
+
+Archivos a tocar:
+  - [ruta/exacta.ext]   — [qué cambia en ≤8 palabras]
+
+Approach: [1-2 líneas — qué patrón, qué señal, qué nodo]
+Riesgo: [1 línea — o "ninguno"]
+Agente(s): [@agente — razón en 3 palabras]
+Tokens estimados: ~Xk
+​```
+
+## Reglas de estimación
+- 1 agente · ≤3 archivos · sin debugging     → ~4-8k
+- 1-2 agentes · 3-5 archivos                 → ~8-16k
+- lead + especialistas · ≥5 archivos         → ~16-28k
+
+## Reglas duras
+- Nunca inventar rutas — confirmar con Glob antes de listar
+- Si un archivo no existe todavía → marcarlo como "(nuevo)"
+- Si la tarea es ambigua → UNA pregunta antes del plan, nunca asumir
+```
+
+#### Flujo de uso
+
+```
+usuario: /plan añadir sistema de vidas al player
+
+[plan skill — ~600 tokens haiku]
+
+PLAN: sistema de vidas
+
+Archivos a tocar:
+  - scripts/Player.gd          — agregar var lives: int + señal lives_changed
+  - scripts/GameManager.gd     — escuchar lives_changed, trigger game over
+  - ui/HUD.tscn                — (nuevo) label para mostrar vidas
+
+Approach: lives como variable en Player, señal → GameManager,
+  GameManager actualiza HUD via señal hud_update
+Riesgo: si GameManager no existe como Autoload, necesita registrarse
+Agente(s): @godot-lead — 3 archivos, 2 sistemas
+Tokens estimados: ~14k
+
+usuario: ok
+
+→ recién aquí se invoca @godot-lead
+```
+
+#### `/plan` es la norma — no la excepción
+
+> No consume más tokens en la tarea — los **ahorra** al evitar el loop ejecutar→corregir→reejecutar. Un plan cuesta ~500-800t en haiku; una corrección de dirección cuesta 10-20k.
+
+**Regla:** usar `/plan` por defecto. Saltarlo es la excepción que requiere justificación.
+
+```
+✅ Usar /plan (default)          ❌ Saltarse /plan (excepción)
+Tarea nueva o no obvia           Fix de 1 línea ya identificado
+≥2 archivos involucrados         Tarea ya planificada en sesión anterior
+Riesgo de efectos secundarios    Cambio cosmético / typo / comentario
+Primera vez tocando un sistema
+```
+
+#### Añadir `/plan` al dispatch de CLAUDE.md
+
+Una sola línea al inicio del dispatch, antes que cualquier agente:
+
+```markdown
+## Dispatch
+/plan [tarea] — NORMA antes de ejecutar (omitir solo para fixes triviales de 1 línea)
+¿≥2 sistemas o ≥3 archivos? → @lead
+...
+```
+
+No consume tokens cuando no se usa — `disable-model-invocation: false` pero solo se activa cuando el usuario lo invoca con `/plan`.
+
+---
+
+### Parte B — Disciplina de invocación: trabajo de Claude, no del usuario
+
+#### El problema real
+
+Los prompts de invocación verbosos son la principal fuente de variabilidad de tokens — pero el error no es del usuario, es del orquestador (Claude en el contexto principal).
+
+```
+❌ Claude invoca con prosa larga: explica contexto que el agente
+   ya tiene en su system prompt, repite el flujo, sugiere approaches
+   → el agente ignora lo redundante — tokens desperdiciados
+
+✅ Claude invoca con formato mínimo: solo lo que el agente
+   NO puede inferir del scope y los learnings
+```
+
+**El usuario habla natural. Claude comprime. El agente ejecuta.**
+
+#### La regla — una línea en CLAUDE.md
+
+```markdown
+## Reglas duras
+- Invocar agentes con formato mínimo: TASK · FILES · CONTEXT solo si no es obvio
+```
+
+Con esa regla, cuando el usuario dice *"añade sistema de vidas"*, Claude traduce internamente:
+
+```
+@godot-lead
+TASK: sistema de vidas — Player + HUD
+FILES: Player.gd, HUD.tscn
+```
+
+No un párrafo. No historial. No sugerencias de approach que el agente ya conoce.
+
+#### Qué incluir — qué omitir
+
+| Incluir siempre | Omitir siempre |
+|---|---|
+| Qué construir (1 línea) | Cómo hacerlo (el agente lo sabe) |
+| Archivos directamente involucrados | Archivos de contexto o arquitectura |
+| Restricciones no obvias | Reglas que ya están en el system prompt |
+| Resultado esperado si es ambiguo | Historial de la sesión |
+
+#### Patrón git — el caso más optimizable
+
+El agente git tiene un anti-pattern clásico: invocarlo varias veces por sesión. Cada invocación separada paga el cold start del agente. El patrón óptimo es **dos invocaciones fijas por sesión**:
+
+```
+Inicio de sesión:
+  @godot-git BRANCH: mathvoid/nombre          → ~2-4k tokens
+
+  [trabajo de implementación]
+
+Fin de sesión (postmortem ya hecho):
+  @godot-git
+  BRANCH: mathvoid/nombre · COMMIT: tipo: desc · PR: título · VALIDADO: sí
+                                                              → ~8-12k tokens
+```
+
+El flag `VALIDADO: sí` le indica al agente que saltee la confirmación y el postmortem — ya fueron hechos. Sin él, el agente para a mitad y requiere una segunda invocación, lo que duplica el costo.
+
+| Patrón | Tokens | Cuándo |
+|---|---|---|
+| 2 invocaciones separadas (anti-pattern) | ~22k medido | Commit y merge en turnos distintos |
+| Invocación única al final con VALIDADO | ~10-12k | Todo en un solo bloque al cerrar sesión |
+| Invocación única + commit explícito en prompt | ~6-7k✓ | Medido: 7k · 5 tool calls (2026-06-02) — piso real de haiku |
+| Solo merge de PR ya abierto | ~6-7k medido | `MERGE: PR #N · VALIDADO: sí` |
+
+**Regla (2026-06-02, medido):** El piso real de haiku es **5 tool calls**. Haiku divide chains largas de `&&` para error handling — no se puede bajar a 3-4 con instrucciones. Lo optimizable son los calls de discovery (git status, git log, git diff) que no aportan nada cuando el commit viene en el prompt. Eliminarlos con sección `## PROHIBIDO` en el agente.
+
+#### Impacto real
+
+| Invocación | Tokens prompt | Tokens totales del agente |
+|---|---|---|
+| Prosa larga (15 líneas) | ~400t | ~12-20k |
+| Formato mínimo (3-4 líneas) | ~80t | ~6-10k |
+| Ahorro típico | ~320t overhead | ~30-50% por run |
+
+La mayor ganancia no es el overhead del prompt — es que el agente recibe contexto limpio y no gasta Read calls extras para entender qué quiere el orquestador.
+
+---
+
+### Checklist §17
+
+```
+/plan skill
+□ .claude/skills/plan/SKILL.md creado
+□ allowed-tools: Read, Glob, Grep — sin Write ni Edit
+□ disable-model-invocation: false — se activa con /plan
+□ Línea en CLAUDE.md dispatch: "¿Ver plan antes?" → /plan [tarea]
+
+Disciplina de invocación (Claude, no el usuario)
+□ Regla en CLAUDE.md: "Invocar agentes con formato mínimo: TASK · FILES · CONTEXT solo si no es obvio"
+□ Claude nunca repite en el prompt lo que ya está en el system prompt del agente
+□ Reviewer recibe solo archivos directamente modificados (≤4)
+□ Git: 2 invocaciones por sesión — rama al inicio, commit+push+PR+merge al final
+□ Git final siempre con "VALIDADO: sí" si postmortem ya corrió — evita segunda invocación
+```
+
+---
+
+<!-- §26 -->
+<a id="26-hook-global-de-contexto"></a>
+
+## 26. Hook global de contexto
+
+> CLAUDE.md indica dónde buscar en la guía, pero no cuándo. Este hook inyecta automáticamente la sección relevante antes de que Claude responda — 0 tokens extra si el prompt no es relevante.
+
+### Por qué
+
+El problema: Claude sabe que la guía existe pero necesita inferir cuándo consultarla. A veces no lo hace. El hook detecta keywords en el prompt y extrae la sección correcta de forma automática.
+
+| Sin hook | Con hook |
+|---|---|
+| Claude infiere cuándo consultar la guía | La sección relevante llega automáticamente |
+| Puede omitir consulta cuando debería hacerla | 0 tokens extra si el prompt no es relevante |
+
+`UserPromptSubmit` se ejecuta **antes** de que Claude procese el prompt. El stdout del hook se inyecta como contexto en la sesión.
+
+### Instalación en 3 pasos
+
+**1. Script** → `~/.claude/hooks/guia_context.py`
+
+````python
+#!/usr/bin/env python3
+import json, sys, re
+from pathlib import Path
+
+# ← Ajustar con la ruta donde clonaste este repo
+GUIA = Path("~/ruta/a/guia-agentes-plugins-claude-code.md").expanduser()
+MAX_SECTIONS = 2    # máximo de secciones a inyectar por prompt
+LINES_BUDGET = 120  # presupuesto total — se divide entre secciones encontradas
+
+# Orden importa: más específico primero.
+# Se recorren TODOS los entries y se acumulan hasta MAX_SECTIONS matches.
+KEYWORD_MAP = [
+    # §26 — Hook global (específico — antes de §7)
+    (["guia_context", "keyword_map", "inyección automática",
+      "hook global", "context hook"],                                    26),
+    # §29 — Contexto global propio (específico — antes de §7)
+    (["contexto global", "~/.claude", "sistema propio",
+      "bootstrap", "capas del contexto", "global context"],             29),
+    # §5 — Agentes
+    (["agente", "agent", "subagent", "disallowedtools", "maxturns",
+      "memory: project", "skills:", "context:fork"],                     5),
+    # §6 — Skills
+    (["skill", "lifecycle", "context: fork", "ultrathink",
+      "supporting files", "disable-model-invocation"],                   6),
+    # §7 — Hooks (incluye permission modes y security guards)
+    (["hook", "pretooluse", "posttooluse", "npm", "npx",
+      "slopsquatting", "supply chain", "updatedinput",
+      "sessionstart", "filechanged", "permissionrequest",
+      "permiso", "permission", "guard", "credencial", "secret guard"],   7),
+    # §8 — Scope
+    (["scope"],                                                           8),
+    # §9 — Learnings
+    (["learning", "curator", "postmortem"],                              9),
+    # §10 — Multi-agente y worktrees
+    (["multi-agente", "lead", "arquitectura", "worktree"],              10),
+    # §11 — Plugin
+    (["plugin", "distribuible"],                                        11),
+    # §14 — Anti-overkill
+    (["overkill"],                                                      14),
+    # §16 — Vector Memory
+    (["vector memory", "semántica"],                                    16),
+    # §18 — Seguridad
+    (["seguridad", "security", "injection", "traversal"],               18),
+    # §20 — CI/CD + Claude-en-CI
+    (["ci/cd", "github action", "pipeline", "claude-code-action",
+      "@claude", "pr review", "workflow yml"],                          20),
+    # §24 — Factor humano
+    (["factor humano", "invocar", "contexto antes"],                    24),
+    # §25 — Modelo correcto
+    (["haiku", "sonnet", "opus", "modelo", "effort",
+      "xhigh", "fable", "fast mode", "extended context"],              25),
+    # §27 — Handoff + auto-compaction
+    (["handoff", "snapshot", "retomar sesión", "compaction",
+      "auto-compaction"],                                               27),
+    # §28 — Prompt Library
+    (["shortcut", "recipe", "prompt library", "/plan",
+      "4 leyes", "las leyes"],                                         28),
+    # §30 — Cloud Agents
+    (["schedule", "cron", "routine", "cloud agent",
+      "/web-setup", "ccr"],                                            30),
+    # §31 — Advisor Pattern
+    (["advisor", "patron advisor", "sous-chef",
+      "validar sin subir", "validación sin subir"],                    31),
+    # §3 — Estimados + caching
+    (["presupuesto", "tokens", "costo", "cache", "caching",
+      "ttl", "estimado", "consumo"],                                    3),
+    # §17 — Plan / Templates
+    (["invocation template", "/plan skill", "plan skill"],             17),
+    # §2 — Límites de tamaño
+    (["presupuesto de", "límites de tamaño", "150 líneas"],             2),
+]
+
+def detect_sections(prompt: str) -> list:
+    p = prompt.lower()
+    seen, results = set(), []
+    for keywords, n in KEYWORD_MAP:
+        if n not in seen and any(k in p for k in keywords):
+            results.append(n)
+            seen.add(n)
+            if len(results) >= MAX_SECTIONS:
+                break
+    return results
+
+def extract_section(n: int, max_lines: int) -> str:
+    lines = GUIA.read_text().splitlines()
+    for anchor in [f"<!-- §{n}-quick -->", f"<!-- §{n} -->"]:
+        try:
+            start = next(i for i, l in enumerate(lines) if anchor in l) + 1
+        except StopIteration:
+            continue
+        result = []
+        for line in lines[start:]:
+            if re.match(r"<!-- §\d", line):
+                break
+            result.append(line)
+        if len(result) > 3:
+            return "\n".join(result[:max_lines]).strip()
+    return ""
+
+try:
+    payload = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+
+sid = payload.get("session_id") or payload.get("transcript_path", "").split("/")[-1].replace(".jsonl", "")
+seen_file = Path(f"/tmp/guia_seen_{sid}.json") if sid else None
+already_seen = set(json.loads(seen_file.read_text())) if seen_file and seen_file.exists() else set()
+
+sections = [n for n in detect_sections(payload.get("prompt", "")) if n not in already_seen]
+if not sections:
+    sys.exit(0)
+
+max_lines = LINES_BUDGET // len(sections)
+parts = []
+for n in sections:
+    content = extract_section(n, max_lines)
+    if content:
+        parts.append(f"[Guía §{n}]\n{content}")
+
+if parts:
+    print("\n\n".join(parts))
+    if seen_file:
+        seen_file.write_text(json.dumps(list(already_seen | set(sections))))
+````
+
+**2. Permisos**
+
+```
+chmod +x ~/.claude/hooks/guia_context.py
+```
+
+**3. Registrar en `~/.claude/settings.json`**
+
+```json
+"UserPromptSubmit": [
+  {
+    "hooks": [{
+      "type": "command",
+      "command": "python3 ~/.claude/hooks/guia_context.py"
+    }]
+  }
+]
+```
+
+### Mantenimiento del KEYWORD_MAP
+
+El KEYWORD_MAP no se actualiza solo — cada sección nueva que no tenga entry queda fuera del sistema de inyección. El §13 (Checklist de calidad) ya incluye el recordatorio, pero el protocolo es:
+
+**Al crear §N nuevo:**
+1. Identificar 3-5 keywords que un usuario escribiría naturalmente al preguntar sobre ese tema
+2. Agregar el entry en orden de especificidad (más específico arriba):
+```python
+# §N — Nombre sección
+(["keyword1", "keyword2", "keyword3"], N),
+```
+3. Testear con `echo '{"prompt": "frase con keyword"}' | python3 ~/.claude/hooks/guia_context.py | head -1`
+
+**Qué hace un buen keyword:**
+- Lo que el usuario escribe, no el título de la sección (`"caching"` > `"prompt caching"` > `"estimados de consumo"`)
+- Específico al tema para evitar falsos positivos (`"advisor pattern"` > `"advisor"` si el término es ambiguo)
+- En el idioma del usuario (si mezclan ES/EN, incluir ambos)
+
+**Budget adaptativo — cómo funciona:**
+```python
+LINES_BUDGET = 80   # presupuesto total fijo
+# 1 sección encontrada → 80 líneas (máximo detalle)
+# 2 secciones encontradas → 40 líneas cada una (80 total)
+```
+
+Si una sección quick tiene < 40 líneas, se sirve completa. El budget solo limita secciones largas — no trunca lo que ya es conciso.
+
+### Deduplicación por sesión
+
+Sin deduplicación, un tema recurrente (ej. "handoff") inyecta la misma sección en cada turno — ~1,500 tokens desperdiciados por mensaje. El hook trackea qué secciones ya se inyectaron en `/tmp/guia_seen_{session_id}.json`.
+
+| Situación | Comportamiento |
+|---|---|
+| §27 pedido, sesión nueva | Inyecta §27, guarda en seen |
+| §27 pedido, ya en seen | `sys.exit(0)` — 0 bytes, 0 tokens |
+| Falla al leer archivo temp | `already_seen = set()` — funciona como antes |
+
+**Impacto en sesión de 15 turnos sobre handoff:**
+- Antes: 15 × ~1,500 tokens = ~22,500 tokens extra
+- Después: 1 × ~1,500 tokens = ~1,500 tokens extra
+
+El archivo temp se elimina automáticamente al reiniciar el sistema. No requiere limpieza manual.
+
+### Checklist §26
+
+```
+□ guia_context.py creado en ~/.claude/hooks/
+□ chmod +x aplicado
+□ UserPromptSubmit registrado en ~/.claude/settings.json
+□ Prompt con "agente" → §5 inyectado como contexto
+□ Prompt cruzado ("agente" + "hook") → §5 + §7 inyectados
+□ Prompt sin keywords → sin inyección (0 bytes stdout)
+□ Misma keyword en turno 2+ → sin inyección (deduplicación por sesión)
+□ Nueva sección → entry en KEYWORD_MAP + test de smoke
+```
+
+### Plugin-level UserPromptSubmit — dos tiers de keywords
+
+Cuando el hook de contexto es para un **dominio específico** (no general como guia_context.py), los keywords genéricos (`new`, `view`, `component`) disparan en cualquier conversación y generan ruido. Patrón correcto: detección en dos tiers.
+
+**Tier 1 — símbolos exclusivos del dominio** (fire siempre que aparezcan):
+```python
+_DOMAIN_SYMBOLS = re.compile(
+    r'ExclusiveTerm1|ExclusiveTerm2|...'
+    # ← Solo términos que NO aparecen fuera del dominio
+    # DesignSystemKit: @CatalogElementMacro, ShimmerView, NaturalHeightLayout...
+)
+```
+
+**Tier 2 — acción + término de dominio en proximidad** (≤50 chars entre ellos):
+```python
+_DOMAIN_CONTEXT = re.compile(
+    r'(crea[r]?|nuevo|new|add|implement).{0,50}(domainTerm)|'
+    r'(domainTerm).{0,50}(crea[r]?|nuevo|new|add|es\s+un)',
+    re.IGNORECASE | re.DOTALL
+)
+```
+
+Si ningún tier matchea → no inyectar (silencio es correcto). Output: **plain stdout**, no `json.dumps({"systemMessage": ...})`. La doc oficial confirma que stdout de `UserPromptSubmit` va a `additionalContext` del contexto de Claude — sin mostrarse al usuario como mensaje separado.
+
+```python
+# ✅ Plain stdout — va a additionalContext silenciosamente
+print(f"[Dominio context]\n{content}")
+
+# ❌ systemMessage — se muestra al usuario como mensaje visible
+print(json.dumps({"systemMessage": content}))
+```
+
+> **[2026-06-22] design-ios:** Keywords genéricos (`new`, `view`, `component`, `swift`) en hub hook inyectaban el triage de capas en conversaciones de git, docs y cualquier cosa con esas palabras. Fix: Tier 1 con nombres exclusivos del sistema (`@CatalogElementMacro`, `ShimmerView`, `AppTabView`...) + Tier 2 con proximidad acción+capa (`"crea un atom"`, `"nuevo molecule"`). Ahora solo dispara cuando el dominio es inequívoco.
+
+---
+
+<!-- §27 -->
+<a id="27-handoff-protocol"></a>
+
+## 27. Handoff Protocol — Preservar contexto entre sesiones
+
+> Sesiones largas degradan la calidad de razonamiento. Este protocolo preserva el estado exacto en un snapshot estructurado y lo retoma en sesión nueva sin fricción — cero llamadas de API extra, cero overhead por turno.
+
+### El problema
+
+Claude Code no tiene memoria entre sesiones. A medida que el contexto se llena, la calidad del razonamiento baja antes de que el usuario lo note. El degradado es silencioso.
+
+### Por qué es LowCost
+
+La trampa obvia es llamar `/v1/messages/count_tokens` para saber cuándo avisar. Eso es gratis en dinero pero agrega una llamada de API por turno — latencia real.
+
+La solución: Claude Code **ya calcula** `context_window.used_percentage` y lo entrega al comando `statusLine` en el JSON de stdin. Leer ese número es una operación de archivo. Costo = 0.
+
+| Enfoque | Overhead |
+|---|---|
+| Token counting API por turno | 1 HTTP call/turno (~200ms latencia) |
+| `statusLine` + archivo local | Lectura de archivo — cero |
+
+### Arquitectura
+
+```
+statusLine (cada evento)
+  → lee context_window.used_percentage del JSON de Claude Code
+  → escribe ~/.claude/ctx_pct.txt
+  → muestra barra de progreso en la UI
+
+Stop hook (cada respuesta de Claude)
+  → lee ctx_pct.txt
+  → si ≥ 70%: dialog nativo del OS (una sola vez por sesión)
+    → No: continúa normalmente
+    → Sí: emite {"decision": "block", "reason": "HANDOFF REQUESTED + contexto git"}
+          Claude recibe el reason en el mismo turno e invoca el skill /handoff
+
+/handoff skill
+  → Claude compone snapshot internamente (no se muestra en chat)
+  → Bash escribe a ~/.claude/handoffs/{repo}/YYYY-MM-DD_HHmm.md + latest.md
+  → .gitignore actualizado automáticamente
+  → snapshot copiado al clipboard
+  → Claude imprime una línea de confirmación en el chat
+```
+
+### Componentes
+
+| Archivo | Rol |
+|---|---|
+| `CLAUDE.md` | Triggers manuales (`handoff`, `snapshot`, `pausa`) + resume behavior |
+| `commands/handoff.md` | Skill `/handoff` — compone snapshot internamente, escribe a disco vía Bash, imprime una línea de confirmación |
+| `hooks/statusline-context.sh` | Barra de progreso con niveles y mensajes |
+| `hooks/handoff-monitor.sh` | Detecta 70%, muestra dialog cross-platform; en confirmación emite `decision: block` con "HANDOFF REQUESTED" para disparar el skill en el mismo turno |
+
+### Dialog cross-platform
+
+El Stop hook detecta el OS y usa la herramienta nativa:
+
+```bash
+case "$OSTYPE" in
+  darwin*)   osascript     ;;   # macOS — built-in
+  linux*)    zenity/kdialog;;   # GNOME / KDE
+  msys*|cygwin*) powershell;;  # Windows Git Bash / WSL
+  *)         systemMessage ;;  # fallback en el chat
+esac
+```
+
+### Barra de progreso
+
+El `statusLine` muestra un indicador visual con escalada de urgencia:
+
+```
+🥬 [██░░░░░░░░] 20% — fresco como lechuga
+😎 [███░░░░░░░] 35% — tranqui
+🔥 [█████░░░░░] 52% — se calienta la cosa
+👻 [██████░░░░] 63% — en cualquier momento me voy en la vola'
+🔪 [███████░░░] 74% — me pase po          ← dialog dispara aquí
+💀 [████████░░] 83% — ¿qué hacíamos?
+🆘 [█████████░] 92% — handoff altiro weón
+```
+
+Los colores ANSI (verde/amarillo/rojo) coinciden con el nivel de urgencia.
+
+### Snapshot template
+
+```markdown
+## Snapshot de Handoff
+**Fecha:** [YYYY-MM-DD HH:MM]
+**Repo / Proyecto:** [nombre]
+## Objetivo
+## Completado
+## En Progreso
+## Próximos Pasos
+## Decisiones Técnicas
+## Blockers
+## Contexto Técnico
+```
+
+Para retomar: pega el snapshot al inicio de sesión nueva. Claude confirma el objetivo antes de continuar.
+
+### Instalación
+
+```bash
+git clone https://github.com/f3kpclon/claude-code-handoff handoff-project
+cd handoff-project
+bash install.sh   # idempotente — seguro de re-ejecutar
+# Reiniciar Claude Code
+```
+
+### Seguridad y CI
+
+Este proyecto instala hooks que corren en **cada sesión de Claude de cada usuario**. Un PR malicioso en `hooks/` o `install.sh` es un supply chain attack real.
+
+**GitHub Actions** (`.github/workflows/ci.yml`) — corre en cada PR hacia `main`:
+
+| Job | Qué hace |
+|---|---|
+| `ShellCheck` | Lint de todos los `.sh` — errores y patrones inseguros |
+| `Tests` | `bash test.sh` — 16 aserciones, falla si install.sh aborta |
+| `Security Scan` | Detecta patrones peligrosos nuevos en `hooks/`, `install.sh`, `commands/`: `curl`, `wget`, `base64 -d`, `/dev/tcp`, `nc`, `python3 -c.*exec` |
+
+**Nota:** `set -euo pipefail` en `install.sh` hace que los tests fallen si el atacante inyecta un `curl` que no responde — doble protección sin código extra.
+
+**Branch protection** configurada vía API:
+- PRs obligatorios con aprobación del codeowner
+- Los 3 checks deben pasar antes de mergear
+- `enforce_admins: false` — el owner puede hacer push directo
+- `CODEOWNERS` en `.github/CODEOWNERS` — auto-request de review al owner
+
+```bash
+# Configurar branch protection vía gh CLI (para forks)
+gh api repos/{owner}/{repo}/branches/main/protection \
+  --method PUT --input - <<'EOF'
+{
+  "required_status_checks": {"strict": true, "contexts": ["ShellCheck","Tests","Security Scan"]},
+  "enforce_admins": false,
+  "required_pull_request_reviews": {"required_approving_review_count": 1, "require_code_owner_reviews": true, "dismiss_stale_reviews": true},
+  "restrictions": null
+}
+EOF
+```
+
+### Auto-compaction — qué resume, qué pierde
+
+Claude Code comprime automáticamente el historial cuando el contexto se acerca al límite. Ocurre **sin aviso visual** — la calidad del razonamiento baja antes de que el usuario lo note.
+
+**Qué hace la compaction:** resume el historial previo en un bloque comprimido y mantiene los mensajes recientes sin comprimir. El bloque comprimido es menos detallado que el original.
+
+**Qué sobrevive (y qué no):**
+
+| Tipo de información | ¿Sobrevive? | Por qué |
+|---|---|---|
+| El objetivo principal de la sesión | ✅ | Suficientemente prominente en el resumen |
+| Código escrito en disco | ✅ | No depende del contexto — está en el filesystem |
+| Decisiones de arquitectura mencionadas una vez | ❌ | Se resume a nivel alto, el detalle se pierde |
+| Gotchas y constraints del proyecto | ❌ | Se pierde si no está en CLAUDE.md |
+| Errores y sus fixes | ⚠️ | Solo si fueron recientes (no en la parte comprimida) |
+
+**Preparar el contexto para sobrevivir la compaction:**
+1. Constraints críticos → CLAUDE.md, no solo en el chat
+2. Decisiones one-shot → checkpoint explícito en el output del agente: `Checkpoint: [decisión] · Razón: [por qué]`
+3. Contexto ≥ 70% → activar `/handoff` antes de que la compaction ocurra sola
+
+**Señal de que ya ocurrió:** Claude "olvida" algo mencionado hace más de ~20 mensajes. No es alucinación — el dato quedó en la parte comprimida y no sobrevivió el resumen. Fix: reinjectar explícitamente o hacer handoff.
+
+### Regla LowCost
+
+> Si Claude Code ya calcula el dato que necesitas, léelo — no lo recalcules. El `statusLine` JSON tiene `context_window.used_percentage` listo. Úsalo.
+
+### Checklist §27
+
+```
+□ bash install.sh ejecutado
+□ Claude Code reiniciado
+□ statusLine visible en la barra inferior con barra de progreso
+□ /handoff escribe snapshot a disco sin mostrarlo en chat
+□ /handoff imprime una línea de confirmación en el chat
+□ Snapshots en {repo}/.claude/handoffs/ (creado automáticamente, ignorado por git)
+□ latest.md siempre disponible para retomar rápido
+□ Al llegar a 70%: dialog nativo aparece
+□ "Sí" en dialog → próximo mensaje genera snapshot automático
+□ Snapshot pegado en sesión nueva → Claude confirma objetivo
+□ CI pasa en main (ShellCheck + Tests + Security Scan)
+□ Branch protection activa — PRs obligatorios para colaboradores
+□ CODEOWNERS configurado — owner recibe auto-request en cada PR
+```
+
+---
+
+<!-- §28 -->
+<!-- §28-quick -->
+## 28. Prompt Library — shortcuts para Claude Code
+
+> Estos no son comandos mágicos. Funcionan porque Claude lee lenguaje natural. El `/` es convención de consistencia — la misma razón por la que un chef tiene nombres fijos para sus técnicas aunque podría describirlas con otras palabras. Cuando están registrados como skills (`SKILL.md`), ganan `allowed-tools`, contexto dinámico y control de invocación. Como texto plano, funcionan igual pero sin esas garantías.
+
+**Tags usados en esta sección:**
+
+| Tag | Significado |
+|---|---|
+| `READ-ONLY` | No modifica archivos — seguro sin `/plan` previo |
+| `HAIKU ONLY` | Optimizado para haiku — no gastar sonnet en esto |
+| `SESSION ONLY` | El output es para esta sesión, no persiste entre sesiones |
+| `OVERLAPS /X` | Se superpone con otro shortcut — elegir el más específico |
+| `USE SPARINGLY` | Costoso en tokens — usar con criterio |
+
+---
+
+### Shortcuts
+
+#### `/plan` · `READ-ONLY` · `HAIKU ONLY`
+
+Preview de implementación antes de ejecutar cualquier agente. Muestra archivos a tocar, approach, riesgo, agente recomendado y tokens estimados. No modifica nada.
+
+```
+/plan añadir rate limiting al endpoint de login
+```
+
+> Skill completa en §17. Regla: usarlo por defecto — saltarlo requiere justificación.
+
+---
+
+#### `/handoff` · `SESSION ONLY`
+
+Genera un snapshot de la sesión actual y lo guarda en disco silenciosamente. Usar antes de cerrar o cuando el contexto se acerca al límite.
+
+```
+/handoff
+```
+
+> Skill completa en §27. El snapshot en `.claude/handoffs/latest.md` permite retomar sin preguntas.
+
+---
+
+#### `/nuevo-agente [nombre]` · `HAIKU ONLY`
+
+Genera el frontmatter completo + estructura mínima para un agente nuevo. Incluye model, tools, description como trigger list, y sección de Gotchas.
+
+```
+/nuevo-agente security-auditor
+Tarea: audit de seguridad en PRs con cambios de auth
+Modelo: opus (one-shot, costo de error alto)
+Tools: Read, Glob, Grep
+```
+
+---
+
+#### `/nueva-skill [tipo]` · `HAIKU ONLY`
+
+Genera la estructura correcta según el tipo de skill. Tipos: `hub`, `referencia`, `fork`.
+
+```
+/nueva-skill referencia
+Nombre: api-conventions
+Propósito: patrones de endpoints REST para este codebase
+```
+
+```
+/nueva-skill fork
+Nombre: deep-research
+Propósito: investigar un tema en el codebase sin contaminar el hilo
+```
+
+---
+
+#### `/nuevo-hook [evento]` · `HAIKU ONLY`
+
+Genera el Python skeleton correcto para el evento pedido. Incluye try/except, re.split para primer comando, y el JSON de respuesta correcto para ese evento.
+
+```
+/nuevo-hook PreToolUse
+Bloquear: npm install con paquetes nuevos sin --ignore-scripts
+```
+
+```
+/nuevo-hook SessionStart
+Inyectar: branch actual y archivos modificados al iniciar
+```
+
+---
+
+#### `/debug-agente [nombre]` · `READ-ONLY` · `OVERLAPS /plan`
+
+Checklist de diagnóstico cuando un agente falla, hace cosas inesperadas o es más caro de lo esperado. Revisa description, tools, model, hooks y output format.
+
+```
+/debug-agente reviewer
+Síntoma: aprueba PRs sin revisar los archivos de test
+```
+
+---
+
+#### `/optimizar [agente]` · `READ-ONLY` · `USE SPARINGLY`
+
+Analiza el costo de un agente y sugiere las optimizaciones con mayor ROI. Sigue el orden de §23: output format → discovery calls → bash chaining → system prompt → scope.
+
+```
+/optimizar godot-lead
+Costo actual: ~28k tokens por sesión
+Esperado: ~14k
+```
+
+---
+
+#### `/audit-guia` · `READ-ONLY` · `HAIKU ONLY`
+
+Valida el proyecto actual contra el checklist §13. Revisa CLAUDE.md, agentes, skills, hooks y scope. Lista solo las violaciones — no repite lo que está bien.
+
+```
+/audit-guia
+```
+
+---
+
+<!-- §28-ref -->
+
+### Recipes — shortcuts apilados
+
+> Un shortcut solo es bueno. Dos apilados en secuencia son afilados. Tres son un sistema.
+
+#### "Ejecutar con seguridad"
+```
+/plan → @agente → /handoff
+```
+Planificar antes de ejecutar, ejecutar con agente correcto, capturar estado antes de cerrar. El orden importa: sin `/plan`, el agente puede ir en la dirección equivocada. Sin `/handoff`, la próxima sesión empieza desde cero.
+
+#### "Ciclo de mejora"
+```
+/debug-agente → /optimizar
+```
+Primero entender por qué falla (síntoma → causa), luego reducir el costo. Hacerlos al revés optimiza un agente roto.
+
+#### "Crear y testear"
+```
+/nueva-skill fork → /plan → @agente
+```
+Crear la skill de investigación, planificar con ella activa para confirmar que el scope es correcto, ejecutar.
+
+#### "Construir bien desde el arranque"
+```
+/nuevo-agente → /plan → /audit-guia
+```
+Generar el agente nuevo, planificar la primera tarea para validar que el design es correcto, auditar contra el checklist antes de usarlo en producción.
+
+---
+
+### Las 4 Leyes — adaptadas a Claude Code
+
+*(Originalmente de commandlib — mapeadas a secciones de esta guía)*
+
+**Ley 1 — Especificidad gana a shortcuts**
+Un prompt con scope + output + criterio de éxito vale más que 5 shortcuts en secuencia. Los shortcuts son atajos para llegar al contexto correcto, no sustitutos del contexto. → §24
+
+**Ley 2 — Los constraints hacen mejor a Claude**
+`tools` mínimas, `model` explícito, output format forzado. Cada constraint que agregás a un agente es un token que Claude no gasta en decidir. → §5, §22
+
+**Ley 3 — El contexto es la ventaja**
+El hook de `SessionStart` que inyecta branch + estado pesa más que cualquier shortcut. El contexto que llega automáticamente es el que nunca se olvida. → §26
+
+**Ley 4 — Iterar, no reiniciar**
+Cuando algo sale mal, responder con lo que está incorrecto — no reescribir el prompt. El hilo es el contexto acumulado. `/handoff` antes de cerrar: la próxima sesión arranca donde dejaste. → §27
+
+---
+
+<!-- §29 -->
+<!-- §29-quick -->
+## 29. Contexto global propio — construir tu sistema
+
+> Sin contexto global, Claude es un consultor que llega cada lunes sin cuaderno: vos explicás de nuevo quién sos, qué filosofía seguís y qué no debe tocar. Con contexto global, es el mismo consultor pero con sus reglas interiorizadas, sus herramientas en el bolsillo y su cuaderno de aprendizajes abierto. El cliente no explica — trabaja.
+
+### Las 4 capas — qué hace cada una
+
+```
+~/.claude/CLAUDE.md          ← reglas que aplican siempre (costo fijo justificado)
+~/.claude/skills/            ← procedimientos bajo demanda (0 tokens hasta invocar)
+~/.claude/settings.json      ← automatizaciones y guards por evento
+memory/                      ← aprendizajes acumulados entre sesiones
+```
+
+| Capa | Cuándo construirla | Si no existe |
+|---|---|---|
+| `CLAUDE.md` global | Siempre — es la primera | Claude improvisa filosofía y reglas en cada sesión |
+| Skills globales | Cuando CLAUDE.md tiene ≥5 líneas explicando un procedimiento | Repetís las mismas instrucciones en cada sesión |
+| `UserPromptSubmit` hook | Cuando tenés un cuerpo de conocimiento que Claude debería consultar automáticamente | Claude sabe que la guía existe pero no siempre la consulta |
+| `PreToolUse` hook | Cuando hay acciones que Claude no debe poder tomar en **ningún** proyecto | Un agente mal configurado puede ejecutar `npm install` sin freno |
+| Memoria persistente | Cuando hay feedback que querés que persista entre sesiones | Corregís el mismo error dos veces |
+
+### Orden de construcción — árbol de decisión
+
+```
+¿Primera vez configurando? → Empezar con CLAUDE.md global (5 minutos)
+
+¿Tenés conocimiento específico que Claude debería consultar sin pedírselo?
+  Sí → UserPromptSubmit hook (guia_context.py o equivalente) — §26
+  No → saltear por ahora
+
+¿Hay procedimientos que pegás repetidamente en el chat?
+  Sí → Skills globales en ~/.claude/skills/ — §6
+  No → saltear
+
+¿Hay acciones irreversibles que Claude no debe tomar en ningún proyecto?
+  Sí → PreToolUse hook global (npm guard, git push guard) — §7
+  No → saltear
+
+¿Hay patrones de feedback que querés recordar en futuras sesiones?
+  Sí → Memoria persistente — inicializar MEMORY.md
+  No → saltear
+```
+
+> **Regla de scope:** si dudás entre global y proyecto, va en el proyecto. El scope global contamina todos los contextos — un hook global mal calibrado genera ruido en proyectos donde no aplica.
+
+### Separación `~/.claude/` vs `.claude/`
+
+| Dónde | Aplica a | Ejemplos correctos |
+|---|---|---|
+| `~/.claude/CLAUDE.md` | Todos los proyectos | Filosofía LowCost, reglas de modelo, shortcuts |
+| `~/.claude/skills/` | Todos los proyectos | `/plan`, `/handoff`, `/nuevo-agente` |
+| `~/.claude/hooks/` + `settings.json` | Todos los proyectos | npm guard, guia_context.py, handoff hooks |
+| `.claude/CLAUDE.md` | Este proyecto | Stack, agentes, reglas específicas del repo |
+| `.claude/agents/` | Este proyecto | Agentes del dominio |
+| `.claude/skills/` | Este proyecto | Skills del proyecto |
+
+<!-- §29-ref -->
+
+### Bootstrap desde cero — 5 pasos
+
+**Paso 1 — CLAUDE.md global** (5 min)
+
+```markdown
+# Tu nombre — Reglas globales
+
+## Filosofía
+[tu filosofía de trabajo — 3-5 líneas máximo]
+
+## Conocimiento de referencia
+`/ruta/a/tu/guia-o-docs.md`
+Solo la sección relevante: sed -n '/<!-- §N -->/,/<!-- §[0-9]/p' <archivo>
+
+## Principios de operación
+- [principio 1]
+- [principio 2]
+```
+
+**Paso 2 — Hook de inyección automática** (15 min)
+
+Adaptar `guia_context.py` (§26) con tu propio `KEYWORD_MAP` apuntando a tus docs. Registrar en `settings.json` bajo `UserPromptSubmit`.
+
+**Paso 3 — Skills para procedimientos repetibles** (10 min por skill)
+
+Identificar qué instrucciones pegás más de 2 veces por semana. Cada una → `~/.claude/skills/<nombre>/SKILL.md` con `disable-model-invocation: true`.
+
+**Paso 4 — Guards para acciones irreversibles** (20 min)
+
+Un `PreToolUse` global con las acciones que nunca deberían ocurrir en ningún proyecto: `npm install <pkg>` sin `--ignore-scripts`, push directo a ramas protegidas, `rm -rf` sin confirmación.
+
+**Paso 5 — Inicializar memoria** (5 min)
+
+```bash
+mkdir -p ~/.claude/projects/<proyecto>/memory
+echo "# Memory Index" > ~/.claude/projects/<proyecto>/memory/MEMORY.md
+```
+
+Primera entry: feedback de la filosofía de trabajo — el patrón que más frecuentemente tenés que recordarle a Claude.
+
+---
+
+### Anti-patrones del contexto global
+
+| Anti-patrón | Consecuencia | Fix |
+|---|---|---|
+| Contenido de un proyecto específico en `~/.claude/CLAUDE.md` | Contamina todos los proyectos — Claude menciona el stack de un proyecto en contextos donde no aplica | Mover al `.claude/CLAUDE.md` del proyecto |
+| Skills globales largas (> 200 líneas) | El budget de descripciones se comparte — una skill pesada desplaza a otras en proyectos distintos | Dividir en SKILL.md + reference.md; o hacer skill de proyecto |
+| `PreToolUse` global demasiado específico | Genera ruido en proyectos donde la condición no aplica | Guard de proyecto en `.claude/settings.json` |
+| Duplicar reglas en CLAUDE.md global y de proyecto | Costo doble, inconsistencia cuando cambia una y no la otra | Una fuente de verdad — si aplica siempre → global; si es del proyecto → proyecto |
+| Muchas skills globales con `disable-model-invocation: false` | Compiten con skills del proyecto, saturan el budget de descripciones | Solo el hub o skills de conocimiento general en `false`; el resto en `true` |
+
+### El sistema de esta guía como ejemplo real
+
+```
+~/.claude/
+├── CLAUDE.md                    # filosofía + índice de la guía + principios de operación
+├── settings.json                # hooks: SessionStart / UserPromptSubmit / PreToolUse / Stop / PostToolUse
+├── skills/
+│   ├── handoff-protocol/        # formato del snapshot (§27) — disable:false, Claude lo carga solo
+│   ├── handoff/                 # genera el snapshot (§28) — disable:true, el usuario lo invoca
+│   ├── plan/                    # preview antes de ejecutar (§17/§28) — haiku
+│   ├── nuevo-agente/            # scaffold de agentes (§28) — haiku
+│   ├── nueva-skill/             # scaffold de skills (§28) — haiku
+│   ├── nuevo-hook/              # scaffold de hooks (§28) — haiku
+│   └── audit-guia/              # valida contra §13 (§28) — haiku
+└── hooks/
+    ├── guia_context.py          # UserPromptSubmit → inyección automática de §N (§26)
+    ├── npm_guard.py             # PreToolUse → supply chain + slopsquatting (§7)
+    ├── handoff-inject.sh        # UserPromptSubmit → inyecta handoff pendiente (§27)
+    ├── handoff-monitor.sh       # Stop → monitorea necesidad de handoff (§27)
+    └── inject-index.sh          # SessionStart → índice del codebase
+```
+
+Cada pieza tiene su sección de referencia. Nada se inventó solo — todo se construyó desde los principios documentados en la guía.
+
+### Checklist §29
+
+```
+□ ~/.claude/CLAUDE.md existe con filosofía + índice de conocimiento
+□ UserPromptSubmit hook conecta CLAUDE.md con el conocimiento específico
+□ Skills en disable-model-invocation: true — el usuario controla cuándo se invocan
+□ PreToolUse guards solo para acciones verdaderamente globales
+□ Nada de contenido de proyecto específico en el scope global
+□ Memoria inicializada con al menos una entry de filosofía
+□ Separación clara: regla siempre activa → CLAUDE.md; procedimiento → skill; garantía → hook
+```
+
+---
+
+<!-- §30 -->
+<!-- §30-quick -->
+## 30. Cloud Agents programados — /schedule y /web-setup
+
+> Un hook local corre en tu máquina. Un cloud agent corre en la nube de Anthropic con un checkout limpio del repo — sin acceso a tu filesystem, sin tus variables de entorno, sin tus plugins instalados. Son dos cosas distintas. Úsalos para cosas distintas.
+
+### Las 3 reglas
+
+1. **Cloud agents ≠ hooks locales** — los CCR (Claude Code Routines) tienen acceso al repo GitHub, no a `/Users/`. Si la tarea necesita tu filesystem → hook local. Si puede correr desde un clone fresco → CCR.
+2. **GitHub primero** — sin `/web-setup` el checkout falla silenciosamente. Conectar GitHub es el paso 0 antes de crear cualquier routine.
+3. **Prompt self-contained** — el agente arranca sin contexto, sin tu CLAUDE.md, sin tus plugins. El prompt debe incluir todo lo que necesita saber.
+
+### Cuándo usar cloud agents vs alternativas
+
+| Caso | Solución correcta |
+|---|---|
+| Tarea periódica sobre el repo (health check, análisis de código) | CCR — `/schedule` |
+| Curar learnings per-project (en `.claude/learnings/`) | Hook local — CCR no tiene acceso al filesystem local |
+| Curar learnings en el repo (si están en git) | CCR — clona el repo y los lee directamente |
+| Acción automática en respuesta a un evento del usuario | Hook local `UserPromptSubmit`/`PostToolUse` |
+| Tarea única programada ("mañana a las 9am") | CCR con `run_once_at` |
+| Acción que necesita acceso al filesystem local | Hook local — los CCR no tienen acceso |
+| Monitor de CI/CD o builds externos | CCR — corre en nube, no bloquea tu sesión |
+
+### Modelos recomendados para CCR
+
+| Tarea | Modelo |
+|---|---|
+| Mantenimiento / curation / deduplicación | `claude-haiku-4-5` |
+| Análisis de código / PR review automático | `claude-sonnet-4-6` |
+| Tareas complejas multi-step | `claude-sonnet-4-6` |
+
+### /web-setup — conectar servicios OAuth
+
+Necesario una vez antes de crear routines que accedan a repos privados:
+
+```
+/web-setup          # en el prompt de Claude Code — abre flujo OAuth
+```
+
+Conecta: GitHub (para checkout del repo), Google Drive, y otros servicios MCP disponibles.
+Sin GitHub conectado → el campo `sources: [{git_repository: {url: ...}}]` del CCR falla al clonar.
+
+<!-- §30-ref -->
+
+### Estructura de un routine (create body)
+
+```json
+{
+  "name": "nombre-descriptivo",
+  "cron_expression": "0 0 1 * *",
+  "enabled": true,
+  "job_config": {
+    "ccr": {
+      "environment_id": "env_XXXXX",
+      "session_context": {
+        "model": "claude-haiku-4-5",
+        "sources": [
+          {"git_repository": {"url": "https://github.com/org/repo"}}
+        ],
+        "allowed_tools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"]
+      },
+      "events": [{
+        "data": {
+          "uuid": "<lowercase v4 uuid generado>",
+          "session_id": "",
+          "type": "user",
+          "parent_tool_use_id": null,
+          "message": {"role": "user", "content": "PROMPT SELF-CONTAINED AQUÍ"}
+        }
+      }]
+    }
+  }
+}
+```
+
+**Cron expresiones útiles:**
+
+| Cuándo | Expresión (UTC) |
+|---|---|
+| Diario a medianoche | `0 0 * * *` |
+| Primer día del mes | `0 0 1 * *` |
+| Cada lunes 9am UTC | `0 9 * * 1` |
+| Cada 2 horas | `0 */2 * * *` |
+
+Mínimo intervalo: 1 hora. `/30 * * * *` es rechazado.
+
+### Cómo invocar desde Claude Code
+
+```
+/schedule    # skill — Claude guía la creación de la routine
+```
+
+Internamente usa `RemoteTrigger` (tool deferred — cargar con `ToolSearch select:RemoteTrigger`):
+
+```
+RemoteTrigger {action: "list"}               # listar routines
+RemoteTrigger {action: "create", body: {...}} # crear
+RemoteTrigger {action: "run", trigger_id: "trig_XXX"} # ejecutar ahora
+```
+
+Ver/gestionar routines: https://claude.ai/code/routines
+
+### Checklist de prompt para CCR
+
+Un prompt de CCR debe responder estas preguntas sin asumir contexto externo:
+
+```
+□ ¿Qué archivos leer? (rutas relativas al repo clonado)
+□ ¿Qué condición activa la acción? (ej: si líneas > 150)
+□ ¿Qué hacer exactamente? (no "curar" — describir los pasos concretos)
+□ ¿Qué hacer si la condición NO se cumple? (output esperado + stop)
+□ ¿Cómo terminar? (commit + mensaje concreto / output a stdout)
+□ ¿Conservador o agresivo? (cuando hay duda, ¿mantener o eliminar?)
+```
+
+### Anti-patrones de CCR
+
+| Anti-patrón | Consecuencia | Fix |
+|---|---|---|
+| Prompt que asume plugins instalados (`@design-curador`) | El CCR no tiene los plugins del usuario | Describir la tarea directamente en el prompt |
+| Rutas absolutas (`/Users/felix/...`) | El CCR clona en `/tmp/...` — ruta no existe | Usar rutas relativas al repo |
+| Sin GitHub conectado | Checkout falla sin mensaje claro | Correr `/web-setup` antes de crear el routine |
+| Routine en sonnet para tareas simples | Costo 5× innecesario | Haiku para mantenimiento, sonnet para análisis |
+| Prompt vago ("mejora el código") | El agente improvisa → resultado impredecible | Criterios explícitos: condición + acción + stop |
+
+### Checklist §30
+
+```
+□ /web-setup corrido — GitHub (u otro servicio) conectado
+□ Repo es público o GitHub App instalada en él
+□ Modelo elegido según complejidad (haiku para mantenimiento)
+□ Prompt incluye: qué leer, condición, acción concreta, condición de stop
+□ Rutas en el prompt son relativas al repo (no absolutas)
+□ Cron expression en UTC — confirmada conversión desde timezone local
+□ Routine visible en https://claude.ai/code/routines
+□ `run_once_at` para tareas únicas en lugar de `cron_expression`
+```
+
+<!-- §14 -->
+## 14. Guía anti-overkill
+
+> El dev pobre tiene un superpoder que el dev rico no tiene: no puede darse el lujo de construir cosas innecesarias. Cada componente que agregas tiene un costo fijo por sesión — aunque nunca se use. Esta sección es el antídoto al instinto de sobre-ingenierizar.
+
+El sistema de agentes es potente. Eso lo hace tentador de sobre-usar. Cada componente que agregás tiene un costo fijo por sesión — aunque nunca se use.
+
+### La pregunta que frena el overkill
+
+Antes de construir cualquier cosa, una pregunta:
+
+> **¿Qué pasa si NO lo hago?**
+
+Si la respuesta es "nada, funciona igual" → no lo construyas.
+
+### Árbol de decisiones
+
+```
+¿Necesito esto?
+│
+├── ¿Ya ocurrió el problema que esto resuelve?
+│   NO → esperar. No diseñar para hipotéticos.
+│   SÍ → continuar.
+│
+├── ¿Se va a repetir más de 3 veces?
+│   NO → resolver inline. No abstraer.
+│   SÍ → continuar.
+│
+├── ¿Existe algo que ya lo resuelve?
+│   SÍ → usarlo.
+│   NO → construir.
+│
+└── ¿La abstracción es más compleja que lo que abstrae?
+    SÍ → overkill. Hacerlo más simple o no hacerlo.
+    NO → adelante.
+```
+
+### Always-YES — exentos del filtro anti-overkill
+
+Estos componentes se crean **siempre**, sin pasar por el árbol de decisiones:
+
+| Componente | Por qué es always-YES |
+|---|---|
+| `postmortem` | Necesario desde la primera sesión. Anti-overkill no aplica: no esperás a que ocurra para tenerlo. |
+| `learnings-general.md` | Siempre generar. Split por dominio solo cuando supera 150 líneas. |
+| `pre_write_guard` | Cualquier proyecto con file writes. Consecuencia real si se omite. |
+| `plan` skill (local) | Todo proyecto local. Stack-agnostic, zero overhead, evita ejecutar agentes sin revisar. |
+| `plan` skill (plugin + sequential) | Plugin con workflow secuencial → plan domain-specific (conoce las capas). |
+
+### Cuándo NO construir cada componente
+
+| Componente | Overkill cuando... | Alternativa |
+|---|---|---|
+| Agente nuevo | La tarea ocurre < 3 veces o la puede hacer el agente existente | Agregar una sección al agente existente |
+| Hook | La regla no tiene consecuencias reales si se ignora | Regla en el prompt del agente |
+| Pre-layer (preflight) | Solo dev con inputs claros | Dispatch directo desde CLAUDE.md |
+| Plugin | El código se usa en un solo proyecto | Agente/skill local |
+| Curador | Proyecto corto (< 1 mes esperado) Y < 3 agentes en spec | Learnings file sin agente — curar manualmente si hace falta |
+| Learnings file nuevo | Hay < 5 entries que justifiquen el archivo | Agregarlas a `learnings-general.md` |
+| Scope file nuevo | El sistema tiene < 3 decisiones de diseño | Agregarlas al scope-index.md |
+| Hub skill | CLAUDE.md ya tiene el dispatch completo y ≤5 agentes | `skillOverrides: user-invocable-only` |
+| Verificación de compilación en plugin | Runner externo (xcodebuild, jest) es env-specific: scheme names, workspace paths, versiones — rompe en cualquier clone distinto | Documentar como limitación conocida; compilar en el IDE antes del PR |
+| Opus | La tarea es implementación, checklist o git | haiku o sonnet |
+| Lead | Una sola tarea NO se descompone en pipeline cross-especialistas | Especialista directo |
+| Agente especialista | La tarea es copiar un patrón existente con ≤3 cambios y ≤2 archivos | Hacerlo directo en contexto principal — overhead del agente (~3-4k tokens arranque en frío) supera el riesgo de violar convenciones |
+| Debugger | CLI lineal, script simple, plugin (sin runtime) | Implementer lo resuelve inline |
+
+### Señales de sobre-ingeniería activa
+
+Estas señales indican que el sistema ya tiene demasiado:
+
+```
+⚠️  CLAUDE.md supera 30 líneas
+    → Hay reglas que deberían estar en los agentes, no en el CLAUDE.md global.
+
+⚠️  Un agente tiene más de 3 secciones con listas largas
+    → El agente hace demasiado o tiene contenido que debería estar en learnings.
+
+⚠️  Hay un hook para cada tipo de Bash command
+    → Los hooks deberían cubrir acciones irreversibles, no validar todo.
+
+⚠️  Cada tarea arranca leyendo 3+ archivos de learnings
+    → Los gotchas frecuentes deberían estar inline. Solo leer bajo demanda.
+
+⚠️  El lead implementa código directamente
+    → El lead coordina. Si implementa, es señal de que falta un especialista
+      o de que la tarea no era suficientemente grande para necesitar lead.
+
+⚠️  Hay agentes que nadie invocó en el último mes
+    → Candidatos a archivar o fusionar con otro agente.
+
+⚠️  El curador corre en cada sesión
+    → Debe correr mensualmente. Si corre siempre, algo en el flujo está mal.
+
+⚠️  Un agente tiene secciones ## Catalog con API shapes completas (params, tipos, overloads)
+    → Las API shapes divergen del source sin que nadie lo note — el agente trabaja
+      con una API que ya no existe. Catalog = lista de nombres de existencia.
+      API shapes viven en el source; el agente los lee cuando los necesita.
+```
+
+### Regla de los tres usos
+
+> Hasta el tercer uso, no abstraer. Al tercero, considerar. Al cuarto, hacerlo.
+
+- Primera vez: resolver inline, sin abstraer.
+- Segunda vez: copiar. Está bien. No es el momento.
+- Tercera vez: evaluar si vale la pena abstraer.
+- Cuarta vez: abstraer — ya se demostró que se repite.
+
+Esta regla aplica a agentes, skills, hooks y scope files por igual.
+
+### El costo del "por si acaso"
+
+Cada componente "por si acaso" tiene un costo real:
+
+```
+Un agente que nunca se invoca:        ~40t en system prompt por sesión
+Una skill con auto-trigger innecesaria: ~280t por tarea (LLM call)
+Un hook que corre en cada Bash:        ~50ms de latencia por comando
+Un learnings de 200 líneas:           ~1,400t cuando se carga (vs 700t en < 100 líneas)
+Un CLAUDE.md de 60 líneas:            ~400t re-inyectados en CADA tool call
+```
+
+El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando ocurre.
+
+---
+
 <!-- §12 -->
 ## 12. Errores comunes
 
@@ -2743,209 +4387,244 @@ Plugin (si aplica)
 
 ---
 
-<!-- §14 -->
-## 14. Guía anti-overkill
+<!-- §23 -->
+## 23. Techos reales de tokens — cuándo parar de optimizar
 
-> El dev pobre tiene un superpoder que el dev rico no tiene: no puede darse el lujo de construir cosas innecesarias. Cada componente que agregas tiene un costo fijo por sesión — aunque nunca se use. Esta sección es el antídoto al instinto de sobre-ingenierizar.
+> Reducir tool calls y reducir tokens son dos problemas distintos. Confundirlos lleva a optimizar lo incorrecto. Esta sección define el piso de tokens de cada tipo de agente para saber cuándo llegaste al límite.
 
-El sistema de agentes es potente. Eso lo hace tentador de sobre-usar. Cada componente que agregás tiene un costo fijo por sesión — aunque nunca se use.
+### El principio
 
-### La pregunta que frena el overkill
-
-Antes de construir cualquier cosa, una pregunta:
-
-> **¿Qué pasa si NO lo hago?**
-
-Si la respuesta es "nada, funciona igual" → no lo construyas.
-
-### Árbol de decisiones
+Los tokens de un agente se componen de:
 
 ```
-¿Necesito esto?
-│
-├── ¿Ya ocurrió el problema que esto resuelve?
-│   NO → esperar. No diseñar para hipotéticos.
-│   SÍ → continuar.
-│
-├── ¿Se va a repetir más de 3 veces?
-│   NO → resolver inline. No abstraer.
-│   SÍ → continuar.
-│
-├── ¿Existe algo que ya lo resuelve?
-│   SÍ → usarlo.
-│   NO → construir.
-│
-└── ¿La abstracción es más compleja que lo que abstrae?
-    SÍ → overkill. Hacerlo más simple o no hacerlo.
-    NO → adelante.
+tokens totales = (system_prompt × N_tool_calls) + Σ(tool_outputs)
 ```
 
-### Always-YES — exentos del filtro anti-overkill
+- **system_prompt × N_tool_calls**: el system prompt se re-inyecta en cada tool call. Reducir tool calls baja este costo linealmente.
+- **Σ(tool_outputs)**: la suma de los outputs de todos los tool calls (bash outputs, contenido de archivos leídos, resultados de grep). Este costo **no se reduce eliminando discovery calls** — está determinado por los outputs de las operaciones necesarias.
 
-Estos componentes se crean **siempre**, sin pasar por el árbol de decisiones:
+**La consecuencia práctica:** reducir discovery calls (git log, git status innecesario) ahorra tool calls pero no ahorra proporcionalmente tokens, porque los outputs de los comandos necesarios (git commit, gh pr create, gh pr merge) dominan el costo.
 
-| Componente | Por qué es always-YES |
-|---|---|
-| `postmortem` | Necesario desde la primera sesión. Anti-overkill no aplica: no esperás a que ocurra para tenerlo. |
-| `learnings-general.md` | Siempre generar. Split por dominio solo cuando supera 150 líneas. |
-| `pre_write_guard` | Cualquier proyecto con file writes. Consecuencia real si se omite. |
-| `plan` skill (local) | Todo proyecto local. Stack-agnostic, zero overhead, evita ejecutar agentes sin revisar. |
-| `plan` skill (plugin + sequential) | Plugin con workflow secuencial → plan domain-specific (conoce las capas). |
+### El techo por tipo de agente
 
-### Cuándo NO construir cada componente
+| Tipo de agente | Qué domina el costo | Techo real | Cuándo llegaste al límite |
+|---|---|---|---|
+| **Bash-heavy** (git, postmortem) | Output de comandos bash | ~5-7k | Cuando tool calls = mínimo necesario para la operación |
+| **Read-heavy** (reviewer, debugger) | Contenido de archivos leídos | ~4-8k por archivo | Cuando lee solo los archivos directamente involucrados |
+| **Write-heavy** (implementador) | Archivos leídos + escritos + razonamiento | ~8-14k | Cuando no hace reads de contexto innecesarios |
+| **Orchestrador** (lead) | Scope + delegación | ~10-18k | Cuando no implementa directamente |
 
-| Componente | Overkill cuando... | Alternativa |
+### Ejemplo medido — godot-git
+
+```
+Antes (13 tool calls):  8.3k tokens
+Después (4 tool calls): 7.3k tokens
+Diferencia:             1.0k tokens (~12%)
+
+¿Por qué tan poca diferencia?
+  Los 9 calls eliminados eran calls de discovery cortos (~100-200t cada uno).
+  Los 4 calls que quedaron tienen outputs pesados:
+    git commit output:     ~300t
+    git push output:       ~200t
+    gh pr create output:   ~400t
+    gh pr merge output:    ~300t
+    system prompt (×4):  ~1,400t
+    overhead de contexto: ~1,500t
+  ─────────────────────────
+  Techo real estimado:   ~4,100-5,000t
+  Medido con 4 calls:     7,300t ← ~2k sobre el techo teórico (razonamiento del agente)
+```
+
+El 1k ahorrado vino de eliminar los calls, pero el verdadero valor fue la **latencia** (30s se mantiene, pero sin loops) y la **confiabilidad** (sin calls interactivos que bloquean).
+
+### Cuándo seguir optimizando vs cuándo parar
+
+```
+¿Los tool calls superan el mínimo necesario para la operación?
+    SÍ → seguir optimizando (hay discovery innecesario)
+    NO → el costo restante son outputs inevitables
+
+¿Los tokens están más del doble del techo real?
+    SÍ → hay algo mal: output format sin forzar, archivos de contexto extra, prompt largo
+    NO → estás en el rango normal del agente
+
+¿Reducir tool calls ahorraría > 30% de tokens?
+    NO → el costo lo dominan los outputs, no los calls
+    SÍ → hay calls muy pesados que pueden evitarse
+```
+
+### Palancas por orden de impacto
+
+1. **Output format forzado** — la más barata: no cambia tool calls, reduce el razonamiento verbose en 30-65%
+2. **Eliminar discovery calls** — baja tool calls y latencia; el ahorro de tokens es modesto (~10-20%)
+3. **Encadenar comandos bash con `&&`** — reduce N_tool_calls directamente, baja el costo del system prompt re-inyectado
+4. **Acortar el system prompt del agente** — cada línea menos = ahorro en cada tool call del agente
+5. **Reducir archivos pasados al reviewer** — cada archivo extra = ~700-1,400t en outputs de Read
+
+### Anti-overkill
+
+Cuando un agente está en su techo real, no hay más que optimizar desde el agente — el costo restante es el precio mínimo de la operación. Intentar bajarlo más requiere:
+- Cambiar el modelo (haiku → más barato, pero no existe nivel inferior)
+- Reducir el scope de la operación (hacer menos cosas, no hacerlas más eficientemente)
+- Aceptar que ese es el costo y enfocarse en otra cosa
+
+**Señal de que llegaste al techo:** optimizas el agente y los tokens bajan menos del 15%. El resto lo fija la operación misma, no el agente.
+
+### Checklist §23
+
+```
+□ Para cada agente con costo inesperado: identificar qué domina (bash outputs vs Read outputs vs razonamiento)
+□ Comparar tool calls actuales con el mínimo necesario para la operación
+□ Si tool calls = mínimo y tokens siguen altos → el costo es el techo real, no un problema de diseño
+□ Output format forzado antes de cualquier otra optimización
+□ Encadenar comandos bash con && para reducir N_tool_calls × system_prompt_cost
+□ No seguir optimizando cuando tokens < 2× el techo real estimado
+```
+
+
+<!-- §3 -->
+<!-- §3-quick -->
+## 3. Estimados de consumo
+
+> Antes de arrancar cualquier tarea, el dev pobre hace una estimación. Estos números son aproximados pero suficientes para saber si vas a gastar $0.02 o $0.50 antes de escribir una línea.
+
+### Costo fijo por sesión
+
+| Componente | Tokens | Notas |
 |---|---|---|
-| Agente nuevo | La tarea ocurre < 3 veces o la puede hacer el agente existente | Agregar una sección al agente existente |
-| Hook | La regla no tiene consecuencias reales si se ignora | Regla en el prompt del agente |
-| Pre-layer (preflight) | Solo dev con inputs claros | Dispatch directo desde CLAUDE.md |
-| Plugin | El código se usa en un solo proyecto | Agente/skill local |
-| Curador | Proyecto corto (< 1 mes esperado) Y < 3 agentes en spec | Learnings file sin agente — curar manualmente si hace falta |
-| Learnings file nuevo | Hay < 5 entries que justifiquen el archivo | Agregarlas a `learnings-general.md` |
-| Scope file nuevo | El sistema tiene < 3 decisiones de diseño | Agregarlas al scope-index.md |
-| Hub skill | CLAUDE.md ya tiene el dispatch completo y ≤5 agentes | `skillOverrides: user-invocable-only` |
-| Verificación de compilación en plugin | Runner externo (xcodebuild, jest) es env-specific: scheme names, workspace paths, versiones — rompe en cualquier clone distinto | Documentar como limitación conocida; compilar en el IDE antes del PR |
-| Opus | La tarea es implementación, checklist o git | haiku o sonnet |
-| Lead | Una sola tarea NO se descompone en pipeline cross-especialistas | Especialista directo |
-| Agente especialista | La tarea es copiar un patrón existente con ≤3 cambios y ≤2 archivos | Hacerlo directo en contexto principal — overhead del agente (~3-4k tokens arranque en frío) supera el riesgo de violar convenciones |
-| Debugger | CLI lineal, script simple, plugin (sin runtime) | Implementer lo resuelve inline |
+| CLAUDE.md (~30 líneas) | ~200 | Se re-inyecta en cada tool call |
+| Hub skill (~40 líneas) | ~280 | Solo si auto-trigger está activo |
+| Agent descriptions (×10) | ~400 | ~40t por agente registrado |
+| scope-index.md (~20 líneas) | ~120 | Si está en CLAUDE.md |
+| **Total fijo mínimo** | **~1,000** | Por sesión, antes de cualquier tarea |
 
-### Señales de sobre-ingeniería activa
+Si el hub tiene `skillOverrides: user-invocable-only`, los ~280 tokens no se gastan.
 
-Estas señales indican que el sistema ya tiene demasiado:
+### Costo por tipo de tarea
+
+| Tarea | Agentes | Tokens extra (contexto principal) | Tokens subagente (aislado) |
+|---|---|---|---|
+| Bug simple (1 bug, ≤3 archivos) | debugger + reviewer | ~600 | ~6-10k |
+| Bug complejo (2+ bugs, 5+ archivos) | debugger + reviewer | ~800 | ~14-18k |
+| Feature simple (1 sistema) | especialista + reviewer | ~800 | ~4-8k |
+| Feature mediana (2 sistemas) | lead + 2 especialistas + reviewer | ~1,400 | ~10-16k |
+| Feature compleja (3+ sistemas) | lead + 3 especialistas + reviewer | ~2,200 | ~18-28k |
+| Refactor cross-cutting | lead + todos los especialistas | ~3,000 | ~30-40k |
+| Fin de sesión | postmortem + git | ~500 | ~2-4k |
+
+"Tokens subagente (aislado)" = consumo interno del agente — no se acumula en el hilo principal (Capa 3).
+
+### Impacto del modelo
+
+| Modelo | Costo relativo | Cuándo |
+|---|---|---|
+| haiku | 1× | Tareas fijas: git, postmortem, reviewer de checklist |
+| sonnet | 5× | Implementación, debugging |
+| opus | 15× | Arquitectura con trade-offs complejos |
+
+Un reviewer en sonnet cuesta 5× más que en haiku — mismo resultado.
+
+### Prompt Caching — reglas clave
+
+| Tipo | Costo relativo | Cuándo ocurre |
+|---|---|---|
+| Cache creation | ~1.25× | Primera llamada o después de expirar el TTL |
+| Cache read | ~0.1× | Mismo prefix dentro del TTL |
+| Sin cache (base) | 1× | Referencia |
+
+- **TTL: 5 minutos** — después de 5 min de inactividad el cache expira
+- **Qué se cachea:** CLAUDE.md, system prompts de agentes, historial hasta el corte del prefix
+- **Regla de prefix:** contenido estable → CLAUDE.md. Contenido dinámico (paths, IDs, runtime) → `additionalContext` de hook. El dinámico invalida el cache si entra en el prefix.
+
+### Señales de consumo excesivo
+
+- Tarea simple tarda más de lo esperado → CLAUDE.md creció demasiado
+- El agente sabe cosas que no le dijiste → contenido duplicado entre archivos
+- Reviewer tarda igual que el implementador → está corriendo en sonnet
+- El lead ejecuta bash → tiene Bash en tools, no debería
+- El lead escribe código directamente → tiene Write/Edit en tools — quitarlos, la delegación debe ser garantía física
+- Cada agente hace 2-3 Read calls antes de empezar → gotchas deberían estar inline
+
+<!-- §3-ref -->
+### Costo por archivo bajo demanda
+
+| Archivo | Tokens |
+|---|---|
+| Learnings por dominio (~100 líneas) | ~700 |
+| Scope por sistema (~50 líneas) | ~350 |
+| Doc de referencia (~100 líneas) | ~700 |
+| Skill de convenciones (~80 líneas) | ~560 |
+| Read tool call (overhead del wrapper) | ~300-600 |
+
+### Estimados por agente (tokens internos — contexto aislado)
+
+Los agentes corren en contexto aislado (Capa 3). Estos tokens **no se acumulan** en el hilo principal.
+`†estimado` / `✓medido`
+
+| Agente | Modelo | Rango típico | Factores principales |
+|---|---|---|---|
+| godot-git (crear rama — inicio de sesión) | haiku | ~2-4k† | 1-2 tool calls, comando fijo |
+| godot-git (commit + push + PR + merge — fin de sesión, commit en prompt) | haiku | ~5-7k✓ | Medido: 7.3k · 4 tool calls (2026-06-02) — 3 bash encadenados con `&&` |
+| godot-git (commit + push + PR + merge — fin de sesión, inferir commit) | haiku | ~8-12k✓ | Medido: 9.2k full flow (2026-06-01) — 1 diff call extra para inferir |
+| godot-git (1 archivo, commit explícito) | haiku | ≤5k | Target mínimo — si supera, el agente está explorando de más |
+| godot-git (flujo cortado en 2 invocaciones separadas) | haiku | ~20-25k✓ | Anti-pattern — medido: 22.3k (2026-06-01) · ver §12 |
+| godot-reviewer (≤4 archivos, protocolo activo) | haiku | ~4-8k† | Lee cada archivo una vez, sin cruzar contexto |
+| godot-reviewer (≥7 archivos, sin protocolo) | haiku | ~20-25k✓ | Usa Grep/Glob para cruzar contexto — medido: 22.7k, 34 tool uses (2026-05-31) |
+| godot-postmortem (prompt corto, ≤3 dominios) | haiku | ~5-10k† | 1 bash + ≤3 reads + ≤3 writes |
+| godot-postmortem (prompt largo con contexto completo) | haiku | ~20-25k✓ | Medido: 24.2k, 14 tool uses (2026-05-31) — prompt de 50 líneas infla input |
+| godot-curador | haiku | ~6-12k† | Lee todos los learnings (4-6 archivos), edita |
+| godot-scene | sonnet | ~6-12k† | Lee scope + escenas existentes, escribe .tscn |
+| godot-script | sonnet | ~8-14k† | Lee scope + scripts relacionados, razona + escribe .gd |
+| godot-ui | sonnet | ~8-14k† | Similar a script/scene combinados |
+| godot-physics | sonnet | ~8-14k† | Lee collision layers + scripts de body |
+| godot-audio | sonnet | ~6-10k† | Menos archivos que script, más acotado |
+| godot-debugger simple (1 bug, ≤4 archivos) | sonnet | ~6-10k† | Pocas hipótesis, pocos Read calls |
+| godot-debugger complejo (2+ bugs, 10 tool uses) | sonnet | ~14-18k✓ | Medido: 14.5k (2026-05-31) |
+| godot-lead | sonnet | ~10-18k† | Lee scope + múltiples archivos, planifica, delega |
+
+**Qué sube el costo de cualquier agente:**
+- Cada `Read` call: ~700-1,400 tokens adicionales en el contexto aislado
+- Output format no forzado: 2-4× más tokens en la respuesta final
+- Sin gotchas inline: 2-3 Read calls extra antes de empezar
+
+**Regla práctica:** `## Output — siempre este formato` con template compacto reduce el costo del output ~30-65%.
+
+### Ejemplo real — feature mediana
 
 ```
-⚠️  CLAUDE.md supera 30 líneas
-    → Hay reglas que deberían estar en los agentes, no en el CLAUDE.md global.
+Costo fijo sesión:              ~1,000t
+@godot-lead (planifica):          ~500t  ← lee scope-game-systems.md
+@godot-scene (Checkpoint.tscn):   ~600t  ← gotchas inline, sin Read de learnings
+@godot-script (GameManager.gd):   ~700t  ← gotchas inline, sin Read de learnings
+@godot-reviewer (revisión):       ~400t  ← haiku, solo lectura
+@godot-git (commit + PR):         ~200t  ← haiku, comandos fijos
+─────────────────────────────────────────
+Total estimado:                 ~3,400t
 
-⚠️  Un agente tiene más de 3 secciones con listas largas
-    → El agente hace demasiado o tiene contenido que debería estar en learnings.
-
-⚠️  Hay un hook para cada tipo de Bash command
-    → Los hooks deberían cubrir acciones irreversibles, no validar todo.
-
-⚠️  Cada tarea arranca leyendo 3+ archivos de learnings
-    → Los gotchas frecuentes deberían estar inline. Solo leer bajo demanda.
-
-⚠️  El lead implementa código directamente
-    → El lead coordina. Si implementa, es señal de que falta un especialista
-      o de que la tarea no era suficientemente grande para necesitar lead.
-
-⚠️  Hay agentes que nadie invocó en el último mes
-    → Candidatos a archivar o fusionar con otro agente.
-
-⚠️  El curador corre en cada sesión
-    → Debe correr mensualmente. Si corre siempre, algo en el flujo está mal.
-
-⚠️  Un agente tiene secciones ## Catalog con API shapes completas (params, tipos, overloads)
-    → Las API shapes divergen del source sin que nadie lo note — el agente trabaja
-      con una API que ya no existe. Catalog = lista de nombres de existencia.
-      API shapes viven en el source; el agente los lee cuando los necesita.
+Sin setup óptimo (sin fragmentar, hub auto-trigger, modelos incorrectos): ~8,000-12,000t
+El setup correcto reduce 2.5-3.5x el costo por feature.
 ```
 
-### Regla de los tres usos
+### Prompt Caching — detalles
 
-> Hasta el tercer uso, no abstraer. Al tercero, considerar. Al cuarto, hacerlo.
-
-- Primera vez: resolver inline, sin abstraer.
-- Segunda vez: copiar. Está bien. No es el momento.
-- Tercera vez: evaluar si vale la pena abstraer.
-- Cuarta vez: abstraer — ya se demostró que se repite.
-
-Esta regla aplica a agentes, skills, hooks y scope files por igual.
-
-### El costo del "por si acaso"
-
-Cada componente "por si acaso" tiene un costo real:
-
+**CLAUDE.md denso se amortiza — no penalizar el tamaño:**
 ```
-Un agente que nunca se invoca:        ~40t en system prompt por sesión
-Una skill con auto-trigger innecesaria: ~280t por tarea (LLM call)
-Un hook que corre en cada Bash:        ~50ms de latencia por comando
-Un learnings de 200 líneas:           ~1,400t cuando se carga (vs 700t en < 100 líneas)
-Un CLAUDE.md de 60 líneas:            ~400t re-inyectados en CADA tool call
+CLAUDE.md 500 líneas × sin cache = ~3,500t por llamada
+CLAUDE.md 500 líneas × con cache = ~350t por llamada (llamadas 2+)
 ```
+El costo real por llamada es ~10% del nominal después de la primera.
 
-El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando ocurre.
+**Implicación para `/loop` y sleeps:**
+- `delaySeconds < 300` → cache sigue caliente → siguiente iteración barata
+- `delaySeconds > 300` → cache expiró → recrea en la próxima llamada
+- `ScheduleWakeup` recomienda 270s sobre 300s por esta razón exacta
 
----
-
-<!-- §15 -->
-## 15. Glosario
-
-> Para el que llega sin contexto y no entiende por qué todo el mundo habla de "tokens" y "hooks" como si fueran palabras normales.
-
-### El dinero
-
-**Token** — La unidad de costo de Claude. Aproximadamente ¾ de una palabra en inglés o ½ en español. Todo lo que está en contexto — tu prompt, el historial, los archivos leídos, las respuestas — consume tokens. Tokens = plata.
-
-**Contexto** — La "memoria de trabajo" de Claude en una conversación. Tiene un límite y tiene costo por cada token que contiene. Si algo está en contexto, Claude lo "ve" y lo procesa. Si no está, no existe para él.
-
-**Capa 3 / Contexto aislado** — Cuando un agente corre, lo hace en su propio contexto separado. Lo que el agente lee no contamina tu hilo principal. Esto es gratis para el hilo principal — el agente paga su propio costo internamente.
-
-### Los modelos
-
-**haiku** — El más barato. 1x costo de referencia. Para tareas con instrucciones fijas: git, commits, checklists, postmortem. Si el agente no necesita razonar sobre contexto variable, usa haiku.
-
-**sonnet** — El intermedio. 5x más caro que haiku. Para implementación, debugging, tareas que requieren razonar sobre contexto variable. La mayoría de los agentes especialistas viven aquí.
-
-**opus** — El más poderoso y caro. 15x más caro que haiku. Para arquitectura con trade-offs complejos. Casi nunca necesario — si crees que lo necesitas, primero intenta con sonnet.
-
-### Los componentes
-
-**Agente** — Claude con un rol fijo, herramientas específicas y un system prompt propio. Corre en contexto aislado. Se invoca con `@nombre-agente`. Un agente bien diseñado hace una sola cosa y la hace bien.
-
-**Skill** — Archivo de referencia (Markdown) que Claude carga cuando lo necesita. No tiene contexto propio — comparte el hilo principal. Se invoca con `/nombre-skill`. Puede ser un hub de triage, convenciones, templates o learnings.
-
-**Hub** — Skill especial de triage siempre en contexto (auto-load). Su único trabajo es decirle a Claude qué agente usar para cada tarea. Debe ser corto (< 60 líneas para plugins, < 40 para proyectos con CLAUDE.md) porque se paga en cada tarea.
-
-**Hook** — Script Python que se ejecuta automáticamente cuando Claude hace algo. Hay 4 tipos: `PreToolUse` (antes de una acción, puede bloquearla), `PostToolUse` (después, solo informa), `SubagentStop` (cuando un agente termina), `Stop` (cuando cierra la sesión).
-
-**Plugin** — Conjunto de agentes + skills + hooks empaquetados en un directorio con `plugin.json`. Se instala con `claude plugin add github:usuario/repo` y funciona en cualquier proyecto.
-
-**Orchestrador / Lead** — Agente que coordina otros agentes pero no implementa código directamente. No tiene Bash — coordina con instrucciones, no con comandos.
-
-### El flujo de conocimiento
-
-**Learnings** — Archivos Markdown donde el postmortem escribe lecciones aprendidas en cada sesión. Fragmentados por dominio (layout, api, general). Se cargan bajo demanda, nunca siempre. Límite: 150 líneas por archivo.
-
-**Gotcha** — Error conocido o comportamiento inesperado documentado. "grab_focus() en _ready() no funciona" es un gotcha. Evita que el agente cometa el mismo error dos veces.
-
-**Gotcha inline** — Gotcha que vive directamente en el system prompt del agente (sección `## Gotchas críticos`). Cero Read calls — el agente ya lo sabe de entrada. Solo los top 5-10 por agente.
-
-**Postmortem** — Agente que corre al final de una sesión de trabajo para capturar lecciones y escribirlas en learnings. No escribe en el hub (ese es el error clásico).
-
-**Curador** — Agente mensual que mantiene los learnings: elimina duplicados, archiva entradas obsoletas y promueve los gotchas más críticos a inline en el agente correspondiente. No correr en cada sesión.
-
-### Los hooks en detalle
-
-**PreToolUse** — El único hook bloqueante. Se ejecuta antes de que Claude use una herramienta. Si retorna `permissionDecision: deny`, la acción no ocurre. Usar para validaciones críticas e irreversibles.
-
-**PostToolUse** — Informativo. Se ejecuta después de que Claude usa una herramienta. No puede deshacer la acción. Usar para confirmar, notificar o encadenar acciones secundarias.
-
-**SubagentStop** — Se ejecuta cuando un agente termina su trabajo. Usar para encadenar agentes o notificar al usuario. Output debe ser JSON `{"systemMessage": "..."}`.
-
-**Stop** — Se ejecuta cuando Claude cierra la sesión. Usar para recordatorios de fin de sesión (postmortem, learnings). Output debe ser JSON `{"systemMessage": "..."}`.
-
-**systemMessage** — El formato correcto para que un hook inyecte texto en el contexto de Claude. `print(json.dumps({"systemMessage": "tu mensaje"}))`. Nunca `print("texto crudo")`.
-
-**permissionDecision** — Campo JSON que un hook PreToolUse usa para controlar una acción. Acepta `deny` (bloquea), `allow` (aprueba sin prompt), `ask` (muestra dialog igual) o `defer` (delega al siguiente hook). Siempre combinado con exit 0: `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "razón"}}`. Exit 2 también bloquea pero sin razón estructurada — no usarlo en PreToolUse.
-
-### El dispatch
-
-**Trigger list** — La descripción de un agente, escrita para que Claude sepa exactamente cuándo activarlo. No es un párrafo de prosa — es una lista de casos de uso concretos. La descripción es lo más importante del agente.
-
-**Dispatch** — El proceso de decidir qué agente maneja cada tarea. Puede vivir en CLAUDE.md (proyecto), en el hub skill (plugin) o en ambos.
-
-**skillOverrides** — Configuración en `settings.json` que controla qué ve Claude de cada skill. Cuatro valores: `"on"` (nombre + descripción en contexto, menú visible), `"name-only"` (solo el nombre en contexto, menú visible — Claude sabe que existe pero no cuándo usarla), `"user-invocable-only"` (oculta a Claude, visible en menú para el usuario), `"off"` (invisible para todos).
-
-**disable-model-invocation** — Campo del frontmatter de una skill. `true` = quita la etiqueta del estante: ni el nombre ni la descripción aparecen en el contexto de Claude — la skill no existe para él hasta que el usuario la invoca con `/nombre`. `false` = el recetario está en la repisa con etiqueta visible — Claude decide cuándo abrirlo.
-
-### El scope
-
-**Scope** — Archivos que describen el estado real del proyecto: qué existe, qué falta, qué se decidió. El lead lo lee para planificar. Los especialistas no lo necesitan — reciben contexto del lead.
-
-**ADR (Architecture Decision Record)** — Entrada en el scope que documenta una decisión de diseño: qué se eligió, qué se descartó y por qué. Inmutable — nunca se edita, solo se agrega. Permite entender meses después por qué se tomó una decisión.
+**Leer hits/misses al final de sesión:**
+```
+Tokens: 12,450 input (8,200 cache read · 1,100 cache creation) · 2,450 output
+                        ↑ amortizado              ↑ primer turno o post-TTL
+```
+`cache read >> cache creation` → sesión bien amortizada. Proporción similar → el prefix cambia entre llamadas — revisar contenido dinámico en CLAUDE.md.
 
 ---
 
@@ -3234,224 +4913,6 @@ tools/save_learning GodotAgent "<summary>" "<fix>" "<tag1,tag2>" <severity>
 2. Validar que el recall devuelve resultados útiles con queries reales del proyecto
 3. Recién entonces agregar `save_learning()` + integración con postmortem
 4. Nunca reemplazar los archivos markdown — son el fallback y la fuente de verdad local
-
----
-
-<!-- §17 -->
-## 17. Plan + Invocation Templates — Eficiencia máxima de prompts
-
-> Dos problemas distintos, dos soluciones distintas. El `/plan` evita gastar tokens en la dirección equivocada. Las templates eliminan la variabilidad de los prompts de invocación.
-
----
-
-### Parte A — Skill `/plan`: preview antes de ejecutar
-
-#### El problema
-
-Invocar un agente sin saber exactamente qué va a tocar cuesta 10-20k tokens si va en la dirección equivocada. Un plan previo cuesta ~500-800 tokens en haiku y evita ese riesgo.
-
-#### La solución: skill de solo lectura
-
-```
-.claude/skills/plan/SKILL.md
-```
-
-```markdown
----
-name: plan
-description: Preview de implementación antes de ejecutar cualquier agente. Invocar
-  con /plan [tarea] ANTES de @especialista o @lead. Muestra archivos a tocar,
-  approach, riesgo y agente recomendado. No modifica nada — solo planifica.
-disable-model-invocation: false
-allowed-tools: Read, Glob, Grep
----
-
-# Plan — Preview antes de ejecutar
-
-No modificar archivos. No escribir código. Solo planificar y reportar.
-
-## Qué hacer
-1. Leer `.claude/scope/scope-index.md` — entender estado actual
-2. Usar Glob/Grep para confirmar paths reales que la tarea involucra
-3. Producir el output en el formato exacto de abajo — nada más
-
-## Output — siempre este formato, nada más
-
-​```
-PLAN: [nombre de la tarea]
-
-Archivos a tocar:
-  - [ruta/exacta.ext]   — [qué cambia en ≤8 palabras]
-
-Approach: [1-2 líneas — qué patrón, qué señal, qué nodo]
-Riesgo: [1 línea — o "ninguno"]
-Agente(s): [@agente — razón en 3 palabras]
-Tokens estimados: ~Xk
-​```
-
-## Reglas de estimación
-- 1 agente · ≤3 archivos · sin debugging     → ~4-8k
-- 1-2 agentes · 3-5 archivos                 → ~8-16k
-- lead + especialistas · ≥5 archivos         → ~16-28k
-
-## Reglas duras
-- Nunca inventar rutas — confirmar con Glob antes de listar
-- Si un archivo no existe todavía → marcarlo como "(nuevo)"
-- Si la tarea es ambigua → UNA pregunta antes del plan, nunca asumir
-```
-
-#### Flujo de uso
-
-```
-usuario: /plan añadir sistema de vidas al player
-
-[plan skill — ~600 tokens haiku]
-
-PLAN: sistema de vidas
-
-Archivos a tocar:
-  - scripts/Player.gd          — agregar var lives: int + señal lives_changed
-  - scripts/GameManager.gd     — escuchar lives_changed, trigger game over
-  - ui/HUD.tscn                — (nuevo) label para mostrar vidas
-
-Approach: lives como variable en Player, señal → GameManager,
-  GameManager actualiza HUD via señal hud_update
-Riesgo: si GameManager no existe como Autoload, necesita registrarse
-Agente(s): @godot-lead — 3 archivos, 2 sistemas
-Tokens estimados: ~14k
-
-usuario: ok
-
-→ recién aquí se invoca @godot-lead
-```
-
-#### `/plan` es la norma — no la excepción
-
-> No consume más tokens en la tarea — los **ahorra** al evitar el loop ejecutar→corregir→reejecutar. Un plan cuesta ~500-800t en haiku; una corrección de dirección cuesta 10-20k.
-
-**Regla:** usar `/plan` por defecto. Saltarlo es la excepción que requiere justificación.
-
-```
-✅ Usar /plan (default)          ❌ Saltarse /plan (excepción)
-Tarea nueva o no obvia           Fix de 1 línea ya identificado
-≥2 archivos involucrados         Tarea ya planificada en sesión anterior
-Riesgo de efectos secundarios    Cambio cosmético / typo / comentario
-Primera vez tocando un sistema
-```
-
-#### Añadir `/plan` al dispatch de CLAUDE.md
-
-Una sola línea al inicio del dispatch, antes que cualquier agente:
-
-```markdown
-## Dispatch
-/plan [tarea] — NORMA antes de ejecutar (omitir solo para fixes triviales de 1 línea)
-¿≥2 sistemas o ≥3 archivos? → @lead
-...
-```
-
-No consume tokens cuando no se usa — `disable-model-invocation: false` pero solo se activa cuando el usuario lo invoca con `/plan`.
-
----
-
-### Parte B — Disciplina de invocación: trabajo de Claude, no del usuario
-
-#### El problema real
-
-Los prompts de invocación verbosos son la principal fuente de variabilidad de tokens — pero el error no es del usuario, es del orquestador (Claude en el contexto principal).
-
-```
-❌ Claude invoca con prosa larga: explica contexto que el agente
-   ya tiene en su system prompt, repite el flujo, sugiere approaches
-   → el agente ignora lo redundante — tokens desperdiciados
-
-✅ Claude invoca con formato mínimo: solo lo que el agente
-   NO puede inferir del scope y los learnings
-```
-
-**El usuario habla natural. Claude comprime. El agente ejecuta.**
-
-#### La regla — una línea en CLAUDE.md
-
-```markdown
-## Reglas duras
-- Invocar agentes con formato mínimo: TASK · FILES · CONTEXT solo si no es obvio
-```
-
-Con esa regla, cuando el usuario dice *"añade sistema de vidas"*, Claude traduce internamente:
-
-```
-@godot-lead
-TASK: sistema de vidas — Player + HUD
-FILES: Player.gd, HUD.tscn
-```
-
-No un párrafo. No historial. No sugerencias de approach que el agente ya conoce.
-
-#### Qué incluir — qué omitir
-
-| Incluir siempre | Omitir siempre |
-|---|---|
-| Qué construir (1 línea) | Cómo hacerlo (el agente lo sabe) |
-| Archivos directamente involucrados | Archivos de contexto o arquitectura |
-| Restricciones no obvias | Reglas que ya están en el system prompt |
-| Resultado esperado si es ambiguo | Historial de la sesión |
-
-#### Patrón git — el caso más optimizable
-
-El agente git tiene un anti-pattern clásico: invocarlo varias veces por sesión. Cada invocación separada paga el cold start del agente. El patrón óptimo es **dos invocaciones fijas por sesión**:
-
-```
-Inicio de sesión:
-  @godot-git BRANCH: mathvoid/nombre          → ~2-4k tokens
-
-  [trabajo de implementación]
-
-Fin de sesión (postmortem ya hecho):
-  @godot-git
-  BRANCH: mathvoid/nombre · COMMIT: tipo: desc · PR: título · VALIDADO: sí
-                                                              → ~8-12k tokens
-```
-
-El flag `VALIDADO: sí` le indica al agente que saltee la confirmación y el postmortem — ya fueron hechos. Sin él, el agente para a mitad y requiere una segunda invocación, lo que duplica el costo.
-
-| Patrón | Tokens | Cuándo |
-|---|---|---|
-| 2 invocaciones separadas (anti-pattern) | ~22k medido | Commit y merge en turnos distintos |
-| Invocación única al final con VALIDADO | ~10-12k | Todo en un solo bloque al cerrar sesión |
-| Invocación única + commit explícito en prompt | ~6-7k✓ | Medido: 7k · 5 tool calls (2026-06-02) — piso real de haiku |
-| Solo merge de PR ya abierto | ~6-7k medido | `MERGE: PR #N · VALIDADO: sí` |
-
-**Regla (2026-06-02, medido):** El piso real de haiku es **5 tool calls**. Haiku divide chains largas de `&&` para error handling — no se puede bajar a 3-4 con instrucciones. Lo optimizable son los calls de discovery (git status, git log, git diff) que no aportan nada cuando el commit viene en el prompt. Eliminarlos con sección `## PROHIBIDO` en el agente.
-
-#### Impacto real
-
-| Invocación | Tokens prompt | Tokens totales del agente |
-|---|---|---|
-| Prosa larga (15 líneas) | ~400t | ~12-20k |
-| Formato mínimo (3-4 líneas) | ~80t | ~6-10k |
-| Ahorro típico | ~320t overhead | ~30-50% por run |
-
-La mayor ganancia no es el overhead del prompt — es que el agente recibe contexto limpio y no gasta Read calls extras para entender qué quiere el orquestador.
-
----
-
-### Checklist §17
-
-```
-/plan skill
-□ .claude/skills/plan/SKILL.md creado
-□ allowed-tools: Read, Glob, Grep — sin Write ni Edit
-□ disable-model-invocation: false — se activa con /plan
-□ Línea en CLAUDE.md dispatch: "¿Ver plan antes?" → /plan [tarea]
-
-Disciplina de invocación (Claude, no el usuario)
-□ Regla en CLAUDE.md: "Invocar agentes con formato mínimo: TASK · FILES · CONTEXT solo si no es obvio"
-□ Claude nunca repite en el prompt lo que ya está en el system prompt del agente
-□ Reviewer recibe solo archivos directamente modificados (≤4)
-□ Git: 2 invocaciones por sesión — rama al inicio, commit+push+PR+merge al final
-□ Git final siempre con "VALIDADO: sí" si postmortem ya corrió — evita segunda invocación
-```
 
 ---
 
@@ -4374,1541 +5835,81 @@ Por eso los agentes y prompts de artifact-factory están en inglés — el CLAUD
 
 ---
 
-<!-- §23 -->
-## 23. Techos reales de tokens — cuándo parar de optimizar
+<!-- §15 -->
+## 15. Glosario
 
-> Reducir tool calls y reducir tokens son dos problemas distintos. Confundirlos lleva a optimizar lo incorrecto. Esta sección define el piso de tokens de cada tipo de agente para saber cuándo llegaste al límite.
+> Para el que llega sin contexto y no entiende por qué todo el mundo habla de "tokens" y "hooks" como si fueran palabras normales.
 
-### El principio
+### El dinero
 
-Los tokens de un agente se componen de:
+**Token** — La unidad de costo de Claude. Aproximadamente ¾ de una palabra en inglés o ½ en español. Todo lo que está en contexto — tu prompt, el historial, los archivos leídos, las respuestas — consume tokens. Tokens = plata.
 
-```
-tokens totales = (system_prompt × N_tool_calls) + Σ(tool_outputs)
-```
+**Contexto** — La "memoria de trabajo" de Claude en una conversación. Tiene un límite y tiene costo por cada token que contiene. Si algo está en contexto, Claude lo "ve" y lo procesa. Si no está, no existe para él.
 
-- **system_prompt × N_tool_calls**: el system prompt se re-inyecta en cada tool call. Reducir tool calls baja este costo linealmente.
-- **Σ(tool_outputs)**: la suma de los outputs de todos los tool calls (bash outputs, contenido de archivos leídos, resultados de grep). Este costo **no se reduce eliminando discovery calls** — está determinado por los outputs de las operaciones necesarias.
+**Capa 3 / Contexto aislado** — Cuando un agente corre, lo hace en su propio contexto separado. Lo que el agente lee no contamina tu hilo principal. Esto es gratis para el hilo principal — el agente paga su propio costo internamente.
 
-**La consecuencia práctica:** reducir discovery calls (git log, git status innecesario) ahorra tool calls pero no ahorra proporcionalmente tokens, porque los outputs de los comandos necesarios (git commit, gh pr create, gh pr merge) dominan el costo.
+### Los modelos
 
-### El techo por tipo de agente
+**haiku** — El más barato. 1x costo de referencia. Para tareas con instrucciones fijas: git, commits, checklists, postmortem. Si el agente no necesita razonar sobre contexto variable, usa haiku.
 
-| Tipo de agente | Qué domina el costo | Techo real | Cuándo llegaste al límite |
-|---|---|---|---|
-| **Bash-heavy** (git, postmortem) | Output de comandos bash | ~5-7k | Cuando tool calls = mínimo necesario para la operación |
-| **Read-heavy** (reviewer, debugger) | Contenido de archivos leídos | ~4-8k por archivo | Cuando lee solo los archivos directamente involucrados |
-| **Write-heavy** (implementador) | Archivos leídos + escritos + razonamiento | ~8-14k | Cuando no hace reads de contexto innecesarios |
-| **Orchestrador** (lead) | Scope + delegación | ~10-18k | Cuando no implementa directamente |
+**sonnet** — El intermedio. 5x más caro que haiku. Para implementación, debugging, tareas que requieren razonar sobre contexto variable. La mayoría de los agentes especialistas viven aquí.
 
-### Ejemplo medido — godot-git
+**opus** — El más poderoso y caro. 15x más caro que haiku. Para arquitectura con trade-offs complejos. Casi nunca necesario — si crees que lo necesitas, primero intenta con sonnet.
 
-```
-Antes (13 tool calls):  8.3k tokens
-Después (4 tool calls): 7.3k tokens
-Diferencia:             1.0k tokens (~12%)
+### Los componentes
 
-¿Por qué tan poca diferencia?
-  Los 9 calls eliminados eran calls de discovery cortos (~100-200t cada uno).
-  Los 4 calls que quedaron tienen outputs pesados:
-    git commit output:     ~300t
-    git push output:       ~200t
-    gh pr create output:   ~400t
-    gh pr merge output:    ~300t
-    system prompt (×4):  ~1,400t
-    overhead de contexto: ~1,500t
-  ─────────────────────────
-  Techo real estimado:   ~4,100-5,000t
-  Medido con 4 calls:     7,300t ← ~2k sobre el techo teórico (razonamiento del agente)
-```
+**Agente** — Claude con un rol fijo, herramientas específicas y un system prompt propio. Corre en contexto aislado. Se invoca con `@nombre-agente`. Un agente bien diseñado hace una sola cosa y la hace bien.
 
-El 1k ahorrado vino de eliminar los calls, pero el verdadero valor fue la **latencia** (30s se mantiene, pero sin loops) y la **confiabilidad** (sin calls interactivos que bloquean).
+**Skill** — Archivo de referencia (Markdown) que Claude carga cuando lo necesita. No tiene contexto propio — comparte el hilo principal. Se invoca con `/nombre-skill`. Puede ser un hub de triage, convenciones, templates o learnings.
 
-### Cuándo seguir optimizando vs cuándo parar
+**Hub** — Skill especial de triage siempre en contexto (auto-load). Su único trabajo es decirle a Claude qué agente usar para cada tarea. Debe ser corto (< 60 líneas para plugins, < 40 para proyectos con CLAUDE.md) porque se paga en cada tarea.
 
-```
-¿Los tool calls superan el mínimo necesario para la operación?
-    SÍ → seguir optimizando (hay discovery innecesario)
-    NO → el costo restante son outputs inevitables
+**Hook** — Script Python que se ejecuta automáticamente cuando Claude hace algo. Hay 4 tipos: `PreToolUse` (antes de una acción, puede bloquearla), `PostToolUse` (después, solo informa), `SubagentStop` (cuando un agente termina), `Stop` (cuando cierra la sesión).
 
-¿Los tokens están más del doble del techo real?
-    SÍ → hay algo mal: output format sin forzar, archivos de contexto extra, prompt largo
-    NO → estás en el rango normal del agente
+**Plugin** — Conjunto de agentes + skills + hooks empaquetados en un directorio con `plugin.json`. Se instala con `claude plugin add github:usuario/repo` y funciona en cualquier proyecto.
 
-¿Reducir tool calls ahorraría > 30% de tokens?
-    NO → el costo lo dominan los outputs, no los calls
-    SÍ → hay calls muy pesados que pueden evitarse
-```
+**Orchestrador / Lead** — Agente que coordina otros agentes pero no implementa código directamente. No tiene Bash — coordina con instrucciones, no con comandos.
 
-### Palancas por orden de impacto
+### El flujo de conocimiento
 
-1. **Output format forzado** — la más barata: no cambia tool calls, reduce el razonamiento verbose en 30-65%
-2. **Eliminar discovery calls** — baja tool calls y latencia; el ahorro de tokens es modesto (~10-20%)
-3. **Encadenar comandos bash con `&&`** — reduce N_tool_calls directamente, baja el costo del system prompt re-inyectado
-4. **Acortar el system prompt del agente** — cada línea menos = ahorro en cada tool call del agente
-5. **Reducir archivos pasados al reviewer** — cada archivo extra = ~700-1,400t en outputs de Read
+**Learnings** — Archivos Markdown donde el postmortem escribe lecciones aprendidas en cada sesión. Fragmentados por dominio (layout, api, general). Se cargan bajo demanda, nunca siempre. Límite: 150 líneas por archivo.
 
-### Anti-overkill
+**Gotcha** — Error conocido o comportamiento inesperado documentado. "grab_focus() en _ready() no funciona" es un gotcha. Evita que el agente cometa el mismo error dos veces.
 
-Cuando un agente está en su techo real, no hay más que optimizar desde el agente — el costo restante es el precio mínimo de la operación. Intentar bajarlo más requiere:
-- Cambiar el modelo (haiku → más barato, pero no existe nivel inferior)
-- Reducir el scope de la operación (hacer menos cosas, no hacerlas más eficientemente)
-- Aceptar que ese es el costo y enfocarse en otra cosa
+**Gotcha inline** — Gotcha que vive directamente en el system prompt del agente (sección `## Gotchas críticos`). Cero Read calls — el agente ya lo sabe de entrada. Solo los top 5-10 por agente.
 
-**Señal de que llegaste al techo:** optimizas el agente y los tokens bajan menos del 15%. El resto lo fija la operación misma, no el agente.
+**Postmortem** — Agente que corre al final de una sesión de trabajo para capturar lecciones y escribirlas en learnings. No escribe en el hub (ese es el error clásico).
 
-### Checklist §23
+**Curador** — Agente mensual que mantiene los learnings: elimina duplicados, archiva entradas obsoletas y promueve los gotchas más críticos a inline en el agente correspondiente. No correr en cada sesión.
 
-```
-□ Para cada agente con costo inesperado: identificar qué domina (bash outputs vs Read outputs vs razonamiento)
-□ Comparar tool calls actuales con el mínimo necesario para la operación
-□ Si tool calls = mínimo y tokens siguen altos → el costo es el techo real, no un problema de diseño
-□ Output format forzado antes de cualquier otra optimización
-□ Encadenar comandos bash con && para reducir N_tool_calls × system_prompt_cost
-□ No seguir optimizando cuando tokens < 2× el techo real estimado
-```
+### Los hooks en detalle
 
+**PreToolUse** — El único hook bloqueante. Se ejecuta antes de que Claude use una herramienta. Si retorna `permissionDecision: deny`, la acción no ocurre. Usar para validaciones críticas e irreversibles.
 
-<!-- §24 -->
-## 24. El contrato del contexto — el factor humano
+**PostToolUse** — Informativo. Se ejecuta después de que Claude usa una herramienta. No puede deshacer la acción. Usar para confirmar, notificar o encadenar acciones secundarias.
 
-> El agente es tan bueno como el contexto que recibe. Esta es la variable más subestimada del sistema.
+**SubagentStop** — Se ejecuta cuando un agente termina su trabajo. Usar para encadenar agentes o notificar al usuario. Output debe ser JSON `{"systemMessage": "..."}`.
 
-### La fórmula real
+**Stop** — Se ejecuta cuando Claude cierra la sesión. Usar para recordatorios de fin de sesión (postmortem, learnings). Output debe ser JSON `{"systemMessage": "..."}`.
 
-```
-éxito_del_agente = f(calidad_del_contexto_humano)
-```
+**systemMessage** — El formato correcto para que un hook inyecte texto en el contexto de Claude. `print(json.dumps({"systemMessage": "tu mensaje"}))`. Nunca `print("texto crudo")`.
 
-Contexto malo → el agente asume → suposición incorrecta → el humano corrige → más tokens → resultado mediocre. El loop se repite hasta que el contexto está claro — pero el costo ya se pagó.
+**permissionDecision** — Campo JSON que un hook PreToolUse usa para controlar una acción. Acepta `deny` (bloquea), `allow` (aprueba sin prompt), `ask` (muestra dialog igual) o `defer` (delega al siguiente hook). Siempre combinado con exit 0: `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "razón"}}`. Exit 2 también bloquea pero sin razón estructurada — no usarlo en PreToolUse.
 
-### La paradoja
+### El dispatch
 
-Las personas que más necesitan los agentes (sin experiencia técnica) son las que menos saben estructurar el input. Las que mejor saben usarlos (con experiencia técnica) podrían hacer el trabajo ellas mismas.
+**Trigger list** — La descripción de un agente, escrita para que Claude sepa exactamente cuándo activarlo. No es un párrafo de prosa — es una lista de casos de uso concretos. La descripción es lo más importante del agente.
 
-La solución no es mejorar el agente — es desarrollar la habilidad de **dar contexto**.
+**Dispatch** — El proceso de decidir qué agente maneja cada tarea. Puede vivir en CLAUDE.md (proyecto), en el hub skill (plugin) o en ambos.
 
-### Checklist pre-invocación — lo que el humano debe definir ANTES de invocar
+**skillOverrides** — Configuración en `settings.json` que controla qué ve Claude de cada skill. Cuatro valores: `"on"` (nombre + descripción en contexto, menú visible), `"name-only"` (solo el nombre en contexto, menú visible — Claude sabe que existe pero no cuándo usarla), `"user-invocable-only"` (oculta a Claude, visible en menú para el usuario), `"off"` (invisible para todos).
 
-```
-□ ¿Qué quiero exactamente?
-    Output concreto, no vago. "Arregla el bug" ≠ "El botón X no responde al click en iOS 17"
+**disable-model-invocation** — Campo del frontmatter de una skill. `true` = quita la etiqueta del estante: ni el nombre ni la descripción aparecen en el contexto de Claude — la skill no existe para él hasta que el usuario la invoca con `/nombre`. `false` = el recetario está en la repisa con etiqueta visible — Claude decide cuándo abrirlo.
 
-□ ¿Cuál es la arquitectura del proyecto?
-    Si no está en scope/, escribirla primero. El agente no puede adivinarla.
+### El scope
 
-□ ¿Cuál es el scope de esta tarea?
-    Qué toca. Qué NO toca. Los límites importan tanto como el objetivo.
+**Scope** — Archivos que describen el estado real del proyecto: qué existe, qué falta, qué se decidió. El lead lo lee para planificar. Los especialistas no lo necesitan — reciben contexto del lead.
 
-□ ¿Cuál es el criterio de éxito?
-    ¿Cómo sé que está hecho? Sin esto, el agente decide — y puede decidir mal.
-```
-
-Si no puedes responder estas 4 preguntas, no invoques el agente todavía.
-
-### Anti-patrón: "cuéntame qué necesitas"
-
-Síntoma de contexto mal formado: el humano invoca el agente esperando que **el agente descubra** qué hay que hacer. El agente empieza a preguntar, el humano responde a medias, el agente asume el resto.
-
-```
-❌ "Mejora el sistema de autenticación"
-✅ "El login falla cuando el token expira en mobile. Archivo: auth/token_refresh.ts.
-    Scope: solo el retry logic, no el flujo de login. Éxito: refresh automático sin logout visible."
-```
-
-### `/plan` como forcing function
-
-`/plan` obliga al humano a articular el contexto antes de que el agente ejecute. Si no puedes describir la tarea para el plan, no estás listo para invocar el agente.
-
-El costo del plan (~500-800t) es el precio de **no** gastar 10-20k en la dirección equivocada.
-
-**Regla:** si dudas de si necesitas `/plan` → lo necesitas.
-
-### El costo real de contexto malo
-
-```
-Tarea con contexto claro:     ~4-8k tokens (techo normal del agente)
-Tarea con contexto vago:      ~12-30k tokens (loops de corrección)
-Diferencia:                   3-5× — pagado en tokens, no en calidad
-```
-
-La optimización más barata del sistema no es un hook ni un agente más eficiente — es que el humano sepa qué quiere antes de pedirlo.
-
-### Checklist §24
-
-```
-□ Antes de invocar: ¿puedo describir el output exacto en 1-2 líneas?
-□ ¿El scope está escrito (qué toca / qué NO toca)?
-□ ¿El criterio de éxito es verificable?
-□ Si no puedo responder las 3: /plan primero, invocación después
-```
+**ADR (Architecture Decision Record)** — Entrada en el scope que documenta una decisión de diseño: qué se eligió, qué se descartó y por qué. Inmutable — nunca se edita, solo se agrega. Permite entender meses después por qué se tomó una decisión.
 
 ---
-
-<!-- §25 -->
-## 25. Modelo correcto — tabla de decisión única
-
-> haiku/sonnet/opus está mencionado en §2, §5, §12 y §22. Esta sección es el único lookup necesario.
-
-> **Analogía:** el modelo es el nivel del chef que contratás. Haiku = cocinero de comida rápida — rápido, económico, perfecto para tareas repetibles. Sonnet = chef de restaurante — para platos que requieren técnica. Opus = chef Michelin — para cuando el costo de arruinar el plato supera el costo del chef.
-
-### Tabla maestra
-
-| Tarea | Modelo | Razón |
-|---|---|---|
-| Checklist / validator / reviewer | **haiku** | Input fijo, output binario — no necesita razonamiento |
-| Postmortem / curador / git | **haiku** | Tarea estructurada, output predecible |
-| plan skill | **haiku** | Solo lectura + formato fijo |
-| Implementador (≤3 archivos, stack conocido) | **sonnet** | Necesita razonamiento, no creatividad extrema |
-| Lead / orchestrador | **sonnet** | Coordina, no implementa |
-| Debugger (multi-capa, async, runtime) | **sonnet** | Diagnosis requiere razonamiento medio |
-| Architect (nuevo proyecto, decisiones de diseño) | **sonnet** | Decisiones de estructura, no triviales |
-| Refactor masivo / investigación profunda | **opus** | Solo cuando sonnet falla O el costo del error es irreversible |
-| Contexto > 10k tokens activos | **opus** | Sonnet pierde coherencia en contextos muy largos |
-
-**Regla de oro:** ¿Sonnet lo hace bien? → no usar opus. ¿Haiku lo hace bien? → no usar sonnet.
-
-### Antes de Opus — probar `effort` primero
-
-`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar. ~5× más barato que subir a Opus.
-
-```yaml
-# En el agente o en la skill
-effort: xhigh   # opciones: xlow | low | medium | high | xhigh | ultra
-model: claude-sonnet-4-6
-```
-
-```json
-// En settings.json para toda la sesión
-{ "effortLevel": "high" }
-```
-
-**Cuándo `effort: xhigh` resuelve lo que parecía Opus:**
-
-| Síntoma | Primer intento | Si sigue fallando |
-|---|---|---|
-| Razonamiento superficial en tarea compleja | Sonnet + `effort: xhigh` | Opus |
-| Pierde el hilo en contexto largo | Fragmentar el problema | Opus |
-| Alucinaciones en decisiones de arquitectura | Sonnet + `effort: xhigh` + `/plan` | Opus one-shot |
-
-### El marco de decisión para Opus
-
-La pregunta no es "¿es una tarea difícil?" — es:
-
-> **¿El costo de que Sonnet se equivoque supera el costo de Opus?**
-
-Opus cuesta ~5× más por token que Sonnet. Si un error de Sonnet cuesta 30 minutos de corrección → Opus vale la pena. Si cuesta 5 minutos → no.
-
-**Cuándo Opus tiene justificación real:**
-
-| Caso | Por qué Opus | Por qué no Sonnet |
-|---|---|---|
-| Security audit antes de merge a main | Falso negativo = brecha de producción | Puede pasar por alto patrones de ataque sutiles |
-| Arquitectura inicial de sistema > 2 años de vida | Error = meses de refactor | Con effort:xhigh puede no ver trade-offs a largo plazo |
-| Debug multi-capa con contexto > 10k tokens activos | Coherencia en contexto largo | Sonnet pierde el hilo — documentado |
-| Decisión one-shot sin segunda oportunidad | No hay iteración posible | Sonnet en loop con validator es alternativa |
-
-### Ejemplo concreto — security-auditor con Opus justificado
-
-```yaml
-# .claude/agents/security-auditor.md
----
-name: security-auditor
-description: Audit de seguridad antes de merge a main. Invocar SOLO en PRs con cambios
-  de auth, permisos, storage o inputs de usuario. NO usar para linting o code style.
-model: claude-opus-4-8
-tools: Read, Glob, Grep
----
-```
-
-**Por qué Opus aquí y no Sonnet:** el audit corre una vez por PR. El delta de costo es ~$0.04 por run. Un falso negativo (vulnerabilidad que pasa a producción) vale órdenes de magnitud más. El agente tiene `tools: Read, Glob, Grep` — sin Write ni Bash — para que el costo extra sea solo en razonamiento, no en ejecución.
-
-**Por qué no `effort: xhigh` en Sonnet:** patrones de seguridad sutiles (IDOR, timing attacks, second-order injection) requieren el nivel de razonamiento de Opus. En auditorías de seguridad, el costo del error justifica el modelo más capaz disponible.
-
-### Aliases y defaults actuales — Fable 5
-
-Los model IDs cambian entre versiones. La guía usa IDs explícitos — el default puede cambiar sin aviso:
-
-| ID explícito | Rol | ¿Default? |
-|---|---|---|
-| `claude-haiku-4-5` | Tareas estructuradas, bajo costo | — |
-| `claude-sonnet-4-6` | Implementación, debugging | — |
-| `claude-opus-4-8` | Razonamiento profundo, security | — |
-| `claude-fable-5` | Modelo más reciente / alias del CLI | ✅ si no se pineó |
-
-**Regla:** siempre pinear `model:` en el frontmatter del agente. Sin `model:`, el CLI usa el default actual (`claude-fable-5`) — que puede cambiar en cualquier update. Pinear = predecibilidad de costo.
-
-### Fast Mode — inferencia rápida
-
-Disponible en planes Team/Enterprise. No baja la calidad — optimiza la entrega de tokens para reducir latencia y costo en outputs largos.
-
-```json
-{ "fastMode": true }
-```
-
-| Escenario | Activar Fast Mode |
-|---|---|
-| Generador (N archivos en un turno), git, postmortem | ✅ — outputs largos y predecibles |
-| Agente con `effort: xhigh` o `ultra` | ❌ — el beneficio de velocidad compite con el throughput de razonamiento |
-| Reviewer / validator (output corto) | Beneficio marginal — indiferente |
-
-### Extended Context 1M — cuándo vale el costo
-
-Disponible en cloud/Bedrock/Vertex. El costo escala linealmente — no es gratis porque esté disponible.
-
-| Contexto activo | Costo relativo | Usar cuando |
-|---|---|---|
-| 100k (default) | 1× | Siempre como punto de partida |
-| 200k | ~2× | Codebase con N archivos interdependientes |
-| 500k | ~5× | Análisis one-shot de repositorio completo |
-| 1M | ~10× | Solo si fragmentar costaría más (múltiples sesiones + coordinación) |
-
-**Cálculo antes de activar:** ¿cuesta más 1 sesión de 900k (~9×) o 3 sesiones de 300k con coordinación manual? Si la coordinación pesa más → extended justificado. Si no → fragmentar.
-
-**Anti-patrón:** activar extended context "por las dudas" cuando el problema cabe en 100k. El costo es proporcional al contexto activo, no al usado.
-
-### Anti-patrones frecuentes
-
-| Error | Fix |
-|---|---|
-| Reviewer con sonnet | haiku — compara contra lista fija |
-| Opus para git/postmortem | haiku — tarea estructurada |
-| Sin `model:` en el agente | Todos usan el modelo más caro disponible → especificar siempre |
-| Sonnet para triage/dispatch | haiku — decisión simple sobre keywords |
-| Opus por defecto "para estar seguros" | Sonnet + `effort: xhigh` primero — 5× más barato |
-| `effort: xhigh` global en settings.json | Solo en agentes o skills específicas — el costo se multiplica por cada tool call |
-
-### Checklist §25
-
-```
-□ Cada agente tiene model: especificado con ID pinneado (ej. claude-haiku-4-5, NO haiku)
-□ Reviewer → claude-haiku-4-5
-□ git, postmortem, curador → claude-haiku-4-5
-□ plan skill → claude-haiku-4-5
-□ Antes de Opus → probar Sonnet con effort: xhigh (skill frontmatter o settings.json)
-□ Opus solo si: security/arch one-shot O contexto > 10k tokens O costo de error es irreversible
-□ Agentes Opus tienen tools mínimas (Read/Grep/Glob) — el costo extra debe estar en razonamiento, no en ejecución
-□ effort: xhigh no en settings.json global — solo en agentes/skills que lo necesitan
-□ Siempre pinear model: con alias sin fecha (claude-haiku-4-5 ✅, haiku ❌, claude-haiku-4-5-20251001 ❌) — el default cambia
-□ Fast Mode: activar en generadores/git/postmortem, no en agentes con effort: xhigh o ultra
-□ Extended Context: calcular costo fragmentado vs costo extendido antes de activar
-```
-
----
-
-<!-- §26 -->
-<a id="26-hook-global-de-contexto"></a>
-
-## 26. Hook global de contexto
-
-> CLAUDE.md indica dónde buscar en la guía, pero no cuándo. Este hook inyecta automáticamente la sección relevante antes de que Claude responda — 0 tokens extra si el prompt no es relevante.
-
-### Por qué
-
-El problema: Claude sabe que la guía existe pero necesita inferir cuándo consultarla. A veces no lo hace. El hook detecta keywords en el prompt y extrae la sección correcta de forma automática.
-
-| Sin hook | Con hook |
-|---|---|
-| Claude infiere cuándo consultar la guía | La sección relevante llega automáticamente |
-| Puede omitir consulta cuando debería hacerla | 0 tokens extra si el prompt no es relevante |
-
-`UserPromptSubmit` se ejecuta **antes** de que Claude procese el prompt. El stdout del hook se inyecta como contexto en la sesión.
-
-### Instalación en 3 pasos
-
-**1. Script** → `~/.claude/hooks/guia_context.py`
-
-````python
-#!/usr/bin/env python3
-import json, sys, re
-from pathlib import Path
-
-# ← Ajustar con la ruta donde clonaste este repo
-GUIA = Path("~/ruta/a/guia-agentes-plugins-claude-code.md").expanduser()
-MAX_SECTIONS = 2    # máximo de secciones a inyectar por prompt
-LINES_BUDGET = 120  # presupuesto total — se divide entre secciones encontradas
-
-# Orden importa: más específico primero.
-# Se recorren TODOS los entries y se acumulan hasta MAX_SECTIONS matches.
-KEYWORD_MAP = [
-    # §26 — Hook global (específico — antes de §7)
-    (["guia_context", "keyword_map", "inyección automática",
-      "hook global", "context hook"],                                    26),
-    # §29 — Contexto global propio (específico — antes de §7)
-    (["contexto global", "~/.claude", "sistema propio",
-      "bootstrap", "capas del contexto", "global context"],             29),
-    # §5 — Agentes
-    (["agente", "agent", "subagent", "disallowedtools", "maxturns",
-      "memory: project", "skills:", "context:fork"],                     5),
-    # §6 — Skills
-    (["skill", "lifecycle", "context: fork", "ultrathink",
-      "supporting files", "disable-model-invocation"],                   6),
-    # §7 — Hooks (incluye permission modes y security guards)
-    (["hook", "pretooluse", "posttooluse", "npm", "npx",
-      "slopsquatting", "supply chain", "updatedinput",
-      "sessionstart", "filechanged", "permissionrequest",
-      "permiso", "permission", "guard", "credencial", "secret guard"],   7),
-    # §8 — Scope
-    (["scope"],                                                           8),
-    # §9 — Learnings
-    (["learning", "curator", "postmortem"],                              9),
-    # §10 — Multi-agente y worktrees
-    (["multi-agente", "lead", "arquitectura", "worktree"],              10),
-    # §11 — Plugin
-    (["plugin", "distribuible"],                                        11),
-    # §14 — Anti-overkill
-    (["overkill"],                                                      14),
-    # §16 — Vector Memory
-    (["vector memory", "semántica"],                                    16),
-    # §18 — Seguridad
-    (["seguridad", "security", "injection", "traversal"],               18),
-    # §20 — CI/CD + Claude-en-CI
-    (["ci/cd", "github action", "pipeline", "claude-code-action",
-      "@claude", "pr review", "workflow yml"],                          20),
-    # §24 — Factor humano
-    (["factor humano", "invocar", "contexto antes"],                    24),
-    # §25 — Modelo correcto
-    (["haiku", "sonnet", "opus", "modelo", "effort",
-      "xhigh", "fable", "fast mode", "extended context"],              25),
-    # §27 — Handoff + auto-compaction
-    (["handoff", "snapshot", "retomar sesión", "compaction",
-      "auto-compaction"],                                               27),
-    # §28 — Prompt Library
-    (["shortcut", "recipe", "prompt library", "/plan",
-      "4 leyes", "las leyes"],                                         28),
-    # §30 — Cloud Agents
-    (["schedule", "cron", "routine", "cloud agent",
-      "/web-setup", "ccr"],                                            30),
-    # §31 — Advisor Pattern
-    (["advisor", "patron advisor", "sous-chef",
-      "validar sin subir", "validación sin subir"],                    31),
-    # §3 — Estimados + caching
-    (["presupuesto", "tokens", "costo", "cache", "caching",
-      "ttl", "estimado", "consumo"],                                    3),
-    # §17 — Plan / Templates
-    (["invocation template", "/plan skill", "plan skill"],             17),
-    # §2 — Límites de tamaño
-    (["presupuesto de", "límites de tamaño", "150 líneas"],             2),
-]
-
-def detect_sections(prompt: str) -> list:
-    p = prompt.lower()
-    seen, results = set(), []
-    for keywords, n in KEYWORD_MAP:
-        if n not in seen and any(k in p for k in keywords):
-            results.append(n)
-            seen.add(n)
-            if len(results) >= MAX_SECTIONS:
-                break
-    return results
-
-def extract_section(n: int, max_lines: int) -> str:
-    lines = GUIA.read_text().splitlines()
-    for anchor in [f"<!-- §{n}-quick -->", f"<!-- §{n} -->"]:
-        try:
-            start = next(i for i, l in enumerate(lines) if anchor in l) + 1
-        except StopIteration:
-            continue
-        result = []
-        for line in lines[start:]:
-            if re.match(r"<!-- §\d", line):
-                break
-            result.append(line)
-        if len(result) > 3:
-            return "\n".join(result[:max_lines]).strip()
-    return ""
-
-try:
-    payload = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-
-sid = payload.get("session_id") or payload.get("transcript_path", "").split("/")[-1].replace(".jsonl", "")
-seen_file = Path(f"/tmp/guia_seen_{sid}.json") if sid else None
-already_seen = set(json.loads(seen_file.read_text())) if seen_file and seen_file.exists() else set()
-
-sections = [n for n in detect_sections(payload.get("prompt", "")) if n not in already_seen]
-if not sections:
-    sys.exit(0)
-
-max_lines = LINES_BUDGET // len(sections)
-parts = []
-for n in sections:
-    content = extract_section(n, max_lines)
-    if content:
-        parts.append(f"[Guía §{n}]\n{content}")
-
-if parts:
-    print("\n\n".join(parts))
-    if seen_file:
-        seen_file.write_text(json.dumps(list(already_seen | set(sections))))
-````
-
-**2. Permisos**
-
-```
-chmod +x ~/.claude/hooks/guia_context.py
-```
-
-**3. Registrar en `~/.claude/settings.json`**
-
-```json
-"UserPromptSubmit": [
-  {
-    "hooks": [{
-      "type": "command",
-      "command": "python3 ~/.claude/hooks/guia_context.py"
-    }]
-  }
-]
-```
-
-### Mantenimiento del KEYWORD_MAP
-
-El KEYWORD_MAP no se actualiza solo — cada sección nueva que no tenga entry queda fuera del sistema de inyección. El §13 (Checklist de calidad) ya incluye el recordatorio, pero el protocolo es:
-
-**Al crear §N nuevo:**
-1. Identificar 3-5 keywords que un usuario escribiría naturalmente al preguntar sobre ese tema
-2. Agregar el entry en orden de especificidad (más específico arriba):
-```python
-# §N — Nombre sección
-(["keyword1", "keyword2", "keyword3"], N),
-```
-3. Testear con `echo '{"prompt": "frase con keyword"}' | python3 ~/.claude/hooks/guia_context.py | head -1`
-
-**Qué hace un buen keyword:**
-- Lo que el usuario escribe, no el título de la sección (`"caching"` > `"prompt caching"` > `"estimados de consumo"`)
-- Específico al tema para evitar falsos positivos (`"advisor pattern"` > `"advisor"` si el término es ambiguo)
-- En el idioma del usuario (si mezclan ES/EN, incluir ambos)
-
-**Budget adaptativo — cómo funciona:**
-```python
-LINES_BUDGET = 80   # presupuesto total fijo
-# 1 sección encontrada → 80 líneas (máximo detalle)
-# 2 secciones encontradas → 40 líneas cada una (80 total)
-```
-
-Si una sección quick tiene < 40 líneas, se sirve completa. El budget solo limita secciones largas — no trunca lo que ya es conciso.
-
-### Deduplicación por sesión
-
-Sin deduplicación, un tema recurrente (ej. "handoff") inyecta la misma sección en cada turno — ~1,500 tokens desperdiciados por mensaje. El hook trackea qué secciones ya se inyectaron en `/tmp/guia_seen_{session_id}.json`.
-
-| Situación | Comportamiento |
-|---|---|
-| §27 pedido, sesión nueva | Inyecta §27, guarda en seen |
-| §27 pedido, ya en seen | `sys.exit(0)` — 0 bytes, 0 tokens |
-| Falla al leer archivo temp | `already_seen = set()` — funciona como antes |
-
-**Impacto en sesión de 15 turnos sobre handoff:**
-- Antes: 15 × ~1,500 tokens = ~22,500 tokens extra
-- Después: 1 × ~1,500 tokens = ~1,500 tokens extra
-
-El archivo temp se elimina automáticamente al reiniciar el sistema. No requiere limpieza manual.
-
-### Checklist §26
-
-```
-□ guia_context.py creado en ~/.claude/hooks/
-□ chmod +x aplicado
-□ UserPromptSubmit registrado en ~/.claude/settings.json
-□ Prompt con "agente" → §5 inyectado como contexto
-□ Prompt cruzado ("agente" + "hook") → §5 + §7 inyectados
-□ Prompt sin keywords → sin inyección (0 bytes stdout)
-□ Misma keyword en turno 2+ → sin inyección (deduplicación por sesión)
-□ Nueva sección → entry en KEYWORD_MAP + test de smoke
-```
-
-### Plugin-level UserPromptSubmit — dos tiers de keywords
-
-Cuando el hook de contexto es para un **dominio específico** (no general como guia_context.py), los keywords genéricos (`new`, `view`, `component`) disparan en cualquier conversación y generan ruido. Patrón correcto: detección en dos tiers.
-
-**Tier 1 — símbolos exclusivos del dominio** (fire siempre que aparezcan):
-```python
-_DOMAIN_SYMBOLS = re.compile(
-    r'ExclusiveTerm1|ExclusiveTerm2|...'
-    # ← Solo términos que NO aparecen fuera del dominio
-    # DesignSystemKit: @CatalogElementMacro, ShimmerView, NaturalHeightLayout...
-)
-```
-
-**Tier 2 — acción + término de dominio en proximidad** (≤50 chars entre ellos):
-```python
-_DOMAIN_CONTEXT = re.compile(
-    r'(crea[r]?|nuevo|new|add|implement).{0,50}(domainTerm)|'
-    r'(domainTerm).{0,50}(crea[r]?|nuevo|new|add|es\s+un)',
-    re.IGNORECASE | re.DOTALL
-)
-```
-
-Si ningún tier matchea → no inyectar (silencio es correcto). Output: **plain stdout**, no `json.dumps({"systemMessage": ...})`. La doc oficial confirma que stdout de `UserPromptSubmit` va a `additionalContext` del contexto de Claude — sin mostrarse al usuario como mensaje separado.
-
-```python
-# ✅ Plain stdout — va a additionalContext silenciosamente
-print(f"[Dominio context]\n{content}")
-
-# ❌ systemMessage — se muestra al usuario como mensaje visible
-print(json.dumps({"systemMessage": content}))
-```
-
-> **[2026-06-22] design-ios:** Keywords genéricos (`new`, `view`, `component`, `swift`) en hub hook inyectaban el triage de capas en conversaciones de git, docs y cualquier cosa con esas palabras. Fix: Tier 1 con nombres exclusivos del sistema (`@CatalogElementMacro`, `ShimmerView`, `AppTabView`...) + Tier 2 con proximidad acción+capa (`"crea un atom"`, `"nuevo molecule"`). Ahora solo dispara cuando el dominio es inequívoco.
-
----
-
-<!-- §27 -->
-<a id="27-handoff-protocol"></a>
-
-## 27. Handoff Protocol — Preservar contexto entre sesiones
-
-> Sesiones largas degradan la calidad de razonamiento. Este protocolo preserva el estado exacto en un snapshot estructurado y lo retoma en sesión nueva sin fricción — cero llamadas de API extra, cero overhead por turno.
-
-### El problema
-
-Claude Code no tiene memoria entre sesiones. A medida que el contexto se llena, la calidad del razonamiento baja antes de que el usuario lo note. El degradado es silencioso.
-
-### Por qué es LowCost
-
-La trampa obvia es llamar `/v1/messages/count_tokens` para saber cuándo avisar. Eso es gratis en dinero pero agrega una llamada de API por turno — latencia real.
-
-La solución: Claude Code **ya calcula** `context_window.used_percentage` y lo entrega al comando `statusLine` en el JSON de stdin. Leer ese número es una operación de archivo. Costo = 0.
-
-| Enfoque | Overhead |
-|---|---|
-| Token counting API por turno | 1 HTTP call/turno (~200ms latencia) |
-| `statusLine` + archivo local | Lectura de archivo — cero |
-
-### Arquitectura
-
-```
-statusLine (cada evento)
-  → lee context_window.used_percentage del JSON de Claude Code
-  → escribe ~/.claude/ctx_pct.txt
-  → muestra barra de progreso en la UI
-
-Stop hook (cada respuesta de Claude)
-  → lee ctx_pct.txt
-  → si ≥ 70%: dialog nativo del OS (una sola vez por sesión)
-    → No: continúa normalmente
-    → Sí: emite {"decision": "block", "reason": "HANDOFF REQUESTED + contexto git"}
-          Claude recibe el reason en el mismo turno e invoca el skill /handoff
-
-/handoff skill
-  → Claude compone snapshot internamente (no se muestra en chat)
-  → Bash escribe a ~/.claude/handoffs/{repo}/YYYY-MM-DD_HHmm.md + latest.md
-  → .gitignore actualizado automáticamente
-  → snapshot copiado al clipboard
-  → Claude imprime una línea de confirmación en el chat
-```
-
-### Componentes
-
-| Archivo | Rol |
-|---|---|
-| `CLAUDE.md` | Triggers manuales (`handoff`, `snapshot`, `pausa`) + resume behavior |
-| `commands/handoff.md` | Skill `/handoff` — compone snapshot internamente, escribe a disco vía Bash, imprime una línea de confirmación |
-| `hooks/statusline-context.sh` | Barra de progreso con niveles y mensajes |
-| `hooks/handoff-monitor.sh` | Detecta 70%, muestra dialog cross-platform; en confirmación emite `decision: block` con "HANDOFF REQUESTED" para disparar el skill en el mismo turno |
-
-### Dialog cross-platform
-
-El Stop hook detecta el OS y usa la herramienta nativa:
-
-```bash
-case "$OSTYPE" in
-  darwin*)   osascript     ;;   # macOS — built-in
-  linux*)    zenity/kdialog;;   # GNOME / KDE
-  msys*|cygwin*) powershell;;  # Windows Git Bash / WSL
-  *)         systemMessage ;;  # fallback en el chat
-esac
-```
-
-### Barra de progreso
-
-El `statusLine` muestra un indicador visual con escalada de urgencia:
-
-```
-🥬 [██░░░░░░░░] 20% — fresco como lechuga
-😎 [███░░░░░░░] 35% — tranqui
-🔥 [█████░░░░░] 52% — se calienta la cosa
-👻 [██████░░░░] 63% — en cualquier momento me voy en la vola'
-🔪 [███████░░░] 74% — me pase po          ← dialog dispara aquí
-💀 [████████░░] 83% — ¿qué hacíamos?
-🆘 [█████████░] 92% — handoff altiro weón
-```
-
-Los colores ANSI (verde/amarillo/rojo) coinciden con el nivel de urgencia.
-
-### Snapshot template
-
-```markdown
-## Snapshot de Handoff
-**Fecha:** [YYYY-MM-DD HH:MM]
-**Repo / Proyecto:** [nombre]
-## Objetivo
-## Completado
-## En Progreso
-## Próximos Pasos
-## Decisiones Técnicas
-## Blockers
-## Contexto Técnico
-```
-
-Para retomar: pega el snapshot al inicio de sesión nueva. Claude confirma el objetivo antes de continuar.
-
-### Instalación
-
-```bash
-git clone https://github.com/f3kpclon/claude-code-handoff handoff-project
-cd handoff-project
-bash install.sh   # idempotente — seguro de re-ejecutar
-# Reiniciar Claude Code
-```
-
-### Seguridad y CI
-
-Este proyecto instala hooks que corren en **cada sesión de Claude de cada usuario**. Un PR malicioso en `hooks/` o `install.sh` es un supply chain attack real.
-
-**GitHub Actions** (`.github/workflows/ci.yml`) — corre en cada PR hacia `main`:
-
-| Job | Qué hace |
-|---|---|
-| `ShellCheck` | Lint de todos los `.sh` — errores y patrones inseguros |
-| `Tests` | `bash test.sh` — 16 aserciones, falla si install.sh aborta |
-| `Security Scan` | Detecta patrones peligrosos nuevos en `hooks/`, `install.sh`, `commands/`: `curl`, `wget`, `base64 -d`, `/dev/tcp`, `nc`, `python3 -c.*exec` |
-
-**Nota:** `set -euo pipefail` en `install.sh` hace que los tests fallen si el atacante inyecta un `curl` que no responde — doble protección sin código extra.
-
-**Branch protection** configurada vía API:
-- PRs obligatorios con aprobación del codeowner
-- Los 3 checks deben pasar antes de mergear
-- `enforce_admins: false` — el owner puede hacer push directo
-- `CODEOWNERS` en `.github/CODEOWNERS` — auto-request de review al owner
-
-```bash
-# Configurar branch protection vía gh CLI (para forks)
-gh api repos/{owner}/{repo}/branches/main/protection \
-  --method PUT --input - <<'EOF'
-{
-  "required_status_checks": {"strict": true, "contexts": ["ShellCheck","Tests","Security Scan"]},
-  "enforce_admins": false,
-  "required_pull_request_reviews": {"required_approving_review_count": 1, "require_code_owner_reviews": true, "dismiss_stale_reviews": true},
-  "restrictions": null
-}
-EOF
-```
-
-### Auto-compaction — qué resume, qué pierde
-
-Claude Code comprime automáticamente el historial cuando el contexto se acerca al límite. Ocurre **sin aviso visual** — la calidad del razonamiento baja antes de que el usuario lo note.
-
-**Qué hace la compaction:** resume el historial previo en un bloque comprimido y mantiene los mensajes recientes sin comprimir. El bloque comprimido es menos detallado que el original.
-
-**Qué sobrevive (y qué no):**
-
-| Tipo de información | ¿Sobrevive? | Por qué |
-|---|---|---|
-| El objetivo principal de la sesión | ✅ | Suficientemente prominente en el resumen |
-| Código escrito en disco | ✅ | No depende del contexto — está en el filesystem |
-| Decisiones de arquitectura mencionadas una vez | ❌ | Se resume a nivel alto, el detalle se pierde |
-| Gotchas y constraints del proyecto | ❌ | Se pierde si no está en CLAUDE.md |
-| Errores y sus fixes | ⚠️ | Solo si fueron recientes (no en la parte comprimida) |
-
-**Preparar el contexto para sobrevivir la compaction:**
-1. Constraints críticos → CLAUDE.md, no solo en el chat
-2. Decisiones one-shot → checkpoint explícito en el output del agente: `Checkpoint: [decisión] · Razón: [por qué]`
-3. Contexto ≥ 70% → activar `/handoff` antes de que la compaction ocurra sola
-
-**Señal de que ya ocurrió:** Claude "olvida" algo mencionado hace más de ~20 mensajes. No es alucinación — el dato quedó en la parte comprimida y no sobrevivió el resumen. Fix: reinjectar explícitamente o hacer handoff.
-
-### Regla LowCost
-
-> Si Claude Code ya calcula el dato que necesitas, léelo — no lo recalcules. El `statusLine` JSON tiene `context_window.used_percentage` listo. Úsalo.
-
-### Checklist §27
-
-```
-□ bash install.sh ejecutado
-□ Claude Code reiniciado
-□ statusLine visible en la barra inferior con barra de progreso
-□ /handoff escribe snapshot a disco sin mostrarlo en chat
-□ /handoff imprime una línea de confirmación en el chat
-□ Snapshots en {repo}/.claude/handoffs/ (creado automáticamente, ignorado por git)
-□ latest.md siempre disponible para retomar rápido
-□ Al llegar a 70%: dialog nativo aparece
-□ "Sí" en dialog → próximo mensaje genera snapshot automático
-□ Snapshot pegado en sesión nueva → Claude confirma objetivo
-□ CI pasa en main (ShellCheck + Tests + Security Scan)
-□ Branch protection activa — PRs obligatorios para colaboradores
-□ CODEOWNERS configurado — owner recibe auto-request en cada PR
-```
-
----
-
-<!-- §28 -->
-<!-- §28-quick -->
-## 28. Prompt Library — shortcuts para Claude Code
-
-> Estos no son comandos mágicos. Funcionan porque Claude lee lenguaje natural. El `/` es convención de consistencia — la misma razón por la que un chef tiene nombres fijos para sus técnicas aunque podría describirlas con otras palabras. Cuando están registrados como skills (`SKILL.md`), ganan `allowed-tools`, contexto dinámico y control de invocación. Como texto plano, funcionan igual pero sin esas garantías.
-
-**Tags usados en esta sección:**
-
-| Tag | Significado |
-|---|---|
-| `READ-ONLY` | No modifica archivos — seguro sin `/plan` previo |
-| `HAIKU ONLY` | Optimizado para haiku — no gastar sonnet en esto |
-| `SESSION ONLY` | El output es para esta sesión, no persiste entre sesiones |
-| `OVERLAPS /X` | Se superpone con otro shortcut — elegir el más específico |
-| `USE SPARINGLY` | Costoso en tokens — usar con criterio |
-
----
-
-### Shortcuts
-
-#### `/plan` · `READ-ONLY` · `HAIKU ONLY`
-
-Preview de implementación antes de ejecutar cualquier agente. Muestra archivos a tocar, approach, riesgo, agente recomendado y tokens estimados. No modifica nada.
-
-```
-/plan añadir rate limiting al endpoint de login
-```
-
-> Skill completa en §17. Regla: usarlo por defecto — saltarlo requiere justificación.
-
----
-
-#### `/handoff` · `SESSION ONLY`
-
-Genera un snapshot de la sesión actual y lo guarda en disco silenciosamente. Usar antes de cerrar o cuando el contexto se acerca al límite.
-
-```
-/handoff
-```
-
-> Skill completa en §27. El snapshot en `.claude/handoffs/latest.md` permite retomar sin preguntas.
-
----
-
-#### `/nuevo-agente [nombre]` · `HAIKU ONLY`
-
-Genera el frontmatter completo + estructura mínima para un agente nuevo. Incluye model, tools, description como trigger list, y sección de Gotchas.
-
-```
-/nuevo-agente security-auditor
-Tarea: audit de seguridad en PRs con cambios de auth
-Modelo: opus (one-shot, costo de error alto)
-Tools: Read, Glob, Grep
-```
-
----
-
-#### `/nueva-skill [tipo]` · `HAIKU ONLY`
-
-Genera la estructura correcta según el tipo de skill. Tipos: `hub`, `referencia`, `fork`.
-
-```
-/nueva-skill referencia
-Nombre: api-conventions
-Propósito: patrones de endpoints REST para este codebase
-```
-
-```
-/nueva-skill fork
-Nombre: deep-research
-Propósito: investigar un tema en el codebase sin contaminar el hilo
-```
-
----
-
-#### `/nuevo-hook [evento]` · `HAIKU ONLY`
-
-Genera el Python skeleton correcto para el evento pedido. Incluye try/except, re.split para primer comando, y el JSON de respuesta correcto para ese evento.
-
-```
-/nuevo-hook PreToolUse
-Bloquear: npm install con paquetes nuevos sin --ignore-scripts
-```
-
-```
-/nuevo-hook SessionStart
-Inyectar: branch actual y archivos modificados al iniciar
-```
-
----
-
-#### `/debug-agente [nombre]` · `READ-ONLY` · `OVERLAPS /plan`
-
-Checklist de diagnóstico cuando un agente falla, hace cosas inesperadas o es más caro de lo esperado. Revisa description, tools, model, hooks y output format.
-
-```
-/debug-agente reviewer
-Síntoma: aprueba PRs sin revisar los archivos de test
-```
-
----
-
-#### `/optimizar [agente]` · `READ-ONLY` · `USE SPARINGLY`
-
-Analiza el costo de un agente y sugiere las optimizaciones con mayor ROI. Sigue el orden de §23: output format → discovery calls → bash chaining → system prompt → scope.
-
-```
-/optimizar godot-lead
-Costo actual: ~28k tokens por sesión
-Esperado: ~14k
-```
-
----
-
-#### `/audit-guia` · `READ-ONLY` · `HAIKU ONLY`
-
-Valida el proyecto actual contra el checklist §13. Revisa CLAUDE.md, agentes, skills, hooks y scope. Lista solo las violaciones — no repite lo que está bien.
-
-```
-/audit-guia
-```
-
----
-
-<!-- §28-ref -->
-
-### Recipes — shortcuts apilados
-
-> Un shortcut solo es bueno. Dos apilados en secuencia son afilados. Tres son un sistema.
-
-#### "Ejecutar con seguridad"
-```
-/plan → @agente → /handoff
-```
-Planificar antes de ejecutar, ejecutar con agente correcto, capturar estado antes de cerrar. El orden importa: sin `/plan`, el agente puede ir en la dirección equivocada. Sin `/handoff`, la próxima sesión empieza desde cero.
-
-#### "Ciclo de mejora"
-```
-/debug-agente → /optimizar
-```
-Primero entender por qué falla (síntoma → causa), luego reducir el costo. Hacerlos al revés optimiza un agente roto.
-
-#### "Crear y testear"
-```
-/nueva-skill fork → /plan → @agente
-```
-Crear la skill de investigación, planificar con ella activa para confirmar que el scope es correcto, ejecutar.
-
-#### "Construir bien desde el arranque"
-```
-/nuevo-agente → /plan → /audit-guia
-```
-Generar el agente nuevo, planificar la primera tarea para validar que el design es correcto, auditar contra el checklist antes de usarlo en producción.
-
----
-
-### Las 4 Leyes — adaptadas a Claude Code
-
-*(Originalmente de commandlib — mapeadas a secciones de esta guía)*
-
-**Ley 1 — Especificidad gana a shortcuts**
-Un prompt con scope + output + criterio de éxito vale más que 5 shortcuts en secuencia. Los shortcuts son atajos para llegar al contexto correcto, no sustitutos del contexto. → §24
-
-**Ley 2 — Los constraints hacen mejor a Claude**
-`tools` mínimas, `model` explícito, output format forzado. Cada constraint que agregás a un agente es un token que Claude no gasta en decidir. → §5, §22
-
-**Ley 3 — El contexto es la ventaja**
-El hook de `SessionStart` que inyecta branch + estado pesa más que cualquier shortcut. El contexto que llega automáticamente es el que nunca se olvida. → §26
-
-**Ley 4 — Iterar, no reiniciar**
-Cuando algo sale mal, responder con lo que está incorrecto — no reescribir el prompt. El hilo es el contexto acumulado. `/handoff` antes de cerrar: la próxima sesión arranca donde dejaste. → §27
-
----
-
-<!-- §29 -->
-<!-- §29-quick -->
-## 29. Contexto global propio — construir tu sistema
-
-> Sin contexto global, Claude es un consultor que llega cada lunes sin cuaderno: vos explicás de nuevo quién sos, qué filosofía seguís y qué no debe tocar. Con contexto global, es el mismo consultor pero con sus reglas interiorizadas, sus herramientas en el bolsillo y su cuaderno de aprendizajes abierto. El cliente no explica — trabaja.
-
-### Las 4 capas — qué hace cada una
-
-```
-~/.claude/CLAUDE.md          ← reglas que aplican siempre (costo fijo justificado)
-~/.claude/skills/            ← procedimientos bajo demanda (0 tokens hasta invocar)
-~/.claude/settings.json      ← automatizaciones y guards por evento
-memory/                      ← aprendizajes acumulados entre sesiones
-```
-
-| Capa | Cuándo construirla | Si no existe |
-|---|---|---|
-| `CLAUDE.md` global | Siempre — es la primera | Claude improvisa filosofía y reglas en cada sesión |
-| Skills globales | Cuando CLAUDE.md tiene ≥5 líneas explicando un procedimiento | Repetís las mismas instrucciones en cada sesión |
-| `UserPromptSubmit` hook | Cuando tenés un cuerpo de conocimiento que Claude debería consultar automáticamente | Claude sabe que la guía existe pero no siempre la consulta |
-| `PreToolUse` hook | Cuando hay acciones que Claude no debe poder tomar en **ningún** proyecto | Un agente mal configurado puede ejecutar `npm install` sin freno |
-| Memoria persistente | Cuando hay feedback que querés que persista entre sesiones | Corregís el mismo error dos veces |
-
-### Orden de construcción — árbol de decisión
-
-```
-¿Primera vez configurando? → Empezar con CLAUDE.md global (5 minutos)
-
-¿Tenés conocimiento específico que Claude debería consultar sin pedírselo?
-  Sí → UserPromptSubmit hook (guia_context.py o equivalente) — §26
-  No → saltear por ahora
-
-¿Hay procedimientos que pegás repetidamente en el chat?
-  Sí → Skills globales en ~/.claude/skills/ — §6
-  No → saltear
-
-¿Hay acciones irreversibles que Claude no debe tomar en ningún proyecto?
-  Sí → PreToolUse hook global (npm guard, git push guard) — §7
-  No → saltear
-
-¿Hay patrones de feedback que querés recordar en futuras sesiones?
-  Sí → Memoria persistente — inicializar MEMORY.md
-  No → saltear
-```
-
-> **Regla de scope:** si dudás entre global y proyecto, va en el proyecto. El scope global contamina todos los contextos — un hook global mal calibrado genera ruido en proyectos donde no aplica.
-
-### Separación `~/.claude/` vs `.claude/`
-
-| Dónde | Aplica a | Ejemplos correctos |
-|---|---|---|
-| `~/.claude/CLAUDE.md` | Todos los proyectos | Filosofía LowCost, reglas de modelo, shortcuts |
-| `~/.claude/skills/` | Todos los proyectos | `/plan`, `/handoff`, `/nuevo-agente` |
-| `~/.claude/hooks/` + `settings.json` | Todos los proyectos | npm guard, guia_context.py, handoff hooks |
-| `.claude/CLAUDE.md` | Este proyecto | Stack, agentes, reglas específicas del repo |
-| `.claude/agents/` | Este proyecto | Agentes del dominio |
-| `.claude/skills/` | Este proyecto | Skills del proyecto |
-
-<!-- §29-ref -->
-
-### Bootstrap desde cero — 5 pasos
-
-**Paso 1 — CLAUDE.md global** (5 min)
-
-```markdown
-# Tu nombre — Reglas globales
-
-## Filosofía
-[tu filosofía de trabajo — 3-5 líneas máximo]
-
-## Conocimiento de referencia
-`/ruta/a/tu/guia-o-docs.md`
-Solo la sección relevante: sed -n '/<!-- §N -->/,/<!-- §[0-9]/p' <archivo>
-
-## Principios de operación
-- [principio 1]
-- [principio 2]
-```
-
-**Paso 2 — Hook de inyección automática** (15 min)
-
-Adaptar `guia_context.py` (§26) con tu propio `KEYWORD_MAP` apuntando a tus docs. Registrar en `settings.json` bajo `UserPromptSubmit`.
-
-**Paso 3 — Skills para procedimientos repetibles** (10 min por skill)
-
-Identificar qué instrucciones pegás más de 2 veces por semana. Cada una → `~/.claude/skills/<nombre>/SKILL.md` con `disable-model-invocation: true`.
-
-**Paso 4 — Guards para acciones irreversibles** (20 min)
-
-Un `PreToolUse` global con las acciones que nunca deberían ocurrir en ningún proyecto: `npm install <pkg>` sin `--ignore-scripts`, push directo a ramas protegidas, `rm -rf` sin confirmación.
-
-**Paso 5 — Inicializar memoria** (5 min)
-
-```bash
-mkdir -p ~/.claude/projects/<proyecto>/memory
-echo "# Memory Index" > ~/.claude/projects/<proyecto>/memory/MEMORY.md
-```
-
-Primera entry: feedback de la filosofía de trabajo — el patrón que más frecuentemente tenés que recordarle a Claude.
-
----
-
-### Anti-patrones del contexto global
-
-| Anti-patrón | Consecuencia | Fix |
-|---|---|---|
-| Contenido de un proyecto específico en `~/.claude/CLAUDE.md` | Contamina todos los proyectos — Claude menciona el stack de un proyecto en contextos donde no aplica | Mover al `.claude/CLAUDE.md` del proyecto |
-| Skills globales largas (> 200 líneas) | El budget de descripciones se comparte — una skill pesada desplaza a otras en proyectos distintos | Dividir en SKILL.md + reference.md; o hacer skill de proyecto |
-| `PreToolUse` global demasiado específico | Genera ruido en proyectos donde la condición no aplica | Guard de proyecto en `.claude/settings.json` |
-| Duplicar reglas en CLAUDE.md global y de proyecto | Costo doble, inconsistencia cuando cambia una y no la otra | Una fuente de verdad — si aplica siempre → global; si es del proyecto → proyecto |
-| Muchas skills globales con `disable-model-invocation: false` | Compiten con skills del proyecto, saturan el budget de descripciones | Solo el hub o skills de conocimiento general en `false`; el resto en `true` |
-
-### El sistema de esta guía como ejemplo real
-
-```
-~/.claude/
-├── CLAUDE.md                    # filosofía + índice de la guía + principios de operación
-├── settings.json                # hooks: SessionStart / UserPromptSubmit / PreToolUse / Stop / PostToolUse
-├── skills/
-│   ├── handoff-protocol/        # formato del snapshot (§27) — disable:false, Claude lo carga solo
-│   ├── handoff/                 # genera el snapshot (§28) — disable:true, el usuario lo invoca
-│   ├── plan/                    # preview antes de ejecutar (§17/§28) — haiku
-│   ├── nuevo-agente/            # scaffold de agentes (§28) — haiku
-│   ├── nueva-skill/             # scaffold de skills (§28) — haiku
-│   ├── nuevo-hook/              # scaffold de hooks (§28) — haiku
-│   └── audit-guia/              # valida contra §13 (§28) — haiku
-└── hooks/
-    ├── guia_context.py          # UserPromptSubmit → inyección automática de §N (§26)
-    ├── npm_guard.py             # PreToolUse → supply chain + slopsquatting (§7)
-    ├── handoff-inject.sh        # UserPromptSubmit → inyecta handoff pendiente (§27)
-    ├── handoff-monitor.sh       # Stop → monitorea necesidad de handoff (§27)
-    └── inject-index.sh          # SessionStart → índice del codebase
-```
-
-Cada pieza tiene su sección de referencia. Nada se inventó solo — todo se construyó desde los principios documentados en la guía.
-
-### Checklist §29
-
-```
-□ ~/.claude/CLAUDE.md existe con filosofía + índice de conocimiento
-□ UserPromptSubmit hook conecta CLAUDE.md con el conocimiento específico
-□ Skills en disable-model-invocation: true — el usuario controla cuándo se invocan
-□ PreToolUse guards solo para acciones verdaderamente globales
-□ Nada de contenido de proyecto específico en el scope global
-□ Memoria inicializada con al menos una entry de filosofía
-□ Separación clara: regla siempre activa → CLAUDE.md; procedimiento → skill; garantía → hook
-```
-
----
-
-<!-- §30 -->
-<!-- §30-quick -->
-## 30. Cloud Agents programados — /schedule y /web-setup
-
-> Un hook local corre en tu máquina. Un cloud agent corre en la nube de Anthropic con un checkout limpio del repo — sin acceso a tu filesystem, sin tus variables de entorno, sin tus plugins instalados. Son dos cosas distintas. Úsalos para cosas distintas.
-
-### Las 3 reglas
-
-1. **Cloud agents ≠ hooks locales** — los CCR (Claude Code Routines) tienen acceso al repo GitHub, no a `/Users/`. Si la tarea necesita tu filesystem → hook local. Si puede correr desde un clone fresco → CCR.
-2. **GitHub primero** — sin `/web-setup` el checkout falla silenciosamente. Conectar GitHub es el paso 0 antes de crear cualquier routine.
-3. **Prompt self-contained** — el agente arranca sin contexto, sin tu CLAUDE.md, sin tus plugins. El prompt debe incluir todo lo que necesita saber.
-
-### Cuándo usar cloud agents vs alternativas
-
-| Caso | Solución correcta |
-|---|---|
-| Tarea periódica sobre el repo (health check, análisis de código) | CCR — `/schedule` |
-| Curar learnings per-project (en `.claude/learnings/`) | Hook local — CCR no tiene acceso al filesystem local |
-| Curar learnings en el repo (si están en git) | CCR — clona el repo y los lee directamente |
-| Acción automática en respuesta a un evento del usuario | Hook local `UserPromptSubmit`/`PostToolUse` |
-| Tarea única programada ("mañana a las 9am") | CCR con `run_once_at` |
-| Acción que necesita acceso al filesystem local | Hook local — los CCR no tienen acceso |
-| Monitor de CI/CD o builds externos | CCR — corre en nube, no bloquea tu sesión |
-
-### Modelos recomendados para CCR
-
-| Tarea | Modelo |
-|---|---|
-| Mantenimiento / curation / deduplicación | `claude-haiku-4-5` |
-| Análisis de código / PR review automático | `claude-sonnet-4-6` |
-| Tareas complejas multi-step | `claude-sonnet-4-6` |
-
-### /web-setup — conectar servicios OAuth
-
-Necesario una vez antes de crear routines que accedan a repos privados:
-
-```
-/web-setup          # en el prompt de Claude Code — abre flujo OAuth
-```
-
-Conecta: GitHub (para checkout del repo), Google Drive, y otros servicios MCP disponibles.
-Sin GitHub conectado → el campo `sources: [{git_repository: {url: ...}}]` del CCR falla al clonar.
-
-<!-- §30-ref -->
-
-### Estructura de un routine (create body)
-
-```json
-{
-  "name": "nombre-descriptivo",
-  "cron_expression": "0 0 1 * *",
-  "enabled": true,
-  "job_config": {
-    "ccr": {
-      "environment_id": "env_XXXXX",
-      "session_context": {
-        "model": "claude-haiku-4-5",
-        "sources": [
-          {"git_repository": {"url": "https://github.com/org/repo"}}
-        ],
-        "allowed_tools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"]
-      },
-      "events": [{
-        "data": {
-          "uuid": "<lowercase v4 uuid generado>",
-          "session_id": "",
-          "type": "user",
-          "parent_tool_use_id": null,
-          "message": {"role": "user", "content": "PROMPT SELF-CONTAINED AQUÍ"}
-        }
-      }]
-    }
-  }
-}
-```
-
-**Cron expresiones útiles:**
-
-| Cuándo | Expresión (UTC) |
-|---|---|
-| Diario a medianoche | `0 0 * * *` |
-| Primer día del mes | `0 0 1 * *` |
-| Cada lunes 9am UTC | `0 9 * * 1` |
-| Cada 2 horas | `0 */2 * * *` |
-
-Mínimo intervalo: 1 hora. `/30 * * * *` es rechazado.
-
-### Cómo invocar desde Claude Code
-
-```
-/schedule    # skill — Claude guía la creación de la routine
-```
-
-Internamente usa `RemoteTrigger` (tool deferred — cargar con `ToolSearch select:RemoteTrigger`):
-
-```
-RemoteTrigger {action: "list"}               # listar routines
-RemoteTrigger {action: "create", body: {...}} # crear
-RemoteTrigger {action: "run", trigger_id: "trig_XXX"} # ejecutar ahora
-```
-
-Ver/gestionar routines: https://claude.ai/code/routines
-
-### Checklist de prompt para CCR
-
-Un prompt de CCR debe responder estas preguntas sin asumir contexto externo:
-
-```
-□ ¿Qué archivos leer? (rutas relativas al repo clonado)
-□ ¿Qué condición activa la acción? (ej: si líneas > 150)
-□ ¿Qué hacer exactamente? (no "curar" — describir los pasos concretos)
-□ ¿Qué hacer si la condición NO se cumple? (output esperado + stop)
-□ ¿Cómo terminar? (commit + mensaje concreto / output a stdout)
-□ ¿Conservador o agresivo? (cuando hay duda, ¿mantener o eliminar?)
-```
-
-### Anti-patrones de CCR
-
-| Anti-patrón | Consecuencia | Fix |
-|---|---|---|
-| Prompt que asume plugins instalados (`@design-curador`) | El CCR no tiene los plugins del usuario | Describir la tarea directamente en el prompt |
-| Rutas absolutas (`/Users/felix/...`) | El CCR clona en `/tmp/...` — ruta no existe | Usar rutas relativas al repo |
-| Sin GitHub conectado | Checkout falla sin mensaje claro | Correr `/web-setup` antes de crear el routine |
-| Routine en sonnet para tareas simples | Costo 5× innecesario | Haiku para mantenimiento, sonnet para análisis |
-| Prompt vago ("mejora el código") | El agente improvisa → resultado impredecible | Criterios explícitos: condición + acción + stop |
-
-### Checklist §30
-
-```
-□ /web-setup corrido — GitHub (u otro servicio) conectado
-□ Repo es público o GitHub App instalada en él
-□ Modelo elegido según complejidad (haiku para mantenimiento)
-□ Prompt incluye: qué leer, condición, acción concreta, condición de stop
-□ Rutas en el prompt son relativas al repo (no absolutas)
-□ Cron expression en UTC — confirmada conversión desde timezone local
-□ Routine visible en https://claude.ai/code/routines
-□ `run_once_at` para tareas únicas en lugar de `cron_expression`
-```
-
-<!-- §31 -->
-<!-- §31-quick -->
-## 31. Advisor Pattern — validación sin subir de modelo
-
-> Como un sous-chef que revisa el plato antes de que salga a la mesa: no cocina — solo dice si algo está mal. El chef sigue siendo sonnet; el revisor es haiku. El plato mejora sin cambiar al chef Michelin.
-
-El patrón resuelve el dilema "sonnet comete errores, pero opus es 5× más caro". La solución no es subir de modelo — es agregar un segundo agente barato que revisa el output del primero.
-
-### Cuándo aplicar
-
-| Síntoma | Sin advisor | Con advisor |
-|---|---|---|
-| Sonnet genera output que parece correcto pero tiene bugs sutiles | Iterar con sonnet hasta que funcione | haiku detecta y reporta el fallo en un turno |
-| El output de un agente es input del siguiente (pipeline) | Error se propaga silenciosamente | Advisor corta la cadena antes de que escale |
-| Subir a opus parece la única solución | ~5× costo | Sonnet + haiku advisor (~1.15× costo) |
-
-**No aplicar cuando:** ya existe un agente reviewer explícito en el sistema. Dos revisores para lo mismo = costo duplicado sin beneficio.
-
-### Implementación
-
-Dos agentes en secuencia: generator → advisor. El advisor tiene tools mínimas — si puede escribir, ya no es un advisor.
-
-```yaml
-# .claude/agents/advisor.md
----
-name: advisor
-description: Revisa el output del agente anterior y emite veredicto PASS/FAIL con razón.
-  Invocar después de cualquier generator cuando el output va a ser usado por otro sistema.
-model: claude-haiku-4-5
-tools: Read
----
-
-Tu único trabajo: revisar el output recibido y emitir un veredicto binario.
-
-Responder SOLO con:
-PASS — [razón en una línea]
-o
-FAIL — [problema específico] — [corrección mínima necesaria]
-
-No generar código. No proponer mejoras. Solo veredicto.
-```
-
-### Flujo en arquitectura multi-agente
-
-```
-@generator → produce output
-@advisor   → PASS o FAIL con razón
-  PASS → continuar al siguiente agente
-  FAIL → reinvocar @generator con el feedback (1 retry máximo)
-         Si vuelve a fallar → el problema es el generator, no el output
-```
-
-El advisor no itera — emite veredicto. Si hacés más de 1 retry, el problema es el design del generator.
-
-### Costo comparado
-
-| Estrategia | Costo relativo | Cuándo |
-|---|---|---|
-| Sonnet solo | 1× | Output predecible, stack conocido |
-| Sonnet + haiku advisor | ~1.15× | Output con consecuencias si está mal |
-| Opus solo | ~5× | Solo si sonnet + advisor sigue fallando |
-| Opus + advisor | ~6× | Raramente tiene sentido |
-
----
-
-<!-- §32 -->
-<!-- §32-quick -->
-## 32. Archivos que nadie documenta — el resto del .claude/
-
-> La imagen del .claude/ siempre muestra agents/, skills/ y hooks/. Nadie habla de los otros cuatro. Pero CLAUDE.local.md, output-styles/, rules/ y settings.local.json resuelven problemas reales que sin ellos se parchean con prompts repetidos o CLAUDE.md inflado.
-
-### Árbol de decisión — cuándo usar cada uno
-
-```
-¿Instrucciones que NO deben subir al repo (rutas locales, tokens, prefs personales)?
-  → CLAUDE.local.md
-
-¿Quieres que Claude cambie el formato de respuesta sin repetirlo en cada prompt?
-  → output-styles/
-
-¿Tienes reglas que solo aplican a un subdirectorio (src/api/, tests/, migrations/)?
-  → rules/
-
-¿Permissions personales que no aplican a todo el equipo?
-  → settings.local.json
-```
-
----
-
-### 1. CLAUDE.local.md — tu override personal
-
-Variante gitignored de CLAUDE.md. Claude carga ambos; .local.md gana en conflicto.
-
-| | `CLAUDE.md` | `CLAUDE.local.md` |
-|---|---|---|
-| Se commitea | ✅ | ❌ gitignored |
-| Lo ve el equipo | ✅ | Solo vos |
-| Propósito | Reglas del proyecto | Overrides personales de máquina |
-
-**En `.gitignore`:**
-```
-CLAUDE.local.md
-.claude/settings.local.json
-```
-
-**Qué va aquí:**
-```markdown
-# CLAUDE.local.md
-
-## Paths de esta máquina
-- Python: /opt/homebrew/bin/python3
-- DB local: postgresql://localhost:5432/myapp_dev
-
-## Preferencias personales
-- Al terminar tarea larga: notificar con terminal-notifier
-- No usar npm audit en este repo — rompe mi hook de postinstall
-```
-
-**Nunca en CLAUDE.local.md:** reglas de arquitectura del proyecto (→ `CLAUDE.md`) ni secrets reales (→ `.env`).
-
-**En plugins:** no existe — es personal por definición. Si el plugin necesita config por-usuario, usar `settings.local.json`.
-
----
-
-### 2. output-styles/ — formato de respuesta on tap
-
-Archivos Markdown que definen la forma del output. Claude los aplica cuando un agente los referencia o el usuario los menciona.
-
-```
-.claude/output-styles/
-├── terse.md      ← código only, sin prose
-├── verbose.md    ← explicaciones + código
-└── report.md     ← tabla de hallazgos estructurada
-```
-
-**Template — `terse.md`:**
-```markdown
-# Estilo: terse
-- Solo código, sin explicaciones
-- Sin encabezados salvo que haya más de 3 archivos
-- Sin "aquí está el fix" ni resumen al final
-- Si el cambio es obvio por el diff, no comentar
-```
-
-**Template — `verbose.md`:**
-```markdown
-# Estilo: verbose
-- Explicar el porqué antes del código
-- Un párrafo de contexto por cada decisión no obvia
-- Incluir alternativas descartadas con razón
-```
-
-**Cómo invocar desde el chat:**
-```
-Seguí output-styles/terse.md para esta respuesta.
-```
-
-**Desde un agente:**
-```yaml
----
-name: code-fixer
-description: Arregla bugs. Responde siempre en estilo terse.
----
-Seguí siempre .claude/output-styles/terse.md para tus respuestas.
-```
-
-**LowCost:** `terse.md` en agentes de code-only ahorra 30-50% de tokens de output en runs largos sin cambiar el modelo.
-
-**Patrón de auditoría — agents existentes:** antes de distribuir un plugin, revisar cada agente por reglas universales duplicadas (idioma, compilación, constantes de tamaño). Cada regla en el agente se paga en cada tool call; en `rules/` con el glob apropiado solo se paga cuando se tocan archivos del dominio. Combinado con `output-styles/`: hasta 40-70% de reducción de tokens por sesión de implementación.
-
-**En plugins:** ✅ sí va en plugins. Consistencia de formato para el equipo sin que cada dev configure lo mismo. Un plugin `design-ios` puede incluir `output-styles/swift-only.md` para que todos los agentes respondan sin prose.
-
----
-
-### 3. rules/ — instrucciones glob-scoped
-
-Archivos que Claude carga automáticamente cuando trabaja en archivos que hacen match con el glob. No tenés que pedirlo — carga solo.
-
-```
-.claude/rules/
-├── api.md         ← carga al tocar src/api/**
-├── tests.md       ← carga al tocar **/*.test.ts
-└── migrations.md  ← carga al tocar db/migrations/**
-```
-
-**Diferencia con CLAUDE.md:**
-
-| | `CLAUDE.md` | `rules/api.md` |
-|---|---|---|
-| Cuándo carga | Siempre, cada turno | Solo al tocar `src/api/**` |
-| Tokens gastados | Fijo — siempre | Solo cuando es relevante |
-| Propósito | Reglas universales | Reglas de dominio específico |
-
-**Cuándo usar rules/ en vez de CLAUDE.md:**
-- Instrucciones de un subsistema que no aplican al resto del repo
-- CLAUDE.md ya pasa las 150 líneas y no todo es siempre relevante
-- Distintos devs trabajan en distintos dominios — rules/ los mantiene aislados
-
-**Ejemplo práctico — `rules/api.md`**
-
-```markdown
----
-glob: src/api/**
----
-# Reglas — src/api/
-
-## Autenticación
-- Toda ruta nueva requiere middleware `authGuard` — sin excepción
-- Tokens en headers, nunca en query params
-
-## Formato de respuesta
-- Siempre `ApiResponse<T>` como wrapper
-- Errores: `{ error: string, code: HTTP_STATUS }`
-
-## Imports
-- No importar desde `../db/` directamente — usar el repo layer
-- No lanzar excepciones crudas — usar `ApiError`
-
-## Tests requeridos por endpoint
-- Test de auth (401) + happy path (200) como mínimo
-```
-
-**Ejemplo práctico — `rules/tests.md`**
-
-```markdown
----
-glob: "**/*.test.ts"
----
-# Reglas — archivos de test
-
-- No mockear la DB — usar instancia de test real (Q1 2025: mocks pasaban pero prod fallaba)
-- Cada test independiente: arrange → act → assert, sin estado compartido
-- Naming: `describe('NombreClase') > it('debería [comportamiento] cuando [condición]')`
-- No usar `test.only` — bloquea CI sin error visible
-```
-
-**En plugins:** ✅ sí va en plugins. Es la forma correcta de empaquetar domain rules sin contaminar el CLAUDE.md del proyecto destino.
-
-```
-plugins/mi-plugin/
-└── rules/
-    ├── api.md        ← se instala en .claude/rules/api.md
-    └── tests.md      ← se instala en .claude/rules/tests.md
-```
-
----
-
-### 4. settings.local.json — permissions personales
-
-Hermano gitignored de `settings.json`. Misma estructura, solo aplica a tu máquina.
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "Bash(npm run dev:*)",
-      "Bash(psql:*)"
-    ]
-  }
-}
-```
-
-**Qué va aquí:** comandos que solo existen en tu entorno local, permissions de tu flujo personal que serían ruido en el settings.json compartido.
-
-**Qué NO va aquí:** permissions que todo el equipo necesita (→ `settings.json`), hooks (→ `hooks/` + `settings.json`).
-
-**En plugins:** no se distribuye — es local por diseño. El plugin incluye `settings.json` con permissions base que el equipo comparte; cada dev agrega las suyas en `settings.local.json`.
-
----
-
-<!-- §32-ref -->
-### Resumen — qué distribuir en un plugin
-
-| Archivo | ¿Va en plugin? | Razón |
-|---|---|---|
-| `CLAUDE.local.md` | ❌ | Personal — no tiene sentido distribuirlo |
-| `output-styles/` | ✅ | Consistencia de formato para el equipo |
-| `rules/` | ✅ | Domain rules empaquetadas, instalación limpia |
-| `settings.json` | ✅ parcial | Solo permissions que el equipo comparte |
-| `settings.local.json` | ❌ | Personal — gitignored por diseño |
-
-**Estructura de plugin con los archivos correctos:**
-```
-plugins/mi-plugin/
-├── .claude-plugin/
-│   └── plugin.json
-├── agents/
-├── skills/
-├── hooks/
-│   └── hooks.json
-├── rules/              ← ✅ domain rules del dominio del plugin
-├── output-styles/      ← ✅ formato compartido para el equipo
-└── settings.json       ← ✅ permissions base del equipo
-```
-
----
-
-## Recursos oficiales
-
-- [Agents](https://code.claude.com/docs/en/sub-agents)
-- [Skills](https://code.claude.com/docs/en/skills)
-- [Hooks](https://code.claude.com/docs/en/hooks-guide)
-- [Plugins](https://code.claude.com/docs/en/plugins)
-- [Agent Teams](https://code.claude.com/docs/en/agent-teams)
-
