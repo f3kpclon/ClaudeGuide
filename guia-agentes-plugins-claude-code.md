@@ -3231,6 +3231,14 @@ KEYWORD_MAP = [
     (["plugin", "distribuible"],                                        11),
     # §14 — Anti-overkill
     (["overkill"],                                                      14),
+    # §12 — Errores comunes
+    (["error común", "errores comunes", "falla silenciosa",
+      "falla en silencio", "tabla de errores"],                        12),
+    # §13 — Checklist de calidad
+    (["checklist", "lista de verificación", "quality check"],          13),
+    # §23 — Techos reales — cuándo parar de optimizar
+    (["cuándo parar", "techo real", "techo de tokens",
+      "parar de optimizar", "piso real"],                              23),
     # §16 — Vector Memory
     (["vector memory", "semántica"],                                    16),
     # §18 — Seguridad
@@ -3242,12 +3250,15 @@ KEYWORD_MAP = [
     (["factor humano", "invocar", "contexto antes"],                    24),
     # §25 — Modelo correcto
     (["haiku", "sonnet", "opus", "modelo", "effort",
-      "xhigh", "fable", "fast mode", "extended context"],              25),
+      "xhigh", "security-auditor", "fable", "fast mode",
+      "extended context"],                                              25),
     # §27 — Handoff + auto-compaction
     (["handoff", "snapshot", "retomar sesión", "compaction",
       "auto-compaction"],                                               27),
     # §28 — Prompt Library
     (["shortcut", "recipe", "prompt library", "/plan",
+      "/nuevo-agente", "/nueva-skill", "/nuevo-hook",
+      "/debug-agente", "/optimizar", "/audit-guia",
       "4 leyes", "las leyes"],                                         28),
     # §30 — Cloud Agents
     (["schedule", "cron", "routine", "cloud agent",
@@ -3255,6 +3266,10 @@ KEYWORD_MAP = [
     # §31 — Advisor Pattern
     (["advisor", "patron advisor", "sous-chef",
       "validar sin subir", "validación sin subir"],                    31),
+    # §22 — Prompt engineering avanzado
+    (["few-shot", "enforce format", "format contract",
+      "prompt engineering", "anti-alucinación",
+      "system prompt budget", "output contract"],                      22),
     # §3 — Estimados + caching
     (["presupuesto", "tokens", "costo", "cache", "caching",
       "ttl", "estimado", "consumo"],                                    3),
