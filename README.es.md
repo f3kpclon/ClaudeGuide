@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.9 · Validada en producción · 2026-06-28
+**Versión:** v5.11 · Validada en producción · 2026-06-30
 
 ---
 
@@ -51,7 +51,32 @@
 
 ---
 
-## Novedades en v5.9
+## Novedades en v5.11
+
+> *Sin contenido nuevo. La guía quedó más rápida de navegar y más limpia de leer: el orden físico de secciones ahora coincide con el Índice, los ejemplos aplican a cualquier stack, y el hook de contexto cubre 4 secciones más.*
+
+| Área | Cambio |
+|---|---|
+| **Estructura** | Orden físico reordenado — §4→§1→§25→§2→§24 (Fundamentos), luego Core, Calidad, Avanzado. §25 de posición 25 → 3; §24 de posición 24 → 5 |
+| **§3** | Tabla de benchmarks Godot (18 filas) → tabla de arquetipos genéricos (8 filas: bash-heavy, read-heavy reviewer/debugger, write-heavy, postmortem, orchestrador, curador) |
+| **§5** | Tabla de modelo redundante eliminada — pointer a §25, que ahora está 2 secciones antes |
+| **§2 §5 §17** | Template CLAUDE.md, ejemplos de gotchas y `/plan` generalizados — aplican a cualquier stack |
+| **`guia_context.py`** | §12, §13, §22, §23 añadidos a KEYWORD_MAP — el hook cubre ahora 27/32 secciones |
+
+<details>
+<summary>Novedades en v5.10</summary>
+
+> *§27 corrigió su arquitectura. El hook de contexto ganó deduplicación por sesión y presupuesto más ajustado.*
+
+| Área | Cambio |
+|---|---|
+| **§27** | Handoff Protocol — diagrama de arquitectura corregido, flujo del Stop hook clarificado |
+| **§26** | `guia_context.py` — deduplicación por sesión vía `/tmp/guia_seen_{sid}.json`; `LINES_BUDGET` 120 → 80 |
+
+</details>
+
+<details>
+<summary>Novedades en v5.9</summary>
 
 > *§32 mapea los cuatro archivos que nadie documenta: CLAUDE.local.md (override personal gitignored), output-styles/ (formato de respuesta on tap, 30-50% menos tokens de output), rules/ (reglas glob-scoped con ejemplos prácticos), y settings.local.json (permissions personales). Incluye tabla de distribución en plugins.*
 
@@ -62,6 +87,8 @@
 | **§32 NUEVO** | `rules/` — glob-scoped con ejemplos `api.md` y `tests.md`, tabla de decisión vs `CLAUDE.md` |
 | **§32 NUEVO** | `settings.local.json` — permissions personales gitignored por diseño |
 | **§32 NUEVO** | Tabla de distribución en plugins — qué se distribuye (`rules/`, `output-styles/`, `settings.json`) vs qué se queda local |
+
+</details>
 
 <details>
 <summary>Novedades en v5.8</summary>

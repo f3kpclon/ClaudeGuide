@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.9 · Production-validated · 2026-06-28
+**Author:** Félix Sotelo · **Version:** v5.11 · Production-validated · 2026-06-30
 
 ---
 
@@ -43,7 +43,32 @@
 
 ---
 
-## What's New in v5.9
+## What's New in v5.11
+
+> *No new content. The guide got faster to navigate and cleaner to read: physical section order now matches the Index grouping, examples work for any stack (not just Godot), and the context hook covers 4 more sections.*
+
+| Area | Change |
+|---|---|
+| **Structure** | Physical section order reordered — §4→§1→§25→§2→§24 (Fundamentos), then Core, then Quality, then Advanced. §25 moved from position 25 → 3; §24 from 24 → 5 |
+| **§3** | Godot-specific agent benchmark table (18 rows) → generic archetype table (8 rows: bash-heavy, read-heavy reviewer/debugger, write-heavy, postmortem, orchestrator, curator) |
+| **§5** | Redundant model table removed — replaced with pointer to §25, which is now 2 sections earlier |
+| **§2 §5 §17** | CLAUDE.md template, gotcha examples, and `/plan` example generalized — applies to any stack |
+| **`guia_context.py`** | §12, §13, §22, §23 added to KEYWORD_MAP — context hook now covers 27/32 sections |
+
+<details>
+<summary>v5.10 changes</summary>
+
+> *§27 got its architecture corrected. The context hook got a session deduplication layer and a tighter line budget.*
+
+| Area | Change |
+|---|---|
+| **§27** | Handoff Protocol — architecture diagram corrected, Stop hook flow clarified |
+| **§26** | `guia_context.py` — session deduplication via `/tmp/guia_seen_{sid}.json`; `LINES_BUDGET` 120 → 80 |
+
+</details>
+
+<details>
+<summary>v5.9 changes</summary>
 
 > *§32 maps the four files nobody talks about: CLAUDE.local.md (personal gitignored overrides), output-styles/ (response shape on tap, 30-50% output token savings), rules/ (glob-scoped domain rules with practical examples), and settings.local.json (personal permissions). Includes a plugin distribution table so you know what to ship and what to keep local.*
 
@@ -54,6 +79,8 @@
 | **§32 NEW** | `rules/` — glob-scoped with `api.md` and `tests.md` practical examples, decision table vs `CLAUDE.md` |
 | **§32 NEW** | `settings.local.json` — personal permissions, gitignored by design |
 | **§32 NEW** | Plugin distribution table — what to ship (`rules/`, `output-styles/`, `settings.json`) vs what to keep local |
+
+</details>
 
 <details>
 <summary>v5.8 changes</summary>
