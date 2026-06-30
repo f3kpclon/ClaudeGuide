@@ -275,7 +275,7 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 ```yaml
 # En el agente o en la skill
 effort: xhigh   # opciones: xlow | low | medium | high | xhigh | ultra
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 ```
 
 ```json
@@ -332,7 +332,7 @@ Los model IDs cambian entre versiones. La guía usa IDs explícitos — el defau
 | ID explícito | Rol | ¿Default? |
 |---|---|---|
 | `claude-haiku-4-5` | Tareas estructuradas, bajo costo | — |
-| `claude-sonnet-4-6` | Implementación, debugging | — |
+| `claude-sonnet-5` | Implementación, debugging | — |
 | `claude-opus-4-8` | Razonamiento profundo, security | — |
 | `claude-fable-5` | Modelo más reciente / alias del CLI | ✅ si no se pineó |
 
@@ -1511,9 +1511,9 @@ COMPLEXITY_MAP = [
     (["typo", "rename", "format", "lint", "mover", "copiar"],
      "claude-haiku-4-5", None, "simple"),
     (["bug", "fix", "test", "feature", "añadir", "agregar", "refactor"],
-     "claude-sonnet-4-6", "medium", "media"),
+     "claude-sonnet-5", "medium", "media"),
     (["arquitectura", "diseño", "migración", "seguridad", "critico", "critical"],
-     "claude-sonnet-4-6", "xhigh", "compleja"),
+     "claude-sonnet-5", "xhigh", "compleja"),
     (["irreversible", "producción", "production"],
      "claude-opus-4-8", None, "crítica"),
 ]
@@ -3985,8 +3985,8 @@ Cada pieza tiene su sección de referencia. Nada se inventó solo — todo se co
 | Tarea | Modelo |
 |---|---|
 | Mantenimiento / curation / deduplicación | `claude-haiku-4-5` |
-| Análisis de código / PR review automático | `claude-sonnet-4-6` |
-| Tareas complejas multi-step | `claude-sonnet-4-6` |
+| Análisis de código / PR review automático | `claude-sonnet-5` |
+| Tareas complejas multi-step | `claude-sonnet-5` |
 
 ### /web-setup — conectar servicios OAuth
 
