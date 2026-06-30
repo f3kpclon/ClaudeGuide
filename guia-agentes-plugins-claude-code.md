@@ -478,7 +478,7 @@ On every new request: load `.claude/skills/[flow-skill]/SKILL.md` and start [flo
 
 **Cuándo usar:** projects where 100% of user interactions trigger the same flow. Si hay ≥2 flujos distintos → mantener dispatch table.
 
-> **[2026-06-02] artifact-factory:** implementado. Eliminó dispatch table de 7 líneas → instrucción directa de 1 línea. El scaffold flow ahora arranca sin que el usuario escriba nada.
+**Validado:** elimina dispatch table de N líneas → instrucción directa de 1 línea. El flujo arranca automáticamente sin input del usuario.
 
 ---
 
@@ -2070,7 +2070,7 @@ options:
 
 **Cuándo usar:** cualquier flujo que tenga `AskUserQuestion` repetibles (onboarding, scaffold, configuración inicial).
 
-> **[2026-06-02] artifact-factory:** patrón implementado en `.claude/skills/scaffold-questions/SKILL.md`. Eliminó 3 iteraciones de preguntas incorrectas en la misma sesión.
+**Validado:** eliminó 3 iteraciones de preguntas incorrectas en la misma sesión.
 
 > **Anti-pattern "in notes":** opciones con label `"type X in notes"` confunden — el usuario no ve ningún campo llamado "notes". Usar siempre `"Other" field (option 3 below)` para que apunte al campo visible de la UI. Validado en prueba de flujo 2026-06-02.
 
@@ -2096,7 +2096,7 @@ git status --short
 
 **`ultrathink` — razonamiento extendido en una palabra:** incluir `ultrathink` en cualquier parte del body activa pensamiento profundo para esa invocación. Usar en skills de auditoría o decisiones de arquitectura donde el costo del error justifica el costo del reasoning.
 
-> **[2026-06-28] design-ios:** Skill con `disable-model-invocation: true` que no aparece en la lista de usuario — diagnosticar en orden: (1) `user-invocable: true` declarado explícitamente — algunos combos de flags la silencian sin error visible; (2) `argument-hint` presente si recibe argumentos; (3) `/reload-plugins` ejecutado post-cambio. El campo tiene default `true` según la tabla, pero la declaración explícita es más confiable.
+**Gotcha — skill invisible:** si una skill con `disable-model-invocation: true` no aparece en la lista de usuario, diagnosticar en orden: (1) `user-invocable: true` declarado explícitamente — algunos combos de flags la silencian sin error visible; (2) `argument-hint` presente si recibe argumentos; (3) `/reload-plugins` ejecutado post-cambio. La declaración explícita es más confiable que depender del default.
 
 ---
 
@@ -4362,7 +4362,7 @@ Plugin (si aplica)
 □ hooks/hooks.json existe
 ```
 
-> **[2026-06-02] Validator Grep-first:** validator debe recibir `TYPE: local|plugin` + 10 instrucciones Grep explícitas en el prompt. Sin esto: 23 tool uses. Con esto: 10 tool uses (medido). Agentes locales del proyecto no pueden invocarse con `subagent_type` — usar `subagent_type: claude` + instrucciones inline.
+**Gotcha — validator Grep-first:** pasar `TYPE: local|plugin` + instrucciones Grep explícitas en el prompt. Sin esto: 23 tool uses. Con esto: 10 (medido). Agentes locales del proyecto no pueden invocarse con `subagent_type` — usar `subagent_type: claude` + instrucciones inline.
 
 ---
 
@@ -5662,7 +5662,7 @@ echo '{"tool_name":"Write","tool_input":{"file_path":"../../etc/passwd","content
 <!-- §22 -->
 ## 22. Prompt engineering avanzado
 
-> Los agentes de artifact-factory tienen una propiedad inusual: su output es código, no texto. Eso cambia las reglas de prompt engineering — la varianza de output es un bug, no una feature.
+> Los agentes generadores (scaffold, codegen, converters) tienen una propiedad inusual: su output es código, no texto. Eso cambia las reglas de prompt engineering — la varianza de output es un bug, no una feature.
 
 ### Principio: enforce format, not style
 
