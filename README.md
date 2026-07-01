@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.12 · Production-validated · 2026-06-30
+**Author:** Félix Sotelo · **Version:** v5.13 · Production-validated · 2026-06-30
 
 ---
 
@@ -40,16 +40,30 @@
 | Validate what I built | §13 — Quality checklist |
 | Avoid the most expensive mistakes | §12 — Common errors |
 | Use CLAUDE.local.md / output-styles / rules / settings.local.json | §32 — The undocumented files |
+| Use native slash commands (`/rewind`, `/fork`, `/compact`...) with agents/hooks | §33 — Native commands |
 
 ---
 
-## What's New in v5.12
+## What's New in v5.13
+
+> *New §33 covers Claude Code's native slash commands (`/rewind`, `/clear`, `/compact`, `/fork`, `/branch`, `/goal`, `/batch`, `/loop`...) and — verified against the official docs, not assumed — which ones actually integrate with agents, skills, and hooks (`/fork` and `/branch` as native agent-spawning commands, the `PreCompact`/`SessionStart` hook integration points) versus which ones are CLI-only with no programmatic API (`/rewind`, `/clear`, `/compact`).*
+
+| Area | Change |
+|---|---|
+| **§33 NEW** | Table of commands relevant to builders, with when-to-use for each |
+| **§33 NEW** | What actually integrates with agents/skills/hooks: `/fork`, `/branch`, `PreCompact` hook, `SessionStart` matchers |
+| **§33 NEW** | What's confirmed NOT possible: no hook event for `/rewind`, no SDK-level checkpoint API |
+
+<details>
+<summary>v5.12 changes</summary>
 
 > *Sonnet's pinned model ID bumped to its current release. No structural changes.*
 
 | Area | Change |
 |---|---|
 | **§25** | Pinned model ID `claude-sonnet-4-6` → `claude-sonnet-5` (complexity-routing hook example, Cloud Agents model table, alias/defaults table) |
+
+</details>
 
 <details>
 <summary>v5.11 changes</summary>

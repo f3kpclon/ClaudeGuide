@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.12 · Validada en producción · 2026-06-30
+**Versión:** v5.13 · Validada en producción · 2026-06-30
 
 ---
 
@@ -48,16 +48,30 @@
 | Evitar los errores más caros | §12 — primera tabla |
 | Validar lo que construí | §13 — checklist de calidad |
 | Usar CLAUDE.local.md / output-styles / rules / settings.local.json | §32 — Archivos que nadie documenta |
+| Usar comandos nativos (`/rewind`, `/fork`, `/compact`...) con agentes/hooks | §33 — Comandos nativos |
 
 ---
 
-## Novedades en v5.12
+## Novedades en v5.13
+
+> *Nuevo §33 sobre los slash commands nativos de Claude Code (`/rewind`, `/clear`, `/compact`, `/fork`, `/branch`, `/goal`, `/batch`, `/loop`...) y — verificado contra la doc oficial, no supuesto — cuáles se integran de verdad con agentes, skills y hooks (`/fork` y `/branch` como comandos nativos de spawning de agentes, los puntos de integración de los hooks `PreCompact`/`SessionStart`) versus cuáles son CLI-only sin API programática (`/rewind`, `/clear`, `/compact`).*
+
+| Área | Cambio |
+|---|---|
+| **§33 NUEVO** | Tabla de comandos relevantes para quien construye, con cuándo usar cada uno |
+| **§33 NUEVO** | Qué se integra de verdad con agentes/skills/hooks: `/fork`, `/branch`, hook `PreCompact`, matchers de `SessionStart` |
+| **§33 NUEVO** | Qué está confirmado que NO se puede: no hay evento de hook para `/rewind`, no hay API de checkpoint a nivel SDK |
+
+<details>
+<summary>Novedades en v5.12</summary>
 
 > *ID de modelo pinneado de Sonnet actualizado a su release actual. Sin cambios estructurales.*
 
 | Área | Cambio |
 |---|---|
 | **§25** | ID de modelo pinneado `claude-sonnet-4-6` → `claude-sonnet-5` (ejemplo del hook de routing por complejidad, tabla de modelos de Cloud Agents, tabla de aliases/defaults) |
+
+</details>
 
 <details>
 <summary>Novedades en v5.11</summary>

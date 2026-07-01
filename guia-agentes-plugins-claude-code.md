@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.11 · reorder §1-§32 por prioridad de lectura · §27 añadido al Índice (2026-06-30)
+**Versión:** v5.13 · añadido §33 — Comandos nativos (rewind/clear/compact/fork) e integración con hooks (2026-06-30)
 
 ---
 
@@ -68,6 +68,7 @@
 - [§28 — Prompt Library (shortcuts + recipes)](#28-prompt-library--shortcuts-para-claude-code)
 - [§29 — Contexto global propio](#29-contexto-global-propio--construir-tu-sistema)
 - [§30 — Cloud Agents programados — /schedule y /web-setup](#30-cloud-agents-programados--schedule-y-web-setup)
+- [§33 — Comandos nativos (rewind, clear, compact, fork) + integración con hooks](#33-comandos-nativos--rewind-clear-compact-fork-y-su-integración-con-agenteshooks)
 
 ### Calidad y eficiencia
 - [§14 — Guía anti-overkill](#14-guía-anti-overkill)
@@ -5895,5 +5896,61 @@ Por eso los agentes y prompts de artifact-factory están en inglés — el CLAUD
 **Scope** — Archivos que describen el estado real del proyecto: qué existe, qué falta, qué se decidió. El lead lo lee para planificar. Los especialistas no lo necesitan — reciben contexto del lead.
 
 **ADR (Architecture Decision Record)** — Entrada en el scope que documenta una decisión de diseño: qué se eligió, qué se descartó y por qué. Inmutable — nunca se edita, solo se agrega. Permite entender meses después por qué se tomó una decisión.
+
+---
+
+<!-- §33 -->
+## 33. Comandos nativos — rewind, clear, compact, fork y su integración con agentes/hooks
+
+> `/rewind`, `/clear` y `/compact` no tienen API — son CLI-only, atados a que un humano (o Claude decidiendo escribirlos como respuesta) los tipee. Pero otro grupo de comandos nativos SÍ está diseñado para orquestar agentes (`/fork`, `/branch`, `/goal`, `/batch`, `/loop`) y los hooks SÍ tienen puntos de integración reales alrededor de sesión y compactación (`SessionStart`, `PreCompact`, `PostCompact`). Esta sección separa lo uno de lo otro — verificado contra doc oficial, no supuesto.
+
+### Tabla — comandos que importan cuando construís
+
+| Comando | Qué hace | Cuándo usarlo |
+|---|---|---|
+| `/rewind` (alias `/checkpoint`, `/undo`) | Revierte código y/o conversación a un punto anterior, o resume desde ahí | Un agente rompió algo y querés volver sin perder el resto de la sesión |
+| `/clear` (alias `/reset`, `/new`) | Contexto vacío nuevo; la conversación anterior queda disponible en `/resume` | Cambiar de tarea sin arrastrar contexto irrelevante |
+| `/compact [instructions]` | Resume la conversación actual para liberar espacio, sin abandonarla | Contexto largo pero seguís en la misma tarea — podés darle foco: `/compact enfocate en los cambios de auth` |
+| `/resume [session]` (alias `/continue`) | Retoma una sesión anterior por ID o nombre | Volver a un `/branch` o a una sesión pausada |
+| `/branch [name]` | Copia la conversación en este punto y cambia a ella; el original queda intacto | Probar una dirección distinta sin arriesgar el estado actual |
+| `/fork <directive>` | Spawnea un subagente en background que **hereda toda la conversación** y trabaja la directiva mientras vos seguís | Delegar una tarea lateral sin cambiar de contexto vos — el resultado vuelve solo al hilo principal |
+| `/goal [condition]` | Claude sigue trabajando entre turnos hasta cumplir la condición | Loop autónomo acotado, sin montar `/loop` externo |
+| `/context [all]` | Visualiza uso de contexto por bloque | Diagnóstico antes de decidir `/compact` vs `/clear` |
+| `/batch <instruction>` | Descompone un cambio grande en 5-30 unidades, un subagente por unidad, cada uno en su propio worktree | Cambios cross-codebase demasiado grandes para un agente — ver §10 |
+| `/loop [interval] [prompt]` | Corre un prompt repetidamente, con pacing propio si se omite el intervalo | Polling o tareas recurrentes dentro de la sesión — ver skill `loop` |
+| `/agents` | Gestiona subagentes configurados | Alta/baja de subagentes del proyecto |
+| `/schedule` (alias `/routines`) | Rutinas cloud con cron, fuera de la sesión interactiva | Automatización que no depende de la sesión abierta — ver §30 |
+
+### Lo que SÍ se integra con agentes/skills/hooks (documentado)
+
+**`/fork` y `/branch` SON la forma nativa de "comando como agente".** No hace falta inventar nada: `/fork` literalmente spawnea un subagente en background con el checkpoint completo de la conversación heredado — es la respuesta real a "quiero que un agente parta de este punto exacto".
+
+**Hook `PreCompact`** — se dispara antes de compactar (matcher `manual` o `auto`), recibe `compaction_trigger` en el input, y **puede bloquear** (`decision: block`) o simplemente correr un script antes de que el contexto se pierda:
+
+```json
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "auto",
+        "hooks": [{ "type": "command", "command": "./scripts/archive-context.sh" }]
+      }
+    ]
+  }
+}
+```
+Patrón real: archivar el estado de un agente largo (checkpoints de delegación, ver §9) antes de que `/compact` automático los resuma y se pierda detalle.
+
+**Hook `SessionStart`** — matcher `startup|resume|clear|compact` distingue **cómo** arrancó la sesión. Sirve para inyectar contexto distinto según el caso: después de un `/clear` no hace falta re-explicar el proyecto (ya está en CLAUDE.md), pero después de un `/compact` puede convenir reinyectar un gotcha que se resumió de más.
+
+**Skills** — un skill es texto que Claude lee, así que puede *recomendar* terminar con `/compact` o `/fork` como parte del flujo ("una vez migrado esto, corré `/compact` antes de seguir"), pero es Claude quien decide emitirlo — no hay forma de forzarlo desde el frontmatter.
+
+### Lo que NO se puede (verificado contra doc oficial)
+
+- Ningún hook, skill o llamada del SDK puede **forzar** `/rewind`, `/clear` o `/compact` — son CLI-only, requieren que un humano los tipee o que Claude decida escribirlos como respuesta.
+- No existe evento de hook para `/rewind`/checkpoint — no hay `PreRewind` ni equivalente.
+- El SDK (`--continue`, `--resume <id>`) continúa procesos, pero no expone `session.rewind()` ni `session.fork()` a nivel de código.
+
+**Fuentes:** [Commands](https://code.claude.com/docs/en/commands.md) · [Hooks](https://code.claude.com/docs/en/hooks.md) · [Checkpointing](https://code.claude.com/docs/en/checkpointing.md) · [Sub-agents](https://code.claude.com/docs/en/sub-agents.md)
 
 ---
