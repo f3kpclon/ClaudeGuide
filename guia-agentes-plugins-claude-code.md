@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.13 · añadido §33 — Comandos nativos (rewind/clear/compact/fork) e integración con hooks (2026-06-30)
+**Versión:** v5.14 · agregado patrón split core+reference para agentes (§5) + calibración real de budgets §22 (2026-07-01)
 
 ---
 
@@ -889,6 +889,25 @@ El orchestrador (o el usuario) invoca agentes con un prompt. Ese prompt se suma 
 | Invoca herramientas que no necesita | `tools` heredado por defecto — siempre especificar al mínimo |
 | Reviewer hace 25+ tool uses | Scope demasiado amplio — está explorando arquitectura además de convenciones | Pasar solo archivos directamente modificados (≤4); agregar protocolo "1 Read por archivo" al agente |
 
+### Split de checklist — core + reference (cuando un agente crece)
+
+> Un validator/reviewer que empieza con 4 checks y termina con 13 diluye sus propias reglas —
+> el mismo síntoma de la tabla de arriba. La solución no es recortar contenido real: es el mismo
+> patrón hub+reference que ya usás en skills (§6), aplicado a agentes.
+
+```
+Agente checklist crece cada vez que se agrega una feature nueva
+    → separar: checks core (siempre corren) quedan en el .md del agente
+    → checks condicionales (solo si TYPE=plugin, o si hay extras/features opcionales)
+      se mueven a una skill reference-only (disable-model-invocation: true, allowed-tools: Read)
+    → el agente instruye: "si [condición], leer [skill] y correr esos checks también"
+```
+
+**Validado (artifact-factory, 2026-07-01):** validator.md creció de 9 a 13 checks al agregar
+soporte para tests/CI/local-files (§16, §19, §20, §32 de esta guía). Split a `validator.md`
+(6 checks core) + `validator-checks/SKILL.md` (7 checks condicionales, cargados solo si
+TYPE=plugin o hay extras) — bajó el system prompt ~30% sin perder ningún check.
+
 ### Plantilla del agente curador
 
 ```markdown
@@ -976,6 +995,8 @@ Mantenimiento mensual de learnings. No correr en cada sesión.
 ```
 
 Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
+
+**Plugins**: `hooks/hooks.json` usa el MISMO wrapper `{"hooks": {...}}` — eventos al top level se rechazan en silencio y ningún hook se registra. Scripts con `"${CLAUDE_PLUGIN_ROOT}"` (ver §11 Trampas). El matcher de `SubagentStop` para agentes de plugin puede necesitar el nombre con namespace: `(mi-plugin:)?mi-agente`.
 
 ### Eventos — mapa completo
 
@@ -1150,7 +1171,9 @@ Usar JSON con `systemMessage` en vez de `echo` directo — la UI lo muestra limp
 import json, sys
 
 data = json.load(sys.stdin)
-agent = data.get("subagent_type", "")
+# El payload de SubagentStop trae agent_type (docs oficiales) — subagent_type
+# como fallback defensivo. Leer agent_name/subagent_name falla siempre.
+agent = data.get("agent_type", "") or data.get("subagent_type", "")
 
 messages = {
     "mi-scene-agent": "Escena modificada. Invocar @reviewer antes de continuar.",
@@ -1380,6 +1403,7 @@ if re.match(r'npm\s+install\s*$', first):
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",       # updatedInput acompaña a "allow"
             "updatedInput": {"command": new_cmd},
             "additionalContext": "npm install reescrito a npm ci — usa lockfile exacto y no modifica package-lock.json."
         }
@@ -1388,6 +1412,40 @@ if re.match(r'npm\s+install\s*$', first):
 
 sys.exit(0)
 ```
+
+> ⚠️ `updatedInput` es un campo hermano de `permissionDecision` — NUNCA su valor. `"permissionDecision": "updatedInput"` es inválido y el auto-fix no aplica (falla en silencio: la acción pasa sin corregir). Valores válidos: `allow | deny | ask | defer`.
+
+### El compilador como juez — PostToolUse + parser real
+
+Los regex de convenciones no saben si el código es válido. Un PostToolUse que corre el parser real del lenguaje sobre el archivo **ya escrito en disco** devuelve el error a Claude en el mismo turno — fix inmediato, sin round-trip por el IDE. Cero falsos positivos por definición.
+
+```python
+# post_write.py — swiftc -parse: solo sintaxis, sin type-checking ni deps (<1s)
+def parse_check(path):
+    if not path.endswith('.swift') or not shutil.which('swiftc'):
+        return None                       # sin toolchain → skip silencioso
+    try:
+        r = subprocess.run(['swiftc', '-parse', path],
+                           capture_output=True, text=True, timeout=15)
+    except Exception:
+        return None                       # el hook nunca rompe la sesión
+    return None if r.returncode == 0 else '\n'.join(r.stderr.splitlines()[:15])
+
+errors = parse_check(path)
+if errors:
+    print(json.dumps({"decision": "block",
+                      "reason": f"⛔ swiftc -parse falló — corregir ahora:\n{errors}"}))
+```
+
+Claves: va en **Post**, no Pre (en PreToolUse solo tienes el fragmento del Edit — la sintaxis se valida sobre el archivo completo); `decision: "block"` en PostToolUse devuelve la razón a Claude; atrapa la clase de error más frecuente del modelo (braces desbalanceados, edits que cortan código a la mitad). Equivalentes: `python -m py_compile`, `node --check`, `tsc --noEmit` (este último sí es lento — medir antes).
+
+### Gates sobre prompts del usuario — reglas de fragilidad
+
+Un deny-gate alimentado por regex sobre lenguaje natural es plomería frágil. Tres reglas para que sobreviva:
+
+1. **Anclar confirmaciones al inicio**: `^\s*(ok|sí|dale|...)\b` — "bien, pero antes explícame X" no debe aprobar
+2. **Scope por directorios conocidos** (config tipo `design-paths.json`), no "todo archivo `.ext` del repo" — un fix de 1 línea fuera del dominio no debe exigir plan
+3. **Degradar a warnings sin setup**: si falta la config de scope, informar sin bloquear — un gate que estorba se termina desactivando entero
 
 > El agente recibe `npm ci` como si él lo hubiera escrito. `additionalContext` le explica el cambio en el próximo turno.
 
@@ -2378,6 +2436,7 @@ learnings/
 ---
 
 <!-- §10 -->
+<!-- §10-quick -->
 ## 10. Arquitectura multi-agente
 
 > Aquí es donde el sistema se vuelve poderoso de verdad. Múltiples agentes especializados trabajando en secuencia, cada uno en su propio contexto aislado, sin contaminar el hilo principal. El secreto: el lead coordina sin implementar, los especialistas implementan sin coordinar.
@@ -2408,44 +2467,22 @@ Si el hub agrega lógica que CLAUDE.md no puede tener (por límite de líneas), 
 6. Fin de sesión               → @postmortem
 ```
 
-### Pre-layer opcional — validar antes del dispatch
+### Física del subagente — lo que un lead NO puede hacer
 
-Para proyectos con inputs inconsistentes o tareas que llegan mal definidas, una capa previa al dispatch puede filtrar ambigüedad antes de que llegue al especialista.
+Un subagente corre de una pasada hasta terminar. Tres imposibles que aparecen una y otra vez en prompts de leads mal diseñados:
 
-```
-CLAUDE.md (dispatch)
-   ↑
-[preflight]  ← capa opcional — evalúa atomicidad y claridad
-   ↑
-usuario
-```
+1. **No puede pausar** a "esperar confirmación del usuario antes del siguiente paso" — termina y devuelve su output; los checkpoints con el usuario son del hilo principal
+2. **No puede delegar** sin la tool `Agent` en su lista — un lead con `tools: Read, Glob, Grep` que dice "delego a @especialista" produce texto, no invocaciones
+3. **No puede cargar skills** — no tiene la tool `Skill`; las templates se las pasa el hilo principal en el prompt
 
-Agente `preflight` mínimo:
+Dos diseños válidos de lead — elegir uno, no mezclar:
 
-```markdown
----
-name: preflight
-description: Evaluar atomicidad y claridad del input antes del dispatch.
-  Usar cuando una tarea parece ambigua, involucra múltiples features
-  sin relación, o el scope no está definido.
-tools: Read
-model: haiku
----
+| Diseño | Tools | Checkpoints con el usuario |
+|---|---|---|
+| **Planner (Advisor §31)** — devuelve el plan de delegación, el hilo principal lo ejecuta | Read, Glob, Grep | ✅ entre cada paso |
+| **Orchestrator real** — spawnea especialistas él mismo | + `Agent(especialistas)` | ❌ corre completo sin parar |
 
-# Preflight
-
-## Checks
-1. ¿La tarea involucra ≥2 features no relacionadas? → pedir dividir
-2. ¿El scope está definido? → si no, hacer 1 pregunta concreta
-3. ¿La tarea es atómica y entregable en 1 sesión? → si no, proponer división
-
-## Output
-✅ Input claro y atómico → "continuar con dispatch"
-⚠️  Ambiguo → 1 pregunta concreta de aclaración
-❌ Demasiado grande → listar sub-tareas ordenadas
-```
-
-Activar solo cuando se necesite — no en cada tarea. En proyectos personales con un solo dev, el dispatch directo desde CLAUDE.md es suficiente. El pre-layer agrega valor cuando el input al sistema es ruidoso.
+> **[2026-07-02] design-ios:** el lead tenía instrucciones de "esperar confirmación antes de continuar" y "delegar a @agente" con `tools: Read, Glob, Grep` — ambas físicamente imposibles. Reescrito como planner de una pasada. Un prompt que pide lo imposible no falla ruidosamente: el modelo improvisa una aproximación y el output se degrada en silencio.
 
 ### La pregunta clave para el lead
 
@@ -2489,6 +2526,7 @@ la lógica de dispatch completa — si eso supera 30 líneas, hub > CLAUDE.md in
 
 **Commitear antes de crear rama** — si hay cambios sin commit y se crea una rama, los cambios se mezclan.
 
+<!-- §10-ref -->
 ### Checkpoint de delegación — estado sin Write tool
 
 El lead coordina sin implementar (§10). Tentación: darle `Write` para escribir un archivo JSON de estado cuando el contexto se comprime. Incorrecto: `Write` es implementación.
@@ -2532,9 +2570,49 @@ Si el agente no hace cambios → el worktree se limpia solo. Si hace cambios →
 
 **Anti-patrón:** worktrees para agentes que deben ir en secuencia (A termina → B empieza). Si no hay paralelismo real, el worktree es overhead sin beneficio — usar flujo estándar.
 
+### Pre-layer opcional — validar antes del dispatch
+
+Para proyectos con inputs inconsistentes o tareas que llegan mal definidas, una capa previa al dispatch puede filtrar ambigüedad antes de que llegue al especialista.
+
+```
+CLAUDE.md (dispatch)
+   ↑
+[preflight]  ← capa opcional — evalúa atomicidad y claridad
+   ↑
+usuario
+```
+
+Agente `preflight` mínimo:
+
+```markdown
+---
+name: preflight
+description: Evaluar atomicidad y claridad del input antes del dispatch.
+  Usar cuando una tarea parece ambigua, involucra múltiples features
+  sin relación, o el scope no está definido.
+tools: Read
+model: haiku
+---
+
+# Preflight
+
+## Checks
+1. ¿La tarea involucra ≥2 features no relacionadas? → pedir dividir
+2. ¿El scope está definido? → si no, hacer 1 pregunta concreta
+3. ¿La tarea es atómica y entregable en 1 sesión? → si no, proponer división
+
+## Output
+✅ Input claro y atómico → "continuar con dispatch"
+⚠️  Ambiguo → 1 pregunta concreta de aclaración
+❌ Demasiado grande → listar sub-tareas ordenadas
+```
+
+Activar solo cuando se necesite — no en cada tarea. En proyectos personales con un solo dev, el dispatch directo desde CLAUDE.md es suficiente. El pre-layer agrega valor cuando el input al sistema es ruidoso.
+
 ---
 
 <!-- §11 -->
+<!-- §11-quick -->
 ## 11. Plugin distribuible
 
 > Llegaste aquí porque tus agentes locales funcionan bien y quieres llevarlos a otro proyecto sin copiar archivos. El plugin es exactamente eso: tu cocina empaquetada. Una línea de `claude plugin add` y está lista en cualquier repo.
@@ -2554,10 +2632,29 @@ mi-repo/
 │       ├── agents/
 │       ├── skills/
 │       ├── hooks/
-│       │   └── hooks.json    ← REQUERIDO si usas hooks
+│       │   └── hooks.json    ← REQUERIDO si usas hooks — wrapper {"hooks":{...}} + ${CLAUDE_PLUGIN_ROOT}
 │       └── README.md         ← REQUERIDO para distribución
 ```
 
+### Validar SIEMPRE antes de distribuir
+
+```bash
+claude plugin validate ./plugins/mi-plugin
+```
+
+Atrapa las tres clases de error que fallan **en silencio** en runtime: manifest con campos inválidos, frontmatter YAML roto (skill carga sin metadata), y `hooks.json` con formato incorrecto (ningún hook se registra). Correrlo en pre-commit o CI (§20) — un plugin con enforcement muerto se ve idéntico a uno funcionando.
+
+### Componentes soportados — whitelist cerrada
+
+`skills/` · `commands/` · `agents/` · `hooks/` · `.mcp.json` · `output-styles/` · `lspServers` · `themes` · `monitors`. Nada más:
+
+- **`rules/` NO es componente de plugin** — `.claude/rules/*.md` con glob es feature de proyecto local. En un plugin, las reglas universales van en la skill hub o inline en los agentes.
+- **`output-styles/` de plugin aplica a TODA la conversación principal** mientras el plugin esté activo — no por-agente. Un `swift-only.md` global silencia la prose de toda la sesión. Reglas de output por agente → inline en el agente (son 3-6 líneas).
+- **`plugin.json` no tiene campo `components`** — los componentes se descubren por convención de directorios; el campo se ignora.
+
+> **[2026-06-02] design-ios:** `marketplace.json` en la raíz es REQUERIDO para el flujo "Browse plugins" del desktop app — no es un archivo opcional ni de metadata. Eliminarlo rompe la instalación UI para todos los usuarios del equipo. Error: confundirlo con dead weight porque la guía no lo mencionaba.
+
+<!-- §11-ref -->
 ### Template — marketplace.json
 
 Raíz del repo. El desktop app lo lee en **Browse plugins → Add marketplace** — sin él el repo no aparece como fuente de plugins.
@@ -2612,9 +2709,35 @@ claude --plugin-dir ./plugins/mi-plugin   # cargar sin instalar
 /hooks                                    # verificar hooks registrados
 ```
 
-> **[2026-06-02] design-ios:** `marketplace.json` en la raíz es REQUERIDO para el flujo "Browse plugins" del desktop app — no es un archivo opcional ni de metadata. Eliminarlo rompe la instalación UI para todos los usuarios del equipo. Error: confundirlo con dead weight porque la guía no lo mencionaba.
-
 ### Trampas de distribución
+
+**`hooks.json` de plugin requiere el wrapper `{"hooks": {...}}`.**
+Eventos al top level (como en algunos ejemplos viejos) → el archivo se rechaza en silencio y NINGÚN hook se registra. Mismo formato que settings.json:
+```json
+{"hooks": {"PreToolUse": [{"matcher": "Write|Edit", "hooks": [...]}]}}
+```
+
+**Scripts del plugin usan `${CLAUDE_PLUGIN_ROOT}`, nunca `$CLAUDE_PROJECT_DIR`.**
+`CLAUDE_PROJECT_DIR` apunta al repo del consumidor — instalado, el hook busca `<repo-destino>/hooks/*.py` y falla siempre. En shell-form, entre comillas:
+```json
+{"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard.py"}
+```
+`$CLAUDE_PROJECT_DIR` se reserva para los archivos que SÍ viven en el proyecto destino (learnings, design-paths.json, flags).
+
+**Frontmatter YAML: dos puntos sin comillas mata la skill en silencio.**
+`description: Use for slots: A, B` → YAML no parsea → la skill carga con metadata vacía (sin nombre, sin slash command, sin triggers). Quotear cualquier description con `:` — `claude plugin validate` lo detecta.
+
+**`user-invocable: false` + `disable-model-invocation: true` = skill inalcanzable.**
+Nadie puede cargarla — ni usuario ni modelo. Las skills de referencia (templates, convenciones) que un flujo del modelo debe cargar necesitan `disable-model-invocation: false` (el costo es solo la description en contexto).
+
+**Los subagentes NO pueden cargar skills.**
+No tienen la tool `Skill` (y con `tools:` restringido, menos). Un agente que dice "Cargar skill X" es una instrucción imposible. Patrón correcto: el hilo principal (la skill de creación) carga la template y o bien escribe los archivos él mismo, o pasa el contenido en el prompt de invocación del agente. El agente lleva su patrón esencial inline como fallback.
+
+**Skills ejecutadas vía Skill tool NO pasan por UserPromptSubmit.**
+Un gate de flags que se abre solo cuando el usuario tipea `/plugin:plan` entra en deadlock si otra skill ejecuta el plan como paso interno — el hook nunca ve el prompt. Los slash commands de creación también deben abrir el gate:
+```python
+_PLAN_TRIGGER = re.compile(r'mi-plugin:(plan|new-\w+)\b')
+```
 
 **Learnings no van en el repo del plugin.**
 Si los learnings están en git dentro del plugin, `claude plugin sync` los sobreescribe en todos los repos que lo usan. Los learnings deben vivir en `.claude/learnings/` del **proyecto que instaló el plugin**.
@@ -2644,6 +2767,8 @@ Un cloud agent clona el repo desde GitHub — no tiene acceso a `.claude/learnin
 Sin instrucción de "no leas componentes existentes", el modelo lee 2-4 archivos de referencia antes de crear uno nuevo — aunque la template ya contenga el patrón. Fix: añadir sección `## Archivos a leer (y nada más)` en cada agente especialista.
 
 > **[2026-06-27] design-ios:** `PLUGIN_ROOT = Path(__file__).parent.parent` en hooks apunta al directorio del plugin instalado, no al proyecto destino. Todos los paths que deben ser per-project (learnings, plan flags) necesitan usar `Path.cwd()` como base.
+
+> **[2026-07-02] design-ios (auditoría 2.4.0):** los 6 defectos P0 del plugin eran de infraestructura, no de contenido — hooks.json sin wrapper, `$CLAUDE_PROJECT_DIR` en vez de `${CLAUDE_PLUGIN_ROOT}`, YAML sin quotear, valor inválido de `permissionDecision`, campo inexistente en payload de SubagentStop, gate en deadlock. Ninguno era detectable usándolo: los hooks fallan invisibles. Moraleja: **cada pieza de automatización necesita una forma de avisar que murió** — `claude plugin validate` + tests subprocess (§19) son obligatorios, no opcionales. Y verificar los API shapes de hooks/plugins contra docs oficiales, nunca de memoria.
 
 ---
 
@@ -4318,7 +4443,9 @@ Agentes
 Skills
 □ Hub: disable-model-invocation: false, < 40 líneas
 □ Hub con dispatch duplicado en CLAUDE.md → skillOverrides: user-invocable-only
-□ Referencias: disable-model-invocation: true
+□ Referencias que solo el usuario pide: disable-model-invocation: true
+□ Referencias que un flujo del modelo debe cargar (templates, convenciones): disable-model-invocation: false — con user-invocable: false + disable-model-invocation: true la skill es INALCANZABLE
+□ Frontmatter con ":" dentro de description → quotear (YAML roto = metadata vacía en silencio)
 □ description < 1,536 chars (combined description + when_to_use; configurable con maxSkillDescriptionChars)
 □ Sin contenido duplicado
 □ Skill con trabajo pesado (> 3 archivos / logs largos) → context: fork con agent: Explore
@@ -4326,8 +4453,9 @@ Skills
 □ Skill invocada en sesión larga → re-invocar con /nombre si "se olvidó" post-compact
 □ model / effort solo cuando el override está justificado (no usar sonnet donde haiku alcanza)
 □ user-invocable: false para background knowledge que no es acción del usuario
-□ Code-writer agents referencian `output-styles/[estilo].md` — ahorra 30-65% tokens de output sin cambiar modelo
-□ Reglas universales del dominio (idioma, compilación, constantes) en `rules/` con glob — no duplicadas en cada agente
+□ Reglas de output de code-writer agents INLINE en el agente (3-6 líneas) — subagentes no pueden leer output-styles/ del plugin; un output-style de plugin aplica a TODA la conversación principal
+□ Reglas universales del dominio: proyecto local → `.claude/rules/` con glob · plugin → skill hub o inline en agentes (`rules/` NO es componente de plugin)
+□ Agentes NUNCA instruidos a "cargar skill X" — no tienen la tool Skill; el hilo principal carga la template y el agente lleva el patrón inline
 
 Scope
 □ scope-index.md < 20 líneas
@@ -4368,7 +4496,12 @@ Hooks
 □ PostToolUse usa systemMessage JSON — igual que SubagentStop, nunca print() crudo
 □ Hub description coherente con skillOverrides (no decir "Auto-load" si es user-invocable-only)
 □ SubagentStop de agentes pesados muestra systemMessage de confirmación
+□ SubagentStop lee agent_type del payload (con subagent_type como fallback) — agent_name/subagent_name no existen
 □ Proyectos Node.js tienen npm_guard.py bloqueando npx y npm install <pkg> sin --ignore-scripts
+□ updatedInput siempre junto a permissionDecision: "allow" — nunca como valor de permissionDecision
+□ Plugin: hooks.json con wrapper {"hooks": {...}} y scripts con "${CLAUDE_PLUGIN_ROOT}"
+□ Plugin: claude plugin validate pasa limpio en pre-commit/CI antes de cada release
+□ Cada hook nuevo tiene test subprocess (§19) — un hook sin test es un hook que puede estar muerto sin que lo sepas
 □ updatedInput en vez de deny cuando la corrección es mecánica (ej: npm install → npm ci)
 □ SessionStart con matcher "startup|resume" para inyectar contexto de branch/estado al iniciar
 
@@ -5245,6 +5378,7 @@ Layer 3 — Storage
 ---
 
 <!-- §19 -->
+<!-- §19-quick -->
 ## 19. Testing de agentes
 
 > artifact-factory se construyó sin un solo test automatizado y funcionó — porque el validator haiku actúa como test de integración implícito. Esta sección define cuándo eso deja de ser suficiente y cómo agregar tests sin abandonar el principio low-cost.
@@ -5266,6 +5400,7 @@ Layer 3 — Storage
 
 ---
 
+<!-- §19-ref -->
 ### Testear hooks: stdin → stdout
 
 Los hooks son procesos Python que leen JSON de stdin y escriben JSON a stdout. Son triviales de testear sin mocks:
@@ -5293,6 +5428,39 @@ def test_blocks_secret_in_content():
 def test_allows_clean_write():
     r = run_hook({"tool_name": "Write", "tool_input": {"file_path": "src/main.py", "content": "print(\'hello\')"}})
     assert r is None  # no block
+```
+
+**Aislar HOME y CLAUDE_PROJECT_DIR** — hooks con estado (flags en `~/.claude/`, paths por proyecto) contaminan la máquina real y se contaminan entre tests si no se aísla el entorno:
+
+```python
+@pytest.fixture
+def env(tmp_path):
+    project, home = tmp_path / "project", tmp_path / "home"
+    (home / ".claude").mkdir(parents=True); (project / ".claude").mkdir(parents=True)
+    return project, home
+
+def run_hook(script, payload, project, home):
+    env = {**os.environ, "HOME": str(home), "CLAUDE_PROJECT_DIR": str(project)}
+    return subprocess.run([sys.executable, script], input=json.dumps(payload),
+                          capture_output=True, text=True, cwd=str(project), env=env)
+```
+
+`cwd=str(project)` importa: los hooks que scopean flags con `hash(Path.cwd())` dependen de él.
+
+**Hooks que invocan binarios externos (swiftc, tsc, node)** — el gate del test debe verificar que el binario está *operativo*, no solo que existe. En runners de CI el toolchain frío puede exceder el timeout del hook → el hook hace no-op silencioso y el test falla con un error confuso:
+
+```python
+def _swiftc_operativo():
+    if not shutil.which("swiftc"):
+        return False
+    try:  # warm-up largo, luego verificación con el budget real del hook
+        subprocess.run(["swiftc", "-parse", "-"], input="let a = 1", timeout=90, ...)
+        r = subprocess.run(["swiftc", "-parse", "-"], input="let a = 1", timeout=10, ...)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+@pytest.mark.skipif(not _swiftc_operativo(), reason="requiere toolchain Swift")
 ```
 
 ### Testear security_utils directamente
@@ -5386,11 +5554,15 @@ Sin pytest-cov, sin mocking framework, sin fixtures complejas. Solo `pytest` + `
 □ No mocks de MongoDB/Atlas — siempre driver real en integration tests
 □ pytest corre con: pip install pytest (sin dependencias extra)
 □ No coverage targets — solo los tests que detectan fallos silenciosos
+□ Tests de hooks aíslan HOME + CLAUDE_PROJECT_DIR + cwd (fixture tmp_path)
+□ Binarios externos en hooks: gate del test verifica operativo con warm-up, no solo which()
+□ TODO hook de plugin tiene test — los hooks fallan invisibles; el test es la única señal de que siguen vivos
 ```
 
 ---
 
 <!-- §20 -->
+<!-- §20-quick -->
 ## 20. CI/CD
 
 > No hay pipeline sin tests. Primero §19, luego §20.
@@ -5400,10 +5572,27 @@ Sin pytest-cov, sin mocking framework, sin fixtures complejas. Solo `pytest` + `
 
 ```
 lint → hook-tests → validator-smoke
+(+ plugin-validate si el repo distribuye un plugin)
 ```
 
 Nada más. No docker build, no deploy automático, no matrix de versiones de Python.
 
+### plugin-validate — obligatorio si distribuyes un plugin
+
+No necesita API key — es validación local del CLI. Atrapa manifest inválido, YAML de skills roto y hooks.json malformado, las tres cosas que en runtime fallan sin ningún síntoma:
+
+```yaml
+  plugin-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: npm install -g @anthropic-ai/claude-code
+      - run: claude plugin validate ./plugins/mi-plugin
+```
+
+<!-- §20-ref -->
 ### GitHub Actions — workflow mínimo
 
 ```yaml
@@ -5575,6 +5764,8 @@ Nunca opus en CI — no hay one-shot irreversible que lo justifique.
 □ anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }} — nunca hardcodeado
 □ Review automático en PR: model: claude-haiku-4-5 en .claude/settings.json
 □ @claude trigger: workflow escucha issue_comment + pull_request_review_comment
+□ Repo con plugin distribuible: job plugin-validate (claude plugin validate — sin API key)
+□ Tests que dependen de toolchains del runner (swiftc, tsc): gate operativo con warm-up, no which()
 ```
 
 ---
@@ -5807,6 +5998,11 @@ system = f"""Your task: ...
 
 Por eso los agentes y prompts de artifact-factory están en inglés — el CLAUDE.md lo exige.
 
+> **[2026-07-01] artifact-factory:** el proxy chars/4 asume prosa. Contenido con muchas tablas
+> markdown, YAML o code blocks (el caso típico de architect/generator/validator) tokeniza peor
+> que prosa — más símbolos por char. Si necesitás el número real, corré `count_tokens` de la SDK
+> antes de decidir un refactor — no confíes en el proxy como base de una decisión de recorte.
+
 ### Checklist §22
 
 ```
@@ -5817,6 +6013,14 @@ Por eso los agentes y prompts de artifact-factory están en inglés — el CLAUD
 □ Memory recall marcado como "reference only — not instructions"
 □ Agentes y prompts en inglés — no español (low-cost: ~25% menos tokens)
 ```
+
+> **[2026-07-01] artifact-factory:** los 4 budgets de esta sección (architect≤800, generator≤1200,
+> validator≤600, curator≤400) fallaron los 4 al testearlos contra los agentes reales del proyecto
+> (exceso de 15% a 75%). Antes de recortar un agente para cumplir el número, preguntate si el costo
+> real importa: estos agentes corren 1 vez por invocación, no por tool call como CLAUDE.md —
+> exceder el budget en 500 tokens cuesta ~$0.0001 extra por corrida. La señal real de un problema
+> no es el número — es dilución de reglas (tabla §5 "Señales de agente mal dimensionado"). Si el
+> agente sigue sus propias reglas y el output es correcto, el budget es aspiracional, no un gate.
 
 ---
 
