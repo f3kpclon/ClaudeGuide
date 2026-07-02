@@ -247,6 +247,7 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 ---
 
 <!-- §25 -->
+<!-- §25-quick -->
 ## 25. Modelo correcto — tabla de decisión única
 
 > haiku/sonnet/opus está mencionado en §12 y §22. Esta sección es el único lookup necesario.
@@ -309,6 +310,7 @@ Opus cuesta ~5× más por token que Sonnet. Si un error de Sonnet cuesta 30 minu
 | Debug multi-capa con contexto > 10k tokens activos | Coherencia en contexto largo | Sonnet pierde el hilo — documentado |
 | Decisión one-shot sin segunda oportunidad | No hay iteración posible | Sonnet en loop con validator es alternativa |
 
+<!-- §25-ref -->
 ### Ejemplo concreto — security-auditor con Opus justificado
 
 ```yaml
@@ -2253,6 +2255,7 @@ Las entradas ADR son inmutables — nunca se editan, solo se agregan. Permiten e
 ---
 
 <!-- §9 -->
+<!-- §9-quick -->
 ## 9. Learnings
 
 > El sistema de learnings es la memoria del proyecto. Sin él, cada sesión repite los mismos errores. Con él, el agente ya sabe que "grab_focus() en _ready() no funciona" antes de intentarlo. Es la inversión de tiempo que más rentabilidad da a largo plazo.
@@ -2331,6 +2334,7 @@ Esto significa que:
 - El curador (`@design-curador`) corre localmente con `Path.cwd() / ".claude" / "learnings"` como base
 - Un CCR **no puede** curar estos learnings — viven en el filesystem local, no en el repo
 
+<!-- §9-ref -->
 ### Template — learnings-\<dominio\>.md
 
 No arrancar con archivos vacíos — poblar con lecciones conocidas del stack desde el día 1:
@@ -3079,6 +3083,7 @@ plugins/mi-plugin/
 
 
 <!-- §17 -->
+<!-- §17-quick -->
 ## 17. Plan + Invocation Templates — Eficiencia máxima de prompts
 
 > Dos problemas distintos, dos soluciones distintas. El `/plan` evita gastar tokens en la dirección equivocada. Las templates eliminan la variabilidad de los prompts de invocación.
@@ -3141,6 +3146,7 @@ Tokens estimados: ~Xk
 - Si la tarea es ambigua → UNA pregunta antes del plan, nunca asumir
 ```
 
+<!-- §17-ref -->
 #### Flujo de uso
 
 ```
@@ -3296,6 +3302,7 @@ Disciplina de invocación (Claude, no el usuario)
 ---
 
 <!-- §26 -->
+<!-- §26-quick -->
 <a id="26-hook-global-de-contexto"></a>
 
 ## 26. Hook global de contexto
@@ -3313,6 +3320,7 @@ El problema: Claude sabe que la guía existe pero necesita inferir cuándo consu
 
 `UserPromptSubmit` se ejecuta **antes** de que Claude procese el prompt. El stdout del hook se inyecta como contexto en la sesión.
 
+<!-- §26-ref -->
 ### Instalación en 3 pasos
 
 **1. Script** → `~/.claude/hooks/guia_context.py`
@@ -3570,6 +3578,7 @@ print(json.dumps({"systemMessage": content}))
 ---
 
 <!-- §27 -->
+<!-- §27-quick -->
 <a id="27-handoff-protocol"></a>
 
 ## 27. Handoff Protocol — Preservar contexto entre sesiones
@@ -3614,6 +3623,7 @@ Stop hook (cada respuesta de Claude)
   → Claude imprime una línea de confirmación en el chat
 ```
 
+<!-- §27-ref -->
 ### Componentes
 
 | Archivo | Rol |
@@ -4747,6 +4757,7 @@ Tokens: 12,450 input (8,200 cache read · 1,100 cache creation) · 2,450 output
 ---
 
 <!-- §16 -->
+<!-- §16-quick -->
 ## 16. Vector Memory — Upgrade del sistema de learnings
 
 > Para cuando el sistema de learnings en markdown ya no escala. No construyas esto hasta que el dolor sea real — el sistema de archivos aguanta hasta ~500 entries sin problema.
@@ -4800,6 +4811,7 @@ Con 10 proyectos activos (~3.000 learnings cada uno) usas ~200 MB — nunca lleg
 Con threshold 0.75, la mayoría de llamadas tienen **cero overhead de memoria**.
 0.75 es el valor validado para queries en español informal — el default de 0.85 es demasiado estricto para este idioma.
 
+<!-- §16-ref -->
 ### Schema
 
 ```json
@@ -5867,6 +5879,7 @@ echo '{"tool_name":"Write","tool_input":{"file_path":"../../etc/passwd","content
 ---
 
 <!-- §22 -->
+<!-- §22-quick -->
 ## 22. Prompt engineering avanzado
 
 > Los agentes generadores (scaffold, codegen, converters) tienen una propiedad inusual: su output es código, no texto. Eso cambia las reglas de prompt engineering — la varianza de output es un bug, no una feature.
@@ -5892,6 +5905,7 @@ type: [web-app|cli|library|game|data|api|other]
 ...
 ```
 
+<!-- §22-ref -->
 ### Few-shot para casos edge
 
 El architect haiku falla en casos edge sin ejemplos: plugins sin CLAUDE.md, solo-dev sin scope, proyectos sin vector memory. Un ejemplo por caso edge elimina la mayoría de alucinaciones de formato:
