@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.13 · Production-validated · 2026-06-30
+**Author:** Félix Sotelo · **Version:** v5.15 · Production-validated · 2026-07-02
 
 ---
 
@@ -44,7 +44,34 @@
 
 ---
 
-## What's New in v5.13
+## What's New in v5.15
+
+> *Full audit of the guide against the live API and a real agent session. Cost ratios were stale (Opus 4.5+ dropped its price: it's now ~1.7× Sonnet per token, not 5×), fast mode is Opus-only, 1M context is standard pricing, and two claims about subagents no longer hold. Plus the templates the guide always assumed but never showed: both lead designs, a full multi-agent project tree, and a copy-ready minimal plugin. A new `tools/audit_guia.py` script now guards the guide's own plumbing (marker placement, quick sizes, KEYWORD_MAP sync, version sync).*
+
+| Area | Change |
+|---|---|
+| **§3 §15 §25 §31** | Real pricing verified (Haiku $1/$5 · Sonnet 5 $3/$15 · Opus 4.8 $5/$25): sonnet = 3× haiku, opus = ~1.7× sonnet — the historical 5×/15× ratios removed |
+| **§25** | `effort` scale corrected to `low\|medium\|high\|xhigh\|max` (no "ultra"/"xlow"); not supported on Haiku. Fast mode: Opus 4.8/4.7 only. 1M context is standard pricing — the ×10 "extended context" table was obsolete |
+| **§10** | Templates for both lead designs (planner / orchestrator), full multi-agent project tree, end-to-end flow with per-agent budgets |
+| **§11** | Copy-ready 5-file minimal plugin, plugin README template, release checklist, `commands/` added to the structure tree |
+| **§12** | `subagent_type` now accepts project agents (verified live); the "built-ins only" list was wrong |
+| **§10 §11 §13** | Subagents without restricted `tools:` DO have the Skill tool (verified live) — claim nuanced |
+| **§13 §26** | New guardrails: quick blocks ≤ hook budget (80), markers never inside code fences, never renumber §N, one-home-per-concept; installed hook is the KEYWORD_MAP source of truth |
+| **§19 §21** | Added to the context hook's KEYWORD_MAP — they were orphaned from injection |
+| **tools/ NEW** | `audit_guia.py` — pre-commit audit that catches all of the above classes of drift |
+
+<details>
+<summary>v5.14 changes</summary>
+
+| Area | Change |
+|---|---|
+| **§5** | Core+reference split pattern for agents that grow |
+| **§22** | Real-world calibration of system-prompt budgets (they're aspirational, not gates) |
+
+</details>
+
+<details>
+<summary>v5.13 changes</summary>
 
 > *New §33 covers Claude Code's native slash commands (`/rewind`, `/clear`, `/compact`, `/fork`, `/branch`, `/goal`, `/batch`, `/loop`...) and — verified against the official docs, not assumed — which ones actually integrate with agents, skills, and hooks (`/fork` and `/branch` as native agent-spawning commands, the `PreCompact`/`SessionStart` hook integration points) versus which ones are CLI-only with no programmatic API (`/rewind`, `/clear`, `/compact`).*
 
@@ -53,6 +80,8 @@
 | **§33 NEW** | Table of commands relevant to builders, with when-to-use for each |
 | **§33 NEW** | What actually integrates with agents/skills/hooks: `/fork`, `/branch`, `PreCompact` hook, `SessionStart` matchers |
 | **§33 NEW** | What's confirmed NOT possible: no hook event for `/rewind`, no SDK-level checkpoint API |
+
+</details>
 
 <details>
 <summary>v5.12 changes</summary>

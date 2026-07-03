@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.14 · agregado patrón split core+reference para agentes (§5) + calibración real de budgets §22 (2026-07-01)
+**Versión:** v5.15 · auditoría integral: pricing/effort/fast-mode verificados contra la API, quicks ≤80 líneas, templates lead+plugin (§10/§11), tools/audit_guia.py (2026-07-02)
 
 ---
 

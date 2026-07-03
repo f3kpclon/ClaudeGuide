@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.13 · Validada en producción · 2026-06-30
+**Versión:** v5.15 · Validada en producción · 2026-07-02
 
 ---
 
@@ -52,7 +52,34 @@
 
 ---
 
-## Novedades en v5.13
+## Novedades en v5.15
+
+> *Auditoría completa de la guía contra la API viva y una sesión real de agentes. Los ratios de costo estaban vencidos (Opus 4.5+ bajó de precio: hoy es ~1.7× Sonnet por token, no 5×), fast mode es solo-Opus, el contexto 1M es pricing estándar, y dos afirmaciones sobre subagentes ya no aplican. Además, los templates que la guía siempre asumió pero nunca mostró: los dos diseños de lead, el árbol completo de proyecto multi-agente y un plugin mínimo copiable. Un nuevo `tools/audit_guia.py` vigila la plomería de la propia guía (markers, tamaño de quicks, sync del KEYWORD_MAP, sync de versión).*
+
+| Área | Cambio |
+|---|---|
+| **§3 §15 §25 §31** | Pricing real verificado (Haiku $1/$5 · Sonnet 5 $3/$15 · Opus 4.8 $5/$25): sonnet = 3× haiku, opus = ~1.7× sonnet — eliminados los 5×/15× históricos |
+| **§25** | Escala de `effort` corregida a `low\|medium\|high\|xhigh\|max` (no existe "ultra"/"xlow"); haiku no lo soporta. Fast mode: solo Opus 4.8/4.7. Contexto 1M a pricing estándar — la tabla ×10 de "extended context" estaba obsoleta |
+| **§10** | Templates de los dos diseños de lead (planner / orchestrator), árbol completo de proyecto multi-agente, flujo end-to-end con budgets por agente |
+| **§11** | Plugin mínimo de 5 archivos copiable, template de README de plugin, checklist de release, `commands/` agregado al árbol |
+| **§12** | `subagent_type` hoy acepta agentes del proyecto (verificado en vivo); la lista de "solo built-ins" era errónea |
+| **§10 §11 §13** | Los subagentes sin `tools:` restringido SÍ tienen la tool Skill (verificado en vivo) — afirmación matizada |
+| **§13 §26** | Guardas nuevas: quicks ≤ budget del hook (80), markers nunca dentro de fences, nunca renumerar §N, una-casa-por-concepto; el hook instalado es la fuente de verdad del KEYWORD_MAP |
+| **§19 §21** | Agregadas al KEYWORD_MAP del hook de contexto — eran huérfanas de inyección |
+| **tools/ NUEVO** | `audit_guia.py` — auditoría pre-commit que atrapa todas las clases de drift anteriores |
+
+<details>
+<summary>Novedades en v5.14</summary>
+
+| Área | Cambio |
+|---|---|
+| **§5** | Patrón split core+reference para agentes que crecen |
+| **§22** | Calibración real de budgets de system prompt (son aspiracionales, no gates) |
+
+</details>
+
+<details>
+<summary>Novedades en v5.13</summary>
 
 > *Nuevo §33 sobre los slash commands nativos de Claude Code (`/rewind`, `/clear`, `/compact`, `/fork`, `/branch`, `/goal`, `/batch`, `/loop`...) y — verificado contra la doc oficial, no supuesto — cuáles se integran de verdad con agentes, skills y hooks (`/fork` y `/branch` como comandos nativos de spawning de agentes, los puntos de integración de los hooks `PreCompact`/`SessionStart`) versus cuáles son CLI-only sin API programática (`/rewind`, `/clear`, `/compact`).*
 
@@ -61,6 +88,8 @@
 | **§33 NUEVO** | Tabla de comandos relevantes para quien construye, con cuándo usar cada uno |
 | **§33 NUEVO** | Qué se integra de verdad con agentes/skills/hooks: `/fork`, `/branch`, hook `PreCompact`, matchers de `SessionStart` |
 | **§33 NUEVO** | Qué está confirmado que NO se puede: no hay evento de hook para `/rewind`, no hay API de checkpoint a nivel SDK |
+
+</details>
 
 <details>
 <summary>Novedades en v5.12</summary>
