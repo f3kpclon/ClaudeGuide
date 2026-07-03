@@ -272,12 +272,13 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 
 ### Antes de Opus — probar `effort` primero
 
-`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar. ~5× más barato que subir a Opus.
+`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar, sin cambiar el precio por token. Subir a Opus multiplica el precio por token ~1.7× (verificado 2026-07-02: Sonnet 5 $3/$15, Opus 4.8 $5/$25).
 
 ```yaml
 # En el agente o en la skill
-effort: xhigh   # opciones: xlow | low | medium | high | xhigh | ultra
+effort: xhigh   # opciones: low | medium | high | xhigh | max — NO existe "ultra" ni "xlow"
 model: claude-sonnet-5
+# Nota: haiku 4.5 NO soporta effort (la API lo rechaza) — effort es palanca de sonnet/opus
 ```
 
 ```json
@@ -299,7 +300,7 @@ La pregunta no es "¿es una tarea difícil?" — es:
 
 > **¿El costo de que Sonnet se equivoque supera el costo de Opus?**
 
-Opus cuesta ~5× más por token que Sonnet. Si un error de Sonnet cuesta 30 minutos de corrección → Opus vale la pena. Si cuesta 5 minutos → no.
+Opus 4.8 cuesta ~1.7× más por token que Sonnet 5 ($5/$25 vs $3/$15 — verificado 2026-07-02; el "~5×" de versiones anteriores era pricing viejo). El threshold para justificar Opus bajó: si un error de Sonnet cuesta más que un ~70% extra de tokens en la tarea → Opus vale la pena. El orden de escalación no cambia — Sonnet + effort primero, porque effort es gratis en precio por token.
 
 **Cuándo Opus tiene justificación real:**
 
@@ -341,34 +342,23 @@ Los model IDs cambian entre versiones. La guía usa IDs explícitos — el defau
 
 **Regla:** siempre pinear `model:` en el frontmatter del agente. Sin `model:`, el CLI usa el default actual (`claude-fable-5`) — que puede cambiar en cualquier update. Pinear = predecibilidad de costo.
 
-### Fast Mode — inferencia rápida
+### Fast Mode — inferencia rápida (solo Opus 4.8/4.7)
 
-Disponible en planes Team/Enterprise. No baja la calidad — optimiza la entrega de tokens para reducir latencia y costo en outputs largos.
+**Verificado 2026-07-02:** fast mode corre el MISMO modelo Opus con hasta ~2.5× más tokens/segundo de output, a pricing premium. Solo existe en Opus 4.8 y 4.7 — no hay fast mode para haiku ni sonnet. En Claude Code se activa con `/fast`; vía API es beta (`speed: "fast"` + header `fast-mode-2026-02-01`).
 
-```json
-{ "fastMode": true }
-```
-
-| Escenario | Activar Fast Mode |
+| Escenario | Fast Mode |
 |---|---|
-| Generador (N archivos en un turno), git, postmortem | ✅ — outputs largos y predecibles |
-| Agente con `effort: xhigh` o `ultra` | ❌ — el beneficio de velocidad compite con el throughput de razonamiento |
-| Reviewer / validator (output corto) | Beneficio marginal — indiferente |
+| Sesión interactiva en Opus donde la latencia molesta | ✅ — mismo modelo, más rápido |
+| Agentes haiku/sonnet (git, postmortem, implementador) | ❌ — no disponible, y no lo necesitan |
+| Trabajo batch/CI sin humano esperando | ❌ — pagás premium por velocidad que nadie ve |
 
-### Extended Context 1M — cuándo vale el costo
+### Contexto largo — ya no hay "extended premium"
 
-Disponible en cloud/Bedrock/Vertex. El costo escala linealmente — no es gratis porque esté disponible.
+**Verificado 2026-07-02:** Opus 4.6+ y Sonnet 5 tienen ventana de 1M tokens **a pricing estándar** — el modelo de "activar extended context a 10×" de versiones anteriores de esta guía quedó obsoleto. Haiku 4.5 mantiene 200K.
 
-| Contexto activo | Costo relativo | Usar cuando |
-|---|---|---|
-| 100k (default) | 1× | Siempre como punto de partida |
-| 200k | ~2× | Codebase con N archivos interdependientes |
-| 500k | ~5× | Análisis one-shot de repositorio completo |
-| 1M | ~10× | Solo si fragmentar costaría más (múltiples sesiones + coordinación) |
+Lo que sigue vigente es la física del costo: el input se cobra por token usado. Una sesión que arrastra 500k tokens de contexto paga esos 500k en cada llamada (menos lo cacheado — §3). La palanca lowcost no es un flag: es fragmentar el problema y no cargar lo que no se usa.
 
-**Cálculo antes de activar:** ¿cuesta más 1 sesión de 900k (~9×) o 3 sesiones de 300k con coordinación manual? Si la coordinación pesa más → extended justificado. Si no → fragmentar.
-
-**Anti-patrón:** activar extended context "por las dudas" cuando el problema cabe en 100k. El costo es proporcional al contexto activo, no al usado.
+**Anti-patrón:** meter el repo completo en contexto "porque la ventana da" — la ventana da, tu tarjeta no. Cargar bajo demanda (§2) sigue siendo la regla.
 
 ### Anti-patrones frecuentes
 
@@ -393,8 +383,8 @@ Disponible en cloud/Bedrock/Vertex. El costo escala linealmente — no es gratis
 □ Agentes Opus tienen tools mínimas (Read/Grep/Glob) — el costo extra debe estar en razonamiento, no en ejecución
 □ effort: xhigh no en settings.json global — solo en agentes/skills que lo necesitan
 □ Siempre pinear model: con alias sin fecha (claude-haiku-4-5 ✅, haiku ❌, claude-haiku-4-5-20251001 ❌) — el default cambia
-□ Fast Mode: activar en generadores/git/postmortem, no en agentes con effort: xhigh o ultra
-□ Extended Context: calcular costo fragmentado vs costo extendido antes de activar
+□ Fast Mode: solo Opus 4.8/4.7 (/fast en Claude Code) — pricing premium, solo con humano esperando
+□ Contexto: 1M es estándar sin premium en Opus 4.6+/Sonnet 5 — pero cada token en contexto se paga; fragmentar sigue siendo la regla
 ```
 
 ---
@@ -605,7 +595,7 @@ La optimización más barata del sistema no es un hook ni un agente más eficien
 name: <nombre-kebab-case>           # cómo se invoca: @nombre · único en el proyecto
 description: "<Qué hace este agente>. Usar cuando <caso principal>,
   <caso secundario>, o el contexto involucra <señal de activación>."
-model: <haiku|sonnet|opus>          # haiku: tarea fija · sonnet: razonamiento variable · opus: decisión one-shot
+model: <claude-haiku-4-5|claude-sonnet-5|claude-opus-4-8>   # pinear siempre — ver §25
 tools: <Read, Glob, Grep>           # solo las necesarias — ver tabla de tools abajo
 ---
 
@@ -635,7 +625,7 @@ Si un comando falla:
 name: security-auditor
 description: "Audit de seguridad. Usar cuando el PR modifica auth, permisos,
   storage o cualquier input de usuario. No usar para linting o code style."
-model: opus                         # one-shot irreversible — ver §25
+model: claude-opus-4-8              # one-shot irreversible — ver §25
 tools: Read, Glob, Grep             # sin Write ni Bash — solo lectura
 ---
 
@@ -747,8 +737,7 @@ Máximo 2 ciclos por problema — nunca más.
 | `postmortem` | Lecciones al final de sesión — captura | haiku |
 | `curador` | Mantenimiento periódico de learnings — dedup, prune, promover a inline | haiku |
 
-**Lead — herramientas: `Read, Glob, Grep` únicamente.** Sin Bash, Write ni Edit.
-No es una recomendación — es una garantía física: sin esas herramientas el lead no puede implementar aunque quiera. Darle Write/Edit es equivalente a escribir "NUNCA implementes" en el prompt: el agente puede ignorarlo. Sin las tools, es imposible.
+**Lead — tools: `Read, Glob, Grep` únicamente** — garantía física, no recomendación (ver "Tools por responsabilidad" arriba).
 
 **Debugger — cuándo incluirlo:**
 ```
@@ -888,7 +877,7 @@ El orchestrador (o el usuario) invoca agentes con un prompt. Ese prompt se suma 
 | Ignora sus propias reglas | Prompt demasiado largo — las reglas del final se diluyen |
 | Tarda igual que el implementador en solo revisar | Está en sonnet cuando debería estar en haiku |
 | Invoca herramientas que no necesita | `tools` heredado por defecto — siempre especificar al mínimo |
-| Reviewer hace 25+ tool uses | Scope demasiado amplio — está explorando arquitectura además de convenciones | Pasar solo archivos directamente modificados (≤4); agregar protocolo "1 Read por archivo" al agente |
+| Reviewer hace 25+ tool uses | Scope demasiado amplio — explora arquitectura además de convenciones. Fix: pasar solo archivos directamente modificados (≤4) + protocolo "1 Read por archivo" |
 
 ### Split de checklist — core + reference (cuando un agente crece)
 
@@ -2400,10 +2389,12 @@ Usar `Path(__file__)` para navegar desde el hook hasta la carpeta de learnings �
 from pathlib import Path
 import json
 
-PLUGIN_ROOT = Path(__file__).parent.parent  # hooks/ → plugin root
+CLAUDE_DIR = Path(__file__).parent.parent   # .claude/hooks/ → .claude/ (proyecto local)
+# En un PLUGIN esto apuntaría al plugin instalado, no al proyecto — usar
+# Path.cwd() / ".claude" como base (ver §11 Trampas)
 LIMIT = 150
 
-for path in PLUGIN_ROOT.glob("learnings/learnings-*.md"):
+for path in CLAUDE_DIR.glob("learnings/learnings-*.md"):
     try:
         lines = len(path.read_text().splitlines())
         if lines > LIMIT:
@@ -2803,7 +2794,7 @@ Sin instrucción de "no leas componentes existentes", el modelo lee 2-4 archivos
 
 > Como un sous-chef que revisa el plato antes de que salga a la mesa: no cocina — solo dice si algo está mal. El chef sigue siendo sonnet; el revisor es haiku. El plato mejora sin cambiar al chef Michelin.
 
-El patrón resuelve el dilema "sonnet comete errores, pero opus es 5× más caro". La solución no es subir de modelo — es agregar un segundo agente barato que revisa el output del primero.
+El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus" (~1.7× por token — §25). La solución no es subir de modelo — es agregar un segundo agente barato que revisa el output del primero.
 
 ### Cuándo aplicar
 
@@ -2811,7 +2802,7 @@ El patrón resuelve el dilema "sonnet comete errores, pero opus es 5× más caro
 |---|---|---|
 | Sonnet genera output que parece correcto pero tiene bugs sutiles | Iterar con sonnet hasta que funcione | haiku detecta y reporta el fallo en un turno |
 | El output de un agente es input del siguiente (pipeline) | Error se propaga silenciosamente | Advisor corta la cadena antes de que escale |
-| Subir a opus parece la única solución | ~5× costo | Sonnet + haiku advisor (~1.15× costo) |
+| Subir a opus parece la única solución | ~1.7× costo por token | Sonnet + haiku advisor (~1.15× costo) |
 
 **No aplicar cuando:** ya existe un agente reviewer explícito en el sistema. Dos revisores para lo mismo = costo duplicado sin beneficio.
 
@@ -2853,12 +2844,12 @@ El advisor no itera — emite veredicto. Si hacés más de 1 retry, el problema 
 
 ### Costo comparado
 
-| Estrategia | Costo relativo | Cuándo |
+| Estrategia | Costo relativo (por token, pricing 2026-07) | Cuándo |
 |---|---|---|
 | Sonnet solo | 1× | Output predecible, stack conocido |
 | Sonnet + haiku advisor | ~1.15× | Output con consecuencias si está mal |
-| Opus solo | ~5× | Solo si sonnet + advisor sigue fallando |
-| Opus + advisor | ~6× | Raramente tiene sentido |
+| Opus solo | ~1.7× | Si sonnet + advisor sigue fallando |
+| Opus + advisor | ~1.85× | Security/one-shot donde el error es irreversible |
 
 ---
 
@@ -2993,7 +2984,7 @@ Archivos que Claude carga automáticamente cuando trabaja en archivos que hacen 
 
 **Cuándo usar rules/ en vez de CLAUDE.md:**
 - Instrucciones de un subsistema que no aplican al resto del repo
-- CLAUDE.md ya pasa las 150 líneas y no todo es siempre relevante
+- CLAUDE.md ya pasa las 30 líneas (§2) y no todo es siempre relevante
 - Distintos devs trabajan en distintos dominios — rules/ los mantiene aislados
 
 **Ejemplo práctico — `rules/api.md`**
@@ -3796,7 +3787,7 @@ Claude Code comprime automáticamente el historial cuando el contexto se acerca 
 □ statusLine visible en la barra inferior con barra de progreso
 □ /handoff escribe snapshot a disco sin mostrarlo en chat
 □ /handoff imprime una línea de confirmación en el chat
-□ Snapshots en {repo}/.claude/handoffs/ (creado automáticamente, ignorado por git)
+□ Snapshots en ~/.claude/handoffs/{repo}/ (lo crea la skill — coincide con el comando de resume del CLAUDE.md global)
 □ latest.md siempre disponible para retomar rápido
 □ Al llegar a 70%: dialog nativo aparece
 □ "Sí" en dialog → próximo mensaje genera snapshot automático
@@ -4701,13 +4692,15 @@ Si el hub tiene `skillOverrides: user-invocable-only`, los ~280 tokens no se gas
 
 ### Impacto del modelo
 
-| Modelo | Costo relativo | Cuándo |
-|---|---|---|
-| haiku | 1× | Tareas fijas: git, postmortem, reviewer de checklist |
-| sonnet | 5× | Implementación, debugging |
-| opus | 15× | Arquitectura con trade-offs complejos |
+Precios oficiales por 1M tokens (input/output, verificados 2026-07-02):
 
-Un reviewer en sonnet cuesta 5× más que en haiku — mismo resultado.
+| Modelo | Precio | Costo relativo | Cuándo |
+|---|---|---|---|
+| haiku 4.5 | $1 / $5 | 1× | Tareas fijas: git, postmortem, reviewer de checklist |
+| sonnet 5 | $3 / $15 | 3× | Implementación, debugging |
+| opus 4.8 | $5 / $25 | 5× | Arquitectura con trade-offs complejos, security |
+
+Un reviewer en sonnet cuesta 3× más que en haiku — mismo resultado. Nota: Opus ya NO es 15× haiku ni 5× sonnet (pricing viejo) — hoy es ~1.7× sonnet, el threshold para justificarlo bajó (→ §25).
 
 ### Prompt Caching — reglas clave
 
@@ -5028,20 +5021,7 @@ Para uso personal: **$0/mes en infraestructura**, céntimos en embeddings.
 
 ### Cuándo usar — MathVoid como ejemplo real
 
-MathVoid (juego Godot 2D) implementó vector memory como POC con estas condiciones:
-
-```
-Estado al implementar:
-  Learnings en markdown: ~50 entries en 4 dominios
-  Problema real:         grep falla con queries informales en español
-  Ejemplo concreto:      query "nodo se borra mal" no encontraba
-                         "queue_free() debe usarse en vez de free()"
-                         → vector search lo encuentra con score 0.78
-```
-
-**El trigger que justificó implementarlo no fue el volumen — fue la calidad del recall.**
-Con grep, el agente solo encontraba el gotcha si usaba las palabras exactas del archivo.
-Con vector search, lo encuentra aunque la query sea informal o en distinto idioma.
+MathVoid (juego Godot 2D, ~50 entries en 4 dominios) lo implementó por calidad de recall, no por volumen — el ejemplo concreto está en "Cuándo hacer el upgrade" arriba.
 
 ```
 Flujo real en MathVoid:
@@ -5423,16 +5403,6 @@ Layer 3 — Storage
 □ Archivos de sesión efímeros ignorados (*.last-session.json)
 □ Negative lookahead en path patterns para no bloquear .env.example
 ```
-
----
-
-### Índice actualizado
-
-| Sección | Tema |
-|---|---|
-| §18 | Seguridad — 3 capas, security_utils.py, checklist |
-
----
 
 ---
 
@@ -6104,9 +6074,9 @@ Por eso los agentes y prompts de artifact-factory están en inglés — el CLAUD
 
 **haiku** — El más barato. 1x costo de referencia. Para tareas con instrucciones fijas: git, commits, checklists, postmortem. Si el agente no necesita razonar sobre contexto variable, usa haiku.
 
-**sonnet** — El intermedio. 5x más caro que haiku. Para implementación, debugging, tareas que requieren razonar sobre contexto variable. La mayoría de los agentes especialistas viven aquí.
+**sonnet** — El intermedio. 3× más caro que haiku ($3/$15 por 1M tokens). Para implementación, debugging, tareas que requieren razonar sobre contexto variable. La mayoría de los agentes especialistas viven aquí.
 
-**opus** — El más poderoso y caro. 15x más caro que haiku. Para arquitectura con trade-offs complejos. Casi nunca necesario — si crees que lo necesitas, primero intenta con sonnet.
+**opus** — El más poderoso. 5× más caro que haiku y ~1.7× más que sonnet ($5/$25 por 1M tokens — Opus 4.5+ bajó de precio; el 15× histórico ya no aplica). Para arquitectura con trade-offs complejos y security. Si crees que lo necesitas, primero intenta con sonnet + effort.
 
 ### Los componentes
 
