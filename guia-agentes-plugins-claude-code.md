@@ -2489,7 +2489,7 @@ Un subagente corre de una pasada hasta terminar. Tres imposibles que aparecen un
 
 1. **No puede pausar** a "esperar confirmación del usuario antes del siguiente paso" — termina y devuelve su output; los checkpoints con el usuario son del hilo principal
 2. **No puede delegar** sin la tool `Agent` en su lista — un lead con `tools: Read, Glob, Grep` que dice "delego a @especialista" produce texto, no invocaciones
-3. **No puede cargar skills** — no tiene la tool `Skill`; las templates se las pasa el hilo principal en el prompt
+3. **Solo puede cargar skills si `Skill` está en su lista de tools** — los subagentes sin `tools:` restringido SÍ la tienen (verificado 2026-07-02); un especialista típico con `tools: Read, Write, Edit, Glob, Grep` NO. Regla lowcost: no contar con ella — pasar la template en el prompt de invocación e inline el patrón esencial como fallback
 
 Dos diseños válidos de lead — elegir uno, no mezclar:
 
@@ -2746,8 +2746,8 @@ Eventos al top level (como en algunos ejemplos viejos) → el archivo se rechaza
 **`user-invocable: false` + `disable-model-invocation: true` = skill inalcanzable.**
 Nadie puede cargarla — ni usuario ni modelo. Las skills de referencia (templates, convenciones) que un flujo del modelo debe cargar necesitan `disable-model-invocation: false` (el costo es solo la description en contexto).
 
-**Los subagentes NO pueden cargar skills.**
-No tienen la tool `Skill` (y con `tools:` restringido, menos). Un agente que dice "Cargar skill X" es una instrucción imposible. Patrón correcto: el hilo principal (la skill de creación) carga la template y o bien escribe los archivos él mismo, o pasa el contenido en el prompt de invocación del agente. El agente lleva su patrón esencial inline como fallback.
+**Los subagentes con `tools:` restringido NO pueden cargar skills.**
+La tool `Skill` existe en subagentes sin restricción de tools (verificado 2026-07-02), pero los agentes de plugin bien diseñados restringen `tools:` al mínimo — y ahí `Skill` no está. Un agente restringido que dice "Cargar skill X" es una instrucción imposible. Patrón correcto: el hilo principal (la skill de creación) carga la template y o bien escribe los archivos él mismo, o pasa el contenido en el prompt de invocación del agente. El agente lleva su patrón esencial inline como fallback.
 
 **Skills ejecutadas vía Skill tool NO pasan por UserPromptSubmit.**
 Un gate de flags que se abre solo cuando el usuario tipea `/plugin:plan` entra en deadlock si otra skill ejecuta el plan como paso interno — el hook nunca ve el prompt. Los slash commands de creación también deben abrir el gate:
@@ -4420,7 +4420,7 @@ El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando o
 | Git en múltiples invocaciones separadas | 22k tokens (medido) vs ~10-12k esperado | Una sola invocación al final: BRANCH+COMMIT+PR+MERGE · VALIDADO: sí |
 | `git add -p` en agente git | Interactivo — el agente entra en loop esperando stdin, infla tool calls | Usar `git add -u` (todos los modificados) + `git status --short` previo |
 | Commit message no pasado en el prompt al agente git | El agente usa 1-2 tool calls extra para inferir qué cambió | Pasar mensaje explícito: `COMMIT: tipo: descripción` — el agente no explora |
-| `subagent_type: "validator"` (nombre de agente del proyecto) | Error "agent type not found" — falla inmediata, no silent | Solo los built-ins funcionan: `architect`, `generator`, `curator`, `claude`, `general-purpose`. Para invocar un agente del proyecto programáticamente: omitir `subagent_type` + cargar sus instrucciones en el prompt: `"Read .claude/agents/validator.md and follow it. TARGET: …"`. El `@agentname` solo funciona cuando el usuario lo escribe directamente en el chat. |
+| `subagent_type` con nombre que no está en la lista de agent types de la sesión | Error "agent type not found" — falla inmediata, no silent | Built-ins reales: `general-purpose`, `Explore`, `Plan`, `claude`. En versiones actuales los agentes de `.claude/agents/` y `~/.claude/agents/` TAMBIÉN aparecen como agent types invocables (verificado 2026-07-02) — la restricción a built-ins era de versiones anteriores. Fallback si el agente no aparece: `subagent_type: claude` + `"Read .claude/agents/X.md and follow it. TARGET: …"` en el prompt. |
 | `\|\| return` en función bash con `set -e` | Script muere silenciosamente sin output cuando el archivo no está en el diff | `grep -qF "$file" \|\| return 0` — `return` sin código propaga el exit code 1 de grep; `set -e` mata el script antes del primer `echo`. Aplica a cualquier función de validación en CI/hooks. |
 | AskUserQuestion option con `"in notes"` | Usuario no sabe dónde escribir — confusión en cada uso real | Referenciar explícitamente: `"Other" field (option 3 below)` en la etiqueta de la opción. Validado en artifact-factory 2026-06-02. |
 | Validator invocado con `subagent_type: claude` sin instrucciones Grep-first | 23 tool uses (medido) vs 10 esperado — el agente lee archivos completos | Pasar las instrucciones Grep-first explícitas + `TYPE: local\|plugin` en el prompt. Nunca leer lo que Grep puede responder. |
@@ -4500,7 +4500,7 @@ Skills
 □ user-invocable: false para background knowledge que no es acción del usuario
 □ Reglas de output de code-writer agents INLINE en el agente (3-6 líneas) — subagentes no pueden leer output-styles/ del plugin; un output-style de plugin aplica a TODA la conversación principal
 □ Reglas universales del dominio: proyecto local → `.claude/rules/` con glob · plugin → skill hub o inline en agentes (`rules/` NO es componente de plugin)
-□ Agentes NUNCA instruidos a "cargar skill X" — no tienen la tool Skill; el hilo principal carga la template y el agente lleva el patrón inline
+□ Agentes con tools: restringido NUNCA instruidos a "cargar skill X" — sin la tool Skill en su lista es imposible; el hilo principal carga la template y el agente lleva el patrón inline
 
 Scope
 □ scope-index.md < 20 líneas
