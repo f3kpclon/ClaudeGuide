@@ -969,27 +969,27 @@ Mantenimiento mensual de learnings. No correr en cada sesión.
     "PreToolUse": [
       {
         "matcher": "Write|Edit",
-        "hooks": [{"type": "command", "command": "python3 .claude/hooks/pre_write.py"}]
+        "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pre_write.py\""}]
       }
     ],
     "PostToolUse": [
       {
         "matcher": "Bash",
-        "hooks": [{"type": "command", "command": "python3 .claude/hooks/post_bash.py"}]
+        "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/post_bash.py\""}]
       }
     ],
     "SubagentStop": [
       {
         "matcher": "nombre-postmortem",
-        "hooks": [{"type": "command", "command": "python3 .claude/hooks/after_postmortem.py"}]
+        "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/after_postmortem.py\""}]
       },
       {
-        "hooks": [{"type": "command", "command": "python3 .claude/hooks/subagent_stop.py"}]
+        "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/subagent_stop.py\""}]
       }
     ],
     "Stop": [
       {
-        "hooks": [{"type": "command", "command": "python3 .claude/hooks/stop.py"}]
+        "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop.py\""}]
       }
     ]
   }
@@ -997,6 +997,8 @@ Mantenimiento mensual de learnings. No correr en cada sesión.
 ```
 
 Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
+
+**`command` SIEMPRE con `$CLAUDE_PROJECT_DIR`** — el hook corre con el cwd actual del shell de la sesión, no con la raíz del proyecto. Un `command: "python3 .claude/hooks/x.py"` relativo funciona hasta que un Bash hace `cd` a otro directorio — desde ahí el hook revienta con "can't open file" y bloquea tool calls legítimas. Verificado en vivo 2026-07-02.
 
 **Plugins**: `hooks/hooks.json` usa el MISMO wrapper `{"hooks": {...}}` — eventos al top level se rechazan en silencio y ningún hook se registra. Scripts con `"${CLAUDE_PLUGIN_ROOT}"` (ver §11 Trampas). El matcher de `SubagentStop` para agentes de plugin puede necesitar el nombre con namespace: `(mi-plugin:)?mi-agente`.
 
@@ -1054,11 +1056,14 @@ La guía usa `"type": "command"` (Python/shell) en todos los ejemplos. Existen 3
     "if": "Bash(npm *)",        // condición adicional — AND con matcher
     "timeout": 30,              // segundos antes de timeout (default: sin límite)
     "statusMessage": "Verificando paquete...",  // spinner visible al usuario
+    "once": false,              // true = corre una vez por sesión y se desregistra
     "async": false,             // true = corre en background, no bloquea
     "asyncRewake": false        // true = background + despierta a Claude si exit 2
   }]
 }
 ```
+
+**`if` y comandos encadenados** — un `if` angosto tipo `Bash(git push *)` NO matchea `git add -u && git commit && git push origin master`: la regla evalúa por prefijo y el comando parte con `git add`. Para guards de seguridad: `if` amplio (`Bash(git *)`) + el script segmenta internamente por `&&`/`||`/`;`. Un `if` angosto en un guard es un bypass, no una optimización.
 
 ### Modos de permiso — cuándo usar cada uno
 
@@ -1098,9 +1103,9 @@ def main():
     inp  = payload.get('tool_input', {})
 
     # ── Extraer campos según el tool ─────────────────────────────────────────
-    # Write/Edit/MultiEdit → file_path + content/new_str
-    path    = inp.get('file_path', '') or inp.get('path', '')
-    content = inp.get('content', '') or inp.get('new_str', '')
+    # Write → file_path + content · Edit → file_path + new_string (new_str NO existe)
+    path    = inp.get('file_path', '')
+    content = inp.get('content', '') or inp.get('new_string', '')
 
     # Bash → command (aislar SIEMPRE el primer comando de la cadena)
     cmd       = inp.get('command', '')
@@ -1324,19 +1329,26 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent  # hooks/ → .claude/ → re
 
 Un path como `cwd="/Users/nombre/Desktop/proyecto"` rompe si el proyecto se mueve o se clona en otra máquina.
 
-### MultiEdit — extracción de contenido
+### Campos de payload por tool — verificar, nunca recordar
 
-`Edit` tiene `tool_input.new_str`. `MultiEdit` tiene `tool_input.edits[].new_str` — estructura diferente:
+Los nombres reales de los campos (verificados 2026-07-02 — versiones anteriores de esta guía tenían `path`/`new_str`, que NO existen):
+
+| Tool | Campos de `tool_input` |
+|---|---|
+| `Write` | `file_path`, `content` |
+| `Edit` | `file_path`, `old_string`, `new_string` |
+| `MultiEdit` (legacy) | `file_path`, `edits[].old_string`, `edits[].new_string` |
+| `Bash` | `command` |
 
 ```python
-if tool == 'MultiEdit':
-    edits = inp.get('edits', [])
-    content = '\n'.join(e.get('new_str', '') for e in edits if isinstance(e, dict))
-else:
-    content = inp.get('new_str', '') or ''
+if tool == 'Edit':
+    path, content = inp.get('file_path', ''), inp.get('new_string', '') or ''
+elif tool == 'MultiEdit':
+    path = inp.get('file_path', '')
+    content = '\n'.join(e.get('new_string', '') for e in inp.get('edits', []) if isinstance(e, dict))
 ```
 
-Si el hook usa `inp.get('new_str', '')` directamente, `MultiEdit` siempre retorna vacío → toda validación de contenido se bypasea sin error.
+Un campo equivocado no da error: `inp.get('path', '')` retorna `''`, el filtro de extensión no matchea, `sys.exit(0)` — **el hook queda muerto y se ve idéntico a uno sano**. Caso real MathVoid: el gate de convenciones GDScript estuvo semanas validando solo Write porque leía `path`/`new_str` en Edit — con tests verdes, porque los tests alimentaban el mismo shape inventado. Regla: los campos del payload se copian de la doc oficial de hooks o de un payload real capturado, nunca de memoria.
 
 ### Testing de hooks localmente
 
@@ -1347,8 +1359,8 @@ Antes de registrar un hook, testearlo manualmente para no esperar a que el agent
 echo '{"tool_name": "Bash", "tool_input": {"command": "git push origin master"}}' \
   | python3 .claude/hooks/pre_push_guard.py
 
-# SubagentStop — simular fin de agente
-echo '{"subagent_type": "implementador"}' \
+# SubagentStop — simular fin de agente (el campo real es agent_type, NO subagent_type)
+echo '{"agent_type": "implementador"}' \
   | python3 .claude/hooks/subagent_stop_reviewer.py
 
 # Verificar formato JSON del output
@@ -1384,9 +1396,20 @@ Un hook que falla sin error visible es difícil de debuggear. Checklist en orden
   Si retorna exit code != 0 → hay un error que no se ve en producción.
 
 □ ¿El `if` condition del settings.json usa el glob correcto?
-  "if": "Bash(git push *)"  ← glob sobre el comando completo
-  Si el comando tiene flags antes del subcomando, el glob puede no matchear.
+  "if": "Bash(git push *)" no matchea "git add && git push" (evalúa por prefijo).
+  Guards: `if` amplio + segmentar dentro del script.
+
+□ ¿Los campos del payload existen de verdad?
+  Edit → file_path/new_string (no path/new_str) · SubagentStop → agent_type (no subagent_type).
+  Un .get() de campo inexistente = '' = exit 0 = hook muerto que se ve sano.
+  Copiar de la doc oficial o capturar un payload real — nunca de memoria.
+
+□ ¿El `command` usa ruta relativa?
+  "python3 .claude/hooks/x.py" rompe cuando el shell hace cd.
+  Siempre: python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/x.py"
 ```
+
+**Los guards PreToolUse solo ven las tools de Claude.** Un subproceso lanzado por OTRO hook (ej. un Stop hook que hace `git push` vía subprocess) no pasa por ningún guard — si un hook necesita la excepción, validarla dentro del propio hook (ej. push a master permitido solo si el commit toca exclusivamente `.claude/`).
 
 ### updatedInput — reescribir en vez de bloquear
 
@@ -1626,8 +1649,8 @@ SAFE_PATHS = ('.env.example', '.env.template', 'README', '.md', 'docs/')
 
 def extract_content(tool: str, inp: dict) -> str:
     if tool == 'MultiEdit':
-        return '\n'.join(e.get('new_str', '') for e in inp.get('edits', []) if isinstance(e, dict))
-    return inp.get('content', '') or inp.get('new_str', '')
+        return '\n'.join(e.get('new_string', '') for e in inp.get('edits', []) if isinstance(e, dict))
+    return inp.get('content', '') or inp.get('new_string', '')
 
 def main():
     try:
@@ -1640,7 +1663,7 @@ def main():
         sys.exit(0)
 
     inp     = data.get('tool_input', {})
-    path    = inp.get('file_path', '') or inp.get('path', '')
+    path    = inp.get('file_path', '')
     content = extract_content(tool, inp)
 
     if not content or any(s in path for s in SAFE_PATHS):
@@ -4376,7 +4399,7 @@ El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando o
 | Postmortem escribe en el hub | Costo fijo que crece con cada sesión — se paga en TODA tarea | Escribir en `learnings/learnings-[dominio].md` — nunca en el hub |
 | Tablas markdown en agente haiku | Una tabla de 7 filas ocupa ~9 líneas — empuja sobre el límite de 60 | Formato inline: `` `feat` nuevo · `fix` bug · `refactor` sin cambio API `` |
 | Matcher `str_replace` en hooks.json | El hook NUNCA dispara — falla en silencio | Usar `MultiEdit`. Tool names válidos: `Bash`, `Write`, `Edit`, `MultiEdit`, `Read` |
-| `new_str` en MultiEdit siempre vacío | Validación bypaseada sin error ni aviso | Extraer de `edits[].new_str`, no de `tool_input.new_str` |
+| Campo de payload inventado (`path`, `new_str`, `subagent_type`) | `.get()` retorna `''` → exit 0 → hook muerto que se ve sano, tests verdes si comparten el shape | Campos reales: Edit → `file_path`/`new_string` · MultiEdit → `edits[].new_string` · SubagentStop → `agent_type`. Copiar de la doc oficial, nunca de memoria (§7) |
 | PreToolUse con exit 2 | Bloquea pero sin razón visible para el usuario | Retornar JSON `permissionDecision: deny` + exit 0 — el campo acepta `deny\|allow\|ask\|defer` |
 | SubagentStop con `echo` crudo | Texto sin formato contamina el contexto como stdout | `{"systemMessage": "..."}` |
 | PostToolUse con `print()` crudo | Mismo problema — texto contamina stdout | `{"systemMessage": "..."}` |
@@ -4501,7 +4524,10 @@ Hooks
 □ Acciones irreversibles tienen hook guard — no solo regla en el prompt del agente
 □ Agente git tiene pre_push_guard bloqueando push directo a master
 □ Sin paths absolutos — usar Path(__file__).parent.parent.parent
-□ MultiEdit extrae edits[].new_str, no tool_input.new_str
+□ command en settings.json con "$CLAUDE_PROJECT_DIR" — ruta relativa rompe tras cd
+□ Campos de payload reales: Edit → file_path/new_string · MultiEdit → edits[].new_string
+□ Tests de hooks con payloads del shape real del tool — no del shape que asume el hook
+□ if de guards amplio (Bash(git *)) — un if angosto no matchea comandos encadenados
 □ Matcher en hooks.json usa nombres exactos: Write, Edit, MultiEdit, Bash, Read — nunca str_replace
 □ PostToolUse usa systemMessage JSON — igual que SubagentStop, nunca print() crudo
 □ Hub description coherente con skillOverrides (no decir "Auto-load" si es user-invocable-only)
@@ -5182,8 +5208,8 @@ from security_utils import contains_secrets, is_blocked_path
 
 def extract_content(tool, inp):
     if tool == "MultiEdit":
-        return "\n".join(e.get("new_str", "") for e in inp.get("edits", []) if isinstance(e, dict))
-    return inp.get("content", "") or inp.get("new_str", "")
+        return "\n".join(e.get("new_string", "") for e in inp.get("edits", []) if isinstance(e, dict))
+    return inp.get("content", "") or inp.get("new_string", "")
 
 def main():
     try:
@@ -5193,7 +5219,7 @@ def main():
 
     tool      = payload.get("tool_name", "")
     inp       = payload.get("tool_input", {})
-    file_path = inp.get("file_path", "") or inp.get("path", "")
+    file_path = inp.get("file_path", "")
     content   = extract_content(tool, inp)
     violations = []
 
@@ -5355,7 +5381,7 @@ Layer 1 — Input
 Layer 2 — Generation
 □ pre_write_guard.py registrado en settings.json (Write|Edit|MultiEdit)
 □ Bloquea: path traversal, system dirs, .env real, secrets en contenido
-□ MultiEdit extrae edits[].new_str — no tool_input.new_str
+□ MultiEdit extrae edits[].new_string — no tool_input.new_str (que no existe)
 □ Archivos internos del sistema siempre permitidos (is_internal check)
 
 Layer 2b — Context files (si el sistema acepta uploads del usuario)
@@ -5403,8 +5429,8 @@ Layer 3 — Storage
 
 | Componente | Fallo silencioso | Test necesario |
 |---|---|---|
-| pre_write_guard.py | No — bloquea visible | Solo si se agrega lógica nueva |
-| pre_read_guard.py | No — bloquea visible | Solo si se agrega lógica nueva |
+| pre_write_guard.py | Sí — campo de payload equivocado = nunca dispara (se ve sano) | Sí, con payloads reales del tool |
+| pre_read_guard.py | Sí — mismo modo de fallo | Sí, con payloads reales del tool |
 | security_utils.py | Sí — función mal implementada pasa datos sucios | Sí |
 | vector_memory.py | Sí — dato no sanitizado llega a Atlas | Sí |
 | architect / generator | No — output visible en BUILD_SPEC | Validator como test implícito |
@@ -5441,6 +5467,8 @@ def test_allows_clean_write():
     r = run_hook({"tool_name": "Write", "tool_input": {"file_path": "src/main.py", "content": "print(\'hello\')"}})
     assert r is None  # no block
 ```
+
+**El payload del test debe ser el shape REAL del tool — no el que asume el hook.** Un test que construye `{"tool_input": {"path": ..., "new_str": ...}}` porque el hook lee esos campos valida el bug, no el hook: pasa verde con el hook muerto en producción (Edit real manda `file_path`/`new_string`). Caso MathVoid 2026-07-02: dos hooks muertos por semanas, suites verdes, porque tests y hook compartían el mismo shape inventado. Los payloads de test se copian de la doc oficial de hooks — es el mismo principio del juez real: el test que valida contra el contrato de producción > el test que valida contra la implementación.
 
 **Aislar HOME y CLAUDE_PROJECT_DIR** — hooks con estado (flags en `~/.claude/`, paths por proyecto) contaminan la máquina real y se contaminan entre tests si no se aísla el entorno:
 
