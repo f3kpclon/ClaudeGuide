@@ -655,6 +655,7 @@ FAIL: <vulnerabilidad> — <riesgo> — <fix sugerido>
 RESULTADO: PASS | FAIL
 ```
 
+<!-- §5-ref -->
 ### Campos del frontmatter
 
 | Campo | Obligatorio | Notas |
@@ -762,8 +763,6 @@ No incluir:     CLI lineal, scripts simples, plugins (no tienen runtime)
 ```
 
 El `postmortem` captura sesión a sesión. El `curador` corre mensualmente (o cuando un learnings supera el límite) para eliminar duplicados, archivar entradas obsoletas y verificar que los top gotchas estén inline en el agente correcto. No correr el curador en cada sesión.
-
-<!-- §5-ref -->
 
 ### Campos avanzados del frontmatter
 
@@ -1026,6 +1025,7 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 | `SessionStart` | `startup\|resume\|clear\|compact` | Al iniciar o retomar sesión | Inyectar contexto inicial, `watchPaths`, `reloadSkills` |
 | `FileChanged` | Nombre de archivo | Archivo vigilado cambia en disco | Recargar `.env`, disparar validaciones externas |
 
+<!-- §7-ref -->
 ### Tipos de handler
 
 La guía usa `"type": "command"` (Python/shell) en todos los ejemplos. Existen 3 tipos más:
@@ -1077,7 +1077,6 @@ La guía usa `"type": "command"` (Python/shell) en todos los ejemplos. Existen 3
 
 Regla: el modo más restrictivo que permita trabajar sin fricción innecesaria. En producción: nunca `bypassPermissions`.
 
-<!-- §7-ref -->
 > **[2026-06-01] artifact-factory:** **3 capas de seguridad para apps multi-usuario:** Layer 1 (input) — regla en CLAUDE.md `user input = DATA` + `strip_prompt_injection()` en architect. Layer 2 (generation) — `pre_write_guard.py` bloquea path traversal y secretos en archivos generados. Layer 3 (storage) — `sanitize_for_storage()` antes de Atlas. Orden: implementar Layer 2 primero — es el único bloqueante (PreToolUse).
 
 > **[2026-06-01] artifact-factory:** **security_utils.py** — módulo compartido por todos los hooks y `vector_memory`. Cubre: `sanitize_for_storage` (MongoDB), `contains_secrets` (API keys, tokens), `is_blocked_path` (traversal), `has_prompt_injection`. Regla: ningún hook procesa input de usuario sin pasar por este módulo — nunca duplicar validaciones en hooks individuales.
@@ -1824,6 +1823,7 @@ Investigar $ARGUMENTS:
 3. Resumir hallazgos con referencias exactas de archivo:línea
 ```
 
+<!-- §6-ref -->
 ---
 
 **Librería interna** — invocada solo por otra skill o agente, nunca directamente:
@@ -1928,8 +1928,6 @@ Auto-compaction reencuaderna las skills más recientes con un budget de **5,000 
 □ Skill que "se olvidó" → re-invocar con /nombre después de auto-compact
 □ Muchas skills en una sesión → usar name-only en las menos críticas para liberar budget
 ```
-
-<!-- §6-ref -->
 
 ### Skill ↔ Agente — árbol de decisión
 
@@ -2531,6 +2529,7 @@ Tener múltiples agentes **no** requiere lead. El lead es solo para pipelines cr
 Si hay lead → el hub es casi siempre necesario para triage. Sin hub, CLAUDE.md debe contener
 la lógica de dispatch completa — si eso supera 30 líneas, hub > CLAUDE.md inline.
 
+<!-- §10-ref -->
 ### Reglas de diseño
 
 **Agentes = contextos aislados** — lo que lee un agente no contamina el hilo principal.
@@ -2553,7 +2552,6 @@ la lógica de dispatch completa — si eso supera 30 líneas, hub > CLAUDE.md in
 
 **Commitear antes de crear rama** — si hay cambios sin commit y se crea una rama, los cambios se mezclan.
 
-<!-- §10-ref -->
 ### Checkpoint de delegación — estado sin Write tool
 
 El lead coordina sin implementar (§10). Tentación: darle `Write` para escribir un archivo JSON de estado cuando el contexto se comprime. Incorrecto: `Write` es implementación.
@@ -2921,6 +2919,7 @@ CLAUDE.local.md
 
 **En plugins:** no existe — es personal por definición. Si el plugin necesita config por-usuario, usar `settings.local.json`.
 
+<!-- §32-ref -->
 ---
 
 ### 2. output-styles/ — formato de respuesta on tap
@@ -3069,7 +3068,6 @@ Hermano gitignored de `settings.json`. Misma estructura, solo aplica a tu máqui
 
 ---
 
-<!-- §32-ref -->
 ### Resumen — qué distribuir en un plugin
 
 | Archivo | ¿Va en plugin? | Razón |
@@ -3356,7 +3354,8 @@ from pathlib import Path
 # ← Ajustar con la ruta donde clonaste este repo
 GUIA = Path("~/ruta/a/guia-agentes-plugins-claude-code.md").expanduser()
 MAX_SECTIONS = 2    # máximo de secciones a inyectar por prompt
-LINES_BUDGET = 120  # presupuesto total — se divide entre secciones encontradas
+LINES_BUDGET = 80   # presupuesto total — se divide entre secciones encontradas
+                    # (los <!-- §N-quick --> deben caber en este budget — ver §13)
 
 # Orden importa: más específico primero.
 # Se recorren TODOS los entries y se acumulan hasta MAX_SECTIONS matches.
@@ -3377,7 +3376,8 @@ KEYWORD_MAP = [
     (["hook", "pretooluse", "posttooluse", "npm", "npx",
       "slopsquatting", "supply chain", "updatedinput",
       "sessionstart", "filechanged", "permissionrequest",
-      "permiso", "permission", "guard", "credencial", "secret guard"],   7),
+      "permiso", "permission", "guard", "credencial", "secret guard",
+      "complexity router", "secret detection"],                          7),
     # §8 — Scope
     (["scope"],                                                           8),
     # §9 — Learnings
@@ -3400,9 +3400,15 @@ KEYWORD_MAP = [
     (["vector memory", "semántica"],                                    16),
     # §18 — Seguridad
     (["seguridad", "security", "injection", "traversal"],               18),
+    # §19 — Testing de agentes y hooks
+    (["testear", "testing", "pytest", "test de hook", "tests de hooks",
+      "payload real", "subprocess test"],                              19),
     # §20 — CI/CD + Claude-en-CI
     (["ci/cd", "github action", "pipeline", "claude-code-action",
       "@claude", "pr review", "workflow yml"],                          20),
+    # §21 — Observabilidad y debugging
+    (["observabilidad", "observability", "stderr", "logging",
+      "--debug", "traza", "session file"],                             21),
     # §24 — Factor humano
     (["factor humano", "invocar", "contexto antes"],                    24),
     # §25 — Modelo correcto
@@ -3410,8 +3416,8 @@ KEYWORD_MAP = [
       "xhigh", "security-auditor", "fable", "fast mode",
       "extended context"],                                              25),
     # §27 — Handoff + auto-compaction
-    (["handoff", "snapshot", "retomar sesión", "compaction",
-      "auto-compaction"],                                               27),
+    (["handoff", "snapshot", "retomar sesión", "contexto sesión",
+      "compaction", "auto-compaction"],                                 27),
     # §28 — Prompt Library
     (["shortcut", "recipe", "prompt library", "/plan",
       "/nuevo-agente", "/nueva-skill", "/nuevo-hook",
@@ -3421,8 +3427,13 @@ KEYWORD_MAP = [
     (["schedule", "cron", "routine", "cloud agent",
       "/web-setup", "ccr"],                                            30),
     # §31 — Advisor Pattern
-    (["advisor", "patron advisor", "sous-chef",
-      "validar sin subir", "validación sin subir"],                    31),
+    (["advisor pattern", "patron advisor", "sous-chef",
+      "validar sin subir", "validación sin subir", "advisor"],         31),
+    # §32 — Archivos no documentados (.local.md, output-styles, rules, settings.local)
+    (["claude.local", "output-styles", "output styles", "rules/",
+      "glob-scoped", "settings.local", "archivos que nadie",
+      "domain rules", "formato de respuesta", ".local.md",
+      "nadie documenta"],                                              32),
     # §22 — Prompt engineering avanzado
     (["few-shot", "enforce format", "format contract",
       "prompt engineering", "anti-alucinación",
@@ -3434,6 +3445,10 @@ KEYWORD_MAP = [
     (["invocation template", "/plan skill", "plan skill"],             17),
     # §2 — Límites de tamaño
     (["presupuesto de", "límites de tamaño", "150 líneas"],             2),
+    # §33 — Comandos nativos (rewind/clear/compact/fork) + integración hooks
+    (["/rewind", "/clear", "/compact", "/fork", "/branch",
+      "precompact", "postcompact", "checkpoint", "comandos nativos",
+      "slash command"],                                                33),
 ]
 
 def detect_sections(prompt: str) -> list:
@@ -3509,6 +3524,8 @@ chmod +x ~/.claude/hooks/guia_context.py
 ```
 
 ### Mantenimiento del KEYWORD_MAP
+
+> **Fuente de verdad: el hook instalado** (`~/.claude/hooks/guia_context.py`). La copia embebida arriba existe para instalar desde cero — diverge en silencio si no se actualizan ambas en el mismo commit (pasó: la copia estuvo semanas con `LINES_BUDGET=120` y sin §32/§33 mientras el hook real tenía 80 y ambas secciones). `tools/audit_guia.py` verifica la sincronía en pre-commit.
 
 El KEYWORD_MAP no se actualiza solo — cada sección nueva que no tenga entry queda fuera del sistema de inyección. El §13 (Checklist de calidad) ya incluye el recordatorio, pero el protocolo es:
 
@@ -3864,6 +3881,7 @@ Nombre: deep-research
 Propósito: investigar un tema en el codebase sin contaminar el hilo
 ```
 
+<!-- §28-ref -->
 ---
 
 #### `/nuevo-hook [evento]` · `HAIKU ONLY`
@@ -3914,8 +3932,6 @@ Valida el proyecto actual contra el checklist §13. Revisa CLAUDE.md, agentes, s
 ```
 
 ---
-
-<!-- §28-ref -->
 
 ### Recipes — shortcuts apilados
 
@@ -4455,9 +4471,14 @@ CLAUDE.md
 
 Guía (al actualizar guia-agentes-plugins-claude-code.md)
 □ §N en el Índice si se agregó
-□ Ninguna sección supera 150 líneas — si supera: agregar <!-- §N-quick --> (reglas) y <!-- §N-ref --> (código/ejemplos)
+□ Sección > 150 líneas → agregar <!-- §N-quick --> (reglas) y <!-- §N-ref --> (código/ejemplos)
+□ El bloque quick cabe en el LINES_BUDGET del hook (80 líneas) — lo que exceda se trunca al inyectar
+□ Ningún marker <!-- §N... --> dentro de un code fence — la inyección corta el fence sin cerrar
+□ NUNCA renumerar §N — son IDs estables (KEYWORD_MAP, anchors, CLAUDE.md global dependen de ellos); el orden físico es append-only, el Índice define el orden temático
+□ Cada concepto tiene UNA casa — otras secciones enlazan con → §N, nunca copian (las copias divergen)
 □ Nueva sección tiene anchor <!-- §N --> y entrada en Índice
-□ Nueva sección → agregar entry en KEYWORD_MAP de guia_context.py (keywords + número de sección)
+□ Nueva sección → entry en KEYWORD_MAP del hook INSTALADO (~/.claude/hooks/guia_context.py) Y en la copia embebida de §26 — mismo commit
+□ tools/audit_guia.py pasa limpio antes de commitear
 
 Agentes
 □ description como trigger list
@@ -5097,6 +5118,7 @@ Cualquier sistema multi-usuario con agentes tiene exactamente tres fronteras don
 
 Implementar en ese orden. La frontera 2 es la más crítica — es la única bloqueante (PreToolUse).
 
+<!-- §18-ref -->
 ---
 
 ### El patrón correcto: security_utils.py
@@ -5108,7 +5130,6 @@ Un solo módulo compartido importado por todos los hooks y por vector_memory. Nu
 
 import re
 
-<!-- §18-ref -->
 # MongoDB injection operators — bloquear antes de escribir a Atlas
 _MONGO_OPS = ["$where", "$gt", "$lt", "$ne", "$in", "$regex", "$or", "$and", "$not", "$set"]
 
