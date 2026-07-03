@@ -2625,6 +2625,111 @@ model: haiku
 
 Activar solo cuando se necesite — no en cada tarea. En proyectos personales con un solo dev, el dispatch directo desde CLAUDE.md es suficiente. El pre-layer agrega valor cuando el input al sistema es ruidoso.
 
+### Templates — los dos diseños de lead
+
+La sección "Física del subagente" define los dos diseños válidos. Estos son sus templates — elegir UNO por proyecto, nunca mezclar.
+
+**Diseño A — `lead-planner.md`** (Advisor §31 — checkpoints con el usuario entre pasos):
+
+```markdown
+---
+name: lead-planner
+description: "Planifica la delegación de tareas cross-especialistas. Usar cuando
+  una tarea toca ≥2 sistemas o requiere ≥2 especialistas en secuencia.
+  NO implementa ni delega — devuelve el plan y el hilo principal lo ejecuta."
+model: claude-sonnet-5
+tools: Read, Glob, Grep
+---
+
+# Lead Planner
+
+Planifica de una pasada. No implementa ni invoca agentes — no tiene la tool Agent.
+
+## Qué hacer
+1. Leer `.claude/scope/scope-index.md` + el scope del sistema afectado
+2. Descomponer la tarea en pasos atómicos, uno por especialista
+3. Devolver el plan en el formato exacto — el hilo principal invoca cada paso
+
+## Output — siempre este formato, nada más
+PLAN: [tarea]
+1. @[especialista] — TASK: [una línea] · FILES: [rutas] · DEPENDE DE: [paso N o "—"]
+2. ...
+Riesgo: [1 línea o "ninguno"]
+Checkpoint: [0/N completado] · Pendiente: [todos los pasos]
+```
+
+**Diseño B — `lead-orchestrator.md`** (spawnea él mismo — corre completo sin parar):
+
+```markdown
+---
+name: lead-orchestrator
+description: "Ejecuta pipelines cross-especialistas de una pasada, sin checkpoints
+  con el usuario. Usar SOLO cuando la secuencia está pre-aprobada
+  (/plan corrió y el usuario dio el ok)."
+model: claude-sonnet-5
+tools: Read, Glob, Grep, Agent(implementador, reviewer)
+---
+
+# Lead Orchestrator
+
+Corre completo sin parar — los checkpoints con el usuario son del hilo principal.
+
+## Protocolo
+1. Leer el scope del sistema afectado — NO leer código de implementación
+2. Invocar especialistas en secuencia con formato mínimo: TASK · FILES · CONTEXT
+3. Tras cada uno: verificación estática (leer archivos generados, razonar conexiones)
+4. Si un especialista falla 2 veces → parar y reportar — NUNCA implementar directamente
+
+## Output
+Checkpoint: [N/M completado] · Pendiente: [X] · Bloqueadores: [ninguno|detalle]
+```
+
+### Árbol de referencia — proyecto multi-agente completo
+
+Lo mínimo que las secciones §2-§9 asumen, en un solo lugar:
+
+```
+proyecto/
+├── CLAUDE.md                     # < 30 líneas — dispatch + reglas duras (§2)
+└── .claude/
+    ├── agents/
+    │   ├── lead.md               # planner O orchestrator — uno, no ambos
+    │   ├── implementador.md      # sonnet · Read, Write, Edit, Glob, Grep
+    │   ├── reviewer.md           # haiku · Read, Glob, Grep
+    │   ├── debugger.md           # sonnet — solo si el dominio lo amerita (§5)
+    │   ├── git.md                # haiku · Bash, Read
+    │   ├── postmortem.md         # haiku — always-YES (§14)
+    │   └── curador.md            # haiku — mensual (§5)
+    ├── skills/
+    │   └── plan/SKILL.md         # /plan (§17) — always-YES (§14)
+    ├── scope/
+    │   ├── scope-index.md        # < 20 líneas (§8)
+    │   └── scope-<sistema>.md    # < 50 líneas c/u
+    ├── learnings/
+    │   └── learnings-general.md  # bootstrap con lecciones del stack día 1 (§9)
+    ├── hooks/
+    │   ├── pre_write_guard.py    # always-YES (§14/§18)
+    │   ├── pre_push_guard.py     # bloquea push directo a master (§7)
+    │   └── stop.py               # aviso learnings > 150 líneas (§9)
+    └── settings.json             # registra los hooks (§7)
+```
+
+### Flujo end-to-end con budgets — feature mediana (2 sistemas)
+
+```
+usuario: "añade rate limiting al login"
+  → /plan                 haiku    ~600t          usuario aprueba
+  → @lead-planner         sonnet   ~10-18k (aislado) → plan de 2 pasos
+  → @implementador A      sonnet   ~8-14k  (aislado)
+  → @implementador B      sonnet   ~8-14k  (aislado)
+  → @reviewer             haiku    ~4-8k   (aislado — solo archivos modificados, ≤4)
+  → @git  BRANCH+COMMIT+PR · VALIDADO: sí   haiku   ~6-7k
+  → @postmortem           haiku    ~5-10k
+
+Contexto principal acumulado: ~1.4k extra (§3) — el resto es Capa 3 aislada.
+Los números por arquetipo están en §3; los techos en §23.
+```
+
 ---
 
 <!-- §11 -->
@@ -2647,6 +2752,7 @@ mi-repo/
 │       │   └── plugin.json   ← REQUERIDO
 │       ├── agents/
 │       ├── skills/
+│       ├── commands/         ← slash commands (está en la whitelist — §27 lo usa)
 │       ├── hooks/
 │       │   └── hooks.json    ← REQUERIDO si usas hooks — wrapper {"hooks":{...}} + ${CLAUDE_PLUGIN_ROOT}
 │       └── README.md         ← REQUERIDO para distribución
@@ -2723,6 +2829,110 @@ claude plugin add github:usuario/mi-repo
 claude --plugin-dir ./plugins/mi-plugin   # cargar sin instalar
 /reload-plugins                           # recargar cambios
 /hooks                                    # verificar hooks registrados
+```
+
+### Plugin mínimo completo — 5 archivos coherentes
+
+Los templates sueltos de arriba no muestran cómo encajan. Este es un plugin funcional entero (nombres consistentes entre sí) — copiar, renombrar, `claude plugin validate`:
+
+````
+plugins/revisor/
+├── .claude-plugin/plugin.json
+├── agents/revisor.md
+├── skills/revisor-hub/SKILL.md
+├── hooks/hooks.json
+└── README.md
+````
+
+```json
+// .claude-plugin/plugin.json
+{
+  "name": "revisor",
+  "version": "1.0.0",
+  "description": "Reviewer de convenciones con hook de confirmación.",
+  "author": {"name": "Tu Nombre"}
+}
+```
+
+```markdown
+<!-- agents/revisor.md -->
+---
+name: revisor
+description: "Convention checker. Use when reviewing, checking or validating
+  any file, after implementing a component, or before committing."
+model: claude-haiku-4-5
+tools: Read, Glob, Grep
+---
+Revisa SOLO los archivos recibidos (≤4, 1 Read por archivo).
+## Output — siempre este formato, nada más
+PASS|FAIL: [archivo] — [razón en ≤8 palabras]
+RESULTADO: PASS | FAIL
+```
+
+```markdown
+<!-- skills/revisor-hub/SKILL.md -->
+---
+name: revisor-hub
+description: "Dispatch del plugin revisor. Revisión de código → @revisor."
+disable-model-invocation: false
+allowed-tools: Read
+---
+| Tarea | Agente | Cuándo |
+|---|---|---|
+| Revisar convenciones | @revisor | post-implementación, pre-commit |
+```
+
+```json
+// hooks/hooks.json — wrapper {"hooks":{...}} SIEMPRE (ver Trampas)
+{
+  "hooks": {
+    "SubagentStop": [
+      {
+        "matcher": "(revisor:)?revisor",
+        "hooks": [{"type": "command",
+          "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/notify.py"}]
+      }
+    ]
+  }
+}
+```
+
+### Template — README.md del plugin
+
+Es REQUERIDO para distribución y ningún template lo mostraba:
+
+```markdown
+# <nombre-plugin>
+
+<Una línea: qué hace y para quién.>
+
+## Instalación
+`claude plugin add github:<usuario>/<repo>` — o desktop: Browse plugins → Add marketplace → `<usuario>/<repo>`
+
+## Componentes
+| Componente | Qué hace | Modelo |
+|---|---|---|
+| @<agente> | <una línea> | haiku |
+| /<skill> | <una línea> | — |
+| hook <evento> | <qué garantiza> | — |
+
+## Uso mínimo
+<2-3 líneas: el flujo típico de invocación.>
+
+## Requisitos
+<Python 3.x / toolchain — solo si los hooks lo necesitan.>
+```
+
+### Checklist de release
+
+```
+□ claude plugin validate ./plugins/<plugin> pasa limpio
+□ Tests de hooks pasan (subprocess con payloads reales — §19)
+□ Bump semver en plugin.json (fix → patch · componente nuevo → minor · breaking → major)
+□ marketplace.json actualizado si cambió nombre/description
+□ README.md refleja los componentes actuales
+□ Tag git: <plugin>-vX.Y.Z — el consumidor puede pinear
+□ Probar instalación limpia: claude --plugin-dir en un repo vacío
 ```
 
 ### Trampas de distribución
