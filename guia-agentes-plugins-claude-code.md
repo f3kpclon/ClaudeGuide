@@ -262,9 +262,11 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 
 | Tarea | Modelo | Razón |
 |---|---|---|
-| Checklist / validator / reviewer | **haiku** | Input fijo, output binario — no necesita razonamiento |
+| Reviewer de convenciones (checklist fijo: naming, estructura, imports) | **haiku** | Comparación contra lista fija — no necesita razonar sobre semántica |
+| Reviewer de correctness (bugs lógicos, seguridad, edge cases, concurrencia) | **sonnet** (mínimo) | Requiere razonar qué hace el código, no solo si sigue un formato |
 | Postmortem / curador / git | **haiku** | Tarea estructurada, output predecible |
-| plan skill | **haiku** | Solo lectura + formato fijo |
+| Plan mecánico (archivos conocidos, tarea acotada, 1 sistema) | **haiku** | Confirmar rutas + estimar tokens — lookup, no juicio |
+| Plan arquitectónico (trade-offs, ambigüedad, multi-sistema o sistema nuevo) | **sonnet** | Evaluar approach y riesgo requiere razonamiento, no solo Glob |
 | Implementador (≤3 archivos, stack conocido) | **sonnet** | Necesita razonamiento, no creatividad extrema |
 | Lead / orchestrador | **sonnet** | Coordina, no implementa |
 | Debugger (multi-capa, async, runtime) | **sonnet** | Diagnosis requiere razonamiento medio |
@@ -273,6 +275,10 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 | Contexto > 10k tokens activos | **opus** | Sonnet pierde coherencia en contextos muy largos |
 
 **Regla de oro:** ¿Sonnet lo hace bien? → no usar opus. ¿Haiku lo hace bien? → no usar sonnet.
+
+**Criterio para reviewer y plan (las dos filas que más se confunden):** ¿la tarea solo verifica cumplimiento contra una lista fija (naming, estructura, rutas)? → haiku. ¿Requiere juzgar si el código funciona correctamente, o cuál approach es mejor? → sonnet. El error típico es tratar "reviewer" y "plan" como una sola tarea — en realidad cada una tiene una versión mecánica (haiku) y una versión de juicio (sonnet).
+
+→ casos de uso concretos para reviewer y plan en §25-ref, justo abajo del anchor.
 
 ### Antes de Opus — probar `effort` primero
 
@@ -316,6 +322,25 @@ Opus 4.8 cuesta ~1.7× más por token que Sonnet 5 ($5/$25 vs $3/$15 — verific
 | Decisión one-shot sin segunda oportunidad | No hay iteración posible | Sonnet en loop con validator es alternativa |
 
 <!-- §25-ref -->
+#### Casos de uso — reviewer
+
+| Caso concreto | Tipo | Modelo |
+|---|---|---|
+| "¿el archivo sigue kebab-case y está en la carpeta correcta?" | Convención | haiku |
+| "¿el componente sigue el orden Content → Configuration → Builder?" | Convención | haiku |
+| "¿este endpoint es vulnerable a IDOR si el usuario cambia el ID en la URL?" | Correctness / seguridad | sonnet |
+| "¿esta función maneja bien la race condition entre el fetch y el unmount?" | Correctness | sonnet |
+| "¿este catch silencia un error que debería propagarse?" | Correctness | sonnet |
+
+#### Casos de uso — plan
+
+| Caso concreto | Tipo | Modelo |
+|---|---|---|
+| "agregar un campo `email` al formulario de perfil" | Mecánico — 1 archivo conocido | haiku |
+| "renombrar `UserService` a `AccountService` en todo el repo" | Mecánico — grep/replace sin ambigüedad | haiku |
+| "rate limiting en login — ¿Redis o in-memory? ¿qué pasa si Redis cae?" | Arquitectónico — trade-off explícito | sonnet |
+| "integrar un sistema de pagos nuevo" | Arquitectónico — multi-sistema, sin precedente en el repo | sonnet |
+
 ### Ejemplo concreto — security-auditor con Opus justificado
 
 ```yaml
@@ -368,7 +393,9 @@ Lo que sigue vigente es la física del costo: el input se cobra por token usado.
 
 | Error | Fix |
 |---|---|
-| Reviewer con sonnet | haiku — compara contra lista fija |
+| Reviewer de checklist con sonnet | haiku — compara contra lista fija |
+| Reviewer de bugs/seguridad con haiku | Falsos negativos silenciosos — no detecta lo que no puede razonar. Sonnet mínimo |
+| Plan arquitectónico con haiku | Aprueba el primer approach que se le ocurre sin evaluar trade-offs — sonnet |
 | Opus para git/postmortem | haiku — tarea estructurada |
 | Sin `model:` en el agente | Todos usan el modelo más caro disponible → especificar siempre |
 | Sonnet para triage/dispatch | haiku — decisión simple sobre keywords |
@@ -379,9 +406,11 @@ Lo que sigue vigente es la física del costo: el input se cobra por token usado.
 
 ```
 □ Cada agente tiene model: especificado con ID pinneado (ej. claude-haiku-4-5, NO haiku)
-□ Reviewer → claude-haiku-4-5
+□ Reviewer de convenciones (checklist fijo) → claude-haiku-4-5
+□ Reviewer de correctness (bugs, seguridad, edge cases) → claude-sonnet-5 mínimo
 □ git, postmortem, curador → claude-haiku-4-5
-□ plan skill → claude-haiku-4-5
+□ Plan mecánico (archivos conocidos, sin ambigüedad) → claude-haiku-4-5
+□ Plan arquitectónico (trade-offs, multi-sistema) → claude-sonnet-5
 □ Antes de Opus → probar Sonnet con effort: xhigh (skill frontmatter o settings.json)
 □ Opus solo si: security/arch one-shot O contexto > 10k tokens O costo de error es irreversible
 □ Agentes Opus tienen tools mínimas (Read/Grep/Glob) — el costo extra debe estar en razonamiento, no en ejecución
@@ -735,7 +764,7 @@ Máximo 2 ciclos por problema — nunca más.
 | Agente | Responsabilidad | Modelo |
 |---|---|---|
 | `lead` | Orchestrador — coordina pipeline cross-especialistas | sonnet |
-| `reviewer` | Convenciones y calidad | haiku |
+| `reviewer` | Convenciones (checklist fijo) | haiku — para correctness/seguridad ver split en §25 |
 | `debugger` | Diagnóstico de bugs no obvios (multi-capa, async, runtime) | sonnet |
 | `git` | Ramas, commits, PRs | haiku |
 | `postmortem` | Lecciones al final de sesión — captura | haiku |
@@ -2951,11 +2980,13 @@ El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus"
 
 | Síntoma | Sin advisor | Con advisor |
 |---|---|---|
-| Sonnet genera output que parece correcto pero tiene bugs sutiles | Iterar con sonnet hasta que funcione | haiku detecta y reporta el fallo en un turno |
+| Sonnet genera output que incumple un criterio fijo (schema, formato, campos obligatorios) | Iterar con sonnet hasta que funcione | haiku detecta y reporta el fallo en un turno |
 | El output de un agente es input del siguiente (pipeline) | Error se propaga silenciosamente | Advisor corta la cadena antes de que escale |
 | Subir a opus parece la única solución | ~1.7× costo por token | Sonnet + haiku advisor (~1.15× costo) |
 
 **No aplicar cuando:** ya existe un agente reviewer explícito en el sistema. Dos revisores para lo mismo = costo duplicado sin beneficio.
+
+**Límite del advisor en haiku:** solo detecta lo que puede verificar contra un criterio explícito (¿tiene los campos obligatorios? ¿sigue el schema? ¿el formato es el pedido?). No reemplaza un reviewer de correctness — un bug lógico o de seguridad requiere razonar sobre qué hace el código, no solo comparar contra una lista. Para eso, sonnet mínimo (→ split reviewer en §25).
 
 ### Implementación
 
@@ -3108,9 +3139,9 @@ Seguí siempre .claude/output-styles/terse.md para tus respuestas.
 
 **LowCost:** `terse.md` en agentes de code-only ahorra 30-50% de tokens de output en runs largos sin cambiar el modelo.
 
-**Patrón de auditoría — agents existentes:** antes de distribuir un plugin, revisar cada agente por reglas universales duplicadas (idioma, compilación, constantes de tamaño). Cada regla en el agente se paga en cada tool call; en `rules/` con el glob apropiado solo se paga cuando se tocan archivos del dominio. Combinado con `output-styles/`: hasta 40-70% de reducción de tokens por sesión de implementación.
+**Patrón de auditoría — agents existentes:** antes de distribuir, revisar cada agente por reglas universales duplicadas (idioma, compilación, constantes de tamaño). Cada regla en el agente se paga en cada tool call. En **proyecto local**, moverlas a `rules/` con el glob apropiado — solo se pagan cuando se tocan archivos del dominio. En **plugin**, `rules/` no existe (ver abajo): las reglas universales van en la skill hub y el subset crítico inline por agente.
 
-**En plugins:** ✅ sí va en plugins. Consistencia de formato para el equipo sin que cada dev configure lo mismo. Un plugin `design-ios` puede incluir `output-styles/swift-only.md` para que todos los agentes respondan sin prose.
+**En plugins:** ✅ sí es componente de plugin — verificado en la referencia oficial (`output-styles/` en el árbol de componentes + campo `outputStyles` en el manifest). ⚠️ Pero cuidado con el alcance: un output style NO es por-agente — aplica a la conversación principal (§11). Los subagentes tampoco pueden leerlo (§13). Reglas de output para code-writer agents → inline en el agente (3-6 líneas), no en `output-styles/`.
 
 ---
 
@@ -3176,14 +3207,9 @@ glob: "**/*.test.ts"
 - No usar `test.only` — bloquea CI sin error visible
 ```
 
-**En plugins:** ✅ sí va en plugins. Es la forma correcta de empaquetar domain rules sin contaminar el CLAUDE.md del proyecto destino.
+**En plugins:** ❌ NO es componente de plugin — la whitelist es cerrada (§11: skills · commands · agents · hooks · .mcp.json · output-styles · lspServers · themes · monitors). Verificado 2026-07-03 contra la referencia oficial de plugins: `rules/` solo aparece como feature de `.claude/rules/` del proyecto local, nunca como directorio de plugin. Un `rules/` dentro de un plugin es **dead weight silencioso**: no falla, simplemente nada lo carga — el autor cree que sus reglas se inyectan y el enforcement está muerto (así nacieron `rules/swift.md` y `output-styles/swift-only.md` muertos en design-ios).
 
-```
-plugins/mi-plugin/
-└── rules/
-    ├── api.md        ← se instala en .claude/rules/api.md
-    └── tests.md      ← se instala en .claude/rules/tests.md
-```
+En un plugin, el equivalente es: reglas universales → skill hub · subset crítico → inline en cada agente · reglas mecanizables → hook PreToolUse.
 
 ---
 
@@ -3215,8 +3241,8 @@ Hermano gitignored de `settings.json`. Misma estructura, solo aplica a tu máqui
 | Archivo | ¿Va en plugin? | Razón |
 |---|---|---|
 | `CLAUDE.local.md` | ❌ | Personal — no tiene sentido distribuirlo |
-| `output-styles/` | ✅ | Consistencia de formato para el equipo |
-| `rules/` | ✅ | Domain rules empaquetadas, instalación limpia |
+| `output-styles/` | ✅ con cuidado | Es componente oficial, pero aplica a la conversación principal — no por-agente (§11) |
+| `rules/` | ❌ | NO es componente de plugin (whitelist cerrada §11) — en plugin: hub + inline + hooks |
 | `settings.json` | ✅ parcial | Solo permissions que el equipo comparte |
 | `settings.local.json` | ❌ | Personal — gitignored por diseño |
 
@@ -3225,14 +3251,14 @@ Hermano gitignored de `settings.json`. Misma estructura, solo aplica a tu máqui
 plugins/mi-plugin/
 ├── .claude-plugin/
 │   └── plugin.json
-├── agents/
-├── skills/
+├── agents/             ← reglas universales: subset crítico inline aquí
+├── skills/             ← reglas universales: fuente canónica en la skill hub
 ├── hooks/
-│   └── hooks.json
-├── rules/              ← ✅ domain rules del dominio del plugin
-├── output-styles/      ← ✅ formato compartido para el equipo
+│   └── hooks.json      ← reglas mecanizables: enforcement real
+├── output-styles/      ← ✅ pero ámbito = conversación principal, no por-agente
 └── settings.json       ← ✅ permissions base del equipo
 ```
+> `rules/` NO va aquí — se ignora en silencio (§11). Es feature de `.claude/rules/` del proyecto local.
 
 ---
 
@@ -3299,6 +3325,14 @@ Tokens estimados: ~Xk
 - Si un archivo no existe todavía → marcarlo como "(nuevo)"
 - Si la tarea es ambigua → UNA pregunta antes del plan, nunca asumir
 ```
+
+#### Alcance del template — cuándo NO alcanza con haiku
+
+El template de arriba (Read/Glob/Grep, formato fijo) es para el caso **mecánico**: confirmar rutas y estimar tokens de una tarea ya acotada. Es un lookup, no un juicio — por eso haiku alcanza.
+
+Cuando la tarea tiene ambigüedad real, trade-offs (¿Redis o in-memory? ¿qué pasa si falla?), o toca un sistema nuevo sin precedente en el repo, el plan deja de ser lookup y pasa a ser **arquitectónico** — evaluar approach y riesgo requiere razonamiento, no solo confirmar que un archivo existe. Ahí el modelo correcto es sonnet, no haiku (→ criterio completo en §25).
+
+En este entorno, esa distinción ya existe como dos herramientas separadas: la skill `/plan` (haiku, mecánica, la de este template) y el agente `Plan` — "Software architect agent for designing implementation plans... considers architectural trade-offs" — que es el caso pesado. Regla práctica: si el plan que necesitás incluye evaluar más de un approach posible, no es la skill `/plan` — es el agente `Plan`.
 
 <!-- §17-ref -->
 #### Flujo de uso
@@ -3444,6 +3478,7 @@ La mayor ganancia no es el overhead del prompt — es que el agente recibe conte
 □ allowed-tools: Read, Glob, Grep — sin Write ni Edit
 □ disable-model-invocation: false — se activa con /plan
 □ Línea en CLAUDE.md dispatch: "¿Ver plan antes?" → /plan [tarea]
+□ Plan con trade-offs/ambigüedad/multi-sistema → agente Plan (sonnet), no la skill /plan (haiku)
 
 Disciplina de invocación (Claude, no el usuario)
 □ Regla en CLAUDE.md: "Invocar agentes con formato mínimo: TASK · FILES · CONTEXT solo si no es obvio"
