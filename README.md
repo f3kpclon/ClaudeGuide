@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.15 · Production-validated · 2026-07-02
+**Author:** Félix Sotelo · **Version:** v5.16 · Split into 5 themed files (index + fundamentals/construction/quality/advanced) — same content, same §N numbering, tooling updated · 2026-07-04
 
 ---
 
