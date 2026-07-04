@@ -84,9 +84,12 @@ RESULTADO: PASS | FAIL
 | `memory` | No | Memoria persistente entre sesiones: `user` (`~/.claude/agent-memory/`) · `project` · `local` |
 | `isolation` | No | `worktree` = corre en un checkout git aislado — los cambios no tocan el hilo principal |
 | `background` | No | `true` = siempre corre en background como tarea — no bloquea el hilo |
-| `hooks` | No | Hooks scoped al ciclo de vida de este agente (misma sintaxis que settings.json) |
+| `hooks` | No | Hooks scoped al ciclo de vida de este agente (misma sintaxis que settings.json). **Ignorado si el agente viene de un plugin** (verificado 2026-07-04) |
+| `mcpServers` | No | MCP servers disponibles para este agente — referencia por nombre a uno ya configurado, o definición inline. **Ignorado si el agente viene de un plugin** |
 | `effort` | No | Override de esfuerzo: `low` · `medium` · `high` · `xhigh` · `max` |
 | `color` | No | Color en la UI: `red` · `blue` · `green` · `yellow` · `purple` · `orange` · `pink` · `cyan` |
+
+**Gotcha verificado 2026-07-04 (doc oficial de sub-agents):** `hooks`, `mcpServers` y `permissionMode` se **ignoran en silencio** cuando el agente se carga desde un plugin — sin error, sin warning. Si un agente de plugin necesita alguno de estos tres, la única forma es que el usuario copie el archivo a `.claude/agents/` o `~/.claude/agents/` locales; agregar reglas en `permissions.allow` de `settings.json` es la alternativa para permisos, pero aplica a toda la sesión, no solo a ese subagente.
 
 ### Modelo por tipo de agente
 
@@ -414,31 +417,52 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 
 **Plugins**: `hooks/hooks.json` usa el MISMO wrapper `{"hooks": {...}}` — eventos al top level se rechazan en silencio y ningún hook se registra. Scripts con `"${CLAUDE_PLUGIN_ROOT}"` (ver §11 Trampas). El matcher de `SubagentStop` para agentes de plugin puede necesitar el nombre con namespace: `(mi-plugin:)?mi-agente`.
 
-### Eventos — mapa completo
+### Eventos — los más usados (no es la lista completa)
 
-> Un hook es el portero del edificio: la regla en el prompt del agente es el cartel de "prohibido entrar" — el agente puede ignorarlo. El hook PreToolUse es la puerta con llave — el agente no puede abrirla aunque quiera.
+29 eventos existen en total (verificado 2026-07-04) — acá solo los de uso lowcost. Nicho (agent teams, MCP, worktrees) → §7-ref. `PreCompact`/`PostCompact` → §33.
 
-**Bloqueantes** — pueden detener la acción si retornan `permissionDecision: deny` + exit 0:
+**Bloqueantes** — corregido 2026-07-04: `Stop`/`SubagentStop` SÍ bloquean (la guía anterior los daba como solo observacionales) — no deniegan una acción, fuerzan que la conversación **continúe** en vez de terminar. Distinto de `PreToolUse`/`UserPromptSubmit`/`PermissionRequest`, que deniegan ANTES de que la acción ocurra:
 
-| Evento | Matcher | Cuándo dispara | Uso típico |
+| Evento | Tipo | Cómo bloquea | Uso típico |
 |---|---|---|---|
-| `PreToolUse` | Nombre de tool | Antes de ejecutar cualquier tool | Validar paths, bloquear comandos peligrosos |
-| `UserPromptSubmit` | Sin matcher | Antes de que Claude procese el prompt del usuario | Bloquear instrucciones peligrosas, inyectar contexto |
-| `PermissionRequest` | Nombre de tool | Cuando aparece dialog de permiso | Auto-aprobar comandos seguros conocidos |
-| `PostToolBatch` | Sin matcher | Al terminar un batch de tools en el loop agentic | Parar el loop completo si algo salió mal |
+| `PreToolUse` | Deniega acción | `permissionDecision: deny` + exit 0 | Validar paths, bloquear comandos peligrosos |
+| `UserPromptSubmit` | Deniega acción | `decision: block` o exit 2 | Bloquear instrucciones peligrosas, inyectar contexto |
+| `PermissionRequest` | Deniega acción | `decision.behavior: deny` | Auto-aprobar comandos seguros conocidos |
+| `PostToolBatch` | Fuerza continuar | `decision: block`/exit 2 — para el loop antes del próximo model call | Pausar la próxima tanda si algo salió mal |
+| `Stop` | Fuerza continuar | `decision: block`/exit 2 — Claude ignora la parada y sigue | Forzar "no termines hasta que los tests pasen" |
+| `SubagentStop` | Fuerza continuar | Mismo mecanismo que `Stop`, scopeado al subagente | Encadenar agentes, exigir un paso más antes de devolver |
 
-**No bloqueantes** — observacionales, pueden inyectar contexto con `systemMessage` o `additionalContext`:
+**Solo observacionales** — no pueden bloquear nada, solo inyectan contexto con `systemMessage` o `additionalContext`:
 
 | Evento | Matcher | Cuándo dispara | Uso típico |
 |---|---|---|---|
 | `PostToolUse` | Nombre de tool | Después de que la tool tuvo éxito | Auto-formatear, encadenar acciones, notificar |
-| `SubagentStop` | Nombre del agente | Al terminar un subagente | Encadenar agentes, confirmar al usuario |
-| `Stop` | Sin matcher | Al terminar el turno de Claude | Recordatorios, validaciones de fin de sesión |
 | `StopFailure` | Tipo de error | Cuando Claude para por error | Reaccionar a `rate_limit`, `overloaded`, `authentication_failed` |
 | `SessionStart` | `startup\|resume\|clear\|compact` | Al iniciar o retomar sesión | Inyectar contexto inicial, `watchPaths`, `reloadSkills` |
 | `FileChanged` | Nombre de archivo | Archivo vigilado cambia en disco | Recargar `.env`, disparar validaciones externas |
 
 <!-- §7-ref -->
+### Eventos de nicho — no cubiertos arriba
+
+Verificado 2026-07-04 contra la referencia oficial de hooks — 29 eventos existen en total, estos son los que esta guía no desarrolla porque son de casos puntuales (agent teams, MCP elicitation, worktrees, config):
+
+| Evento | Contexto |
+|---|---|
+| `SessionEnd` | Cleanup al terminar la sesión (no bloquea) |
+| `SubagentStart` | Al spawnear un subagente (no bloquea) |
+| `TaskCreated` / `TaskCompleted` | Ciclo de vida de tasks vía TaskCreate — bloquean con exit 2 |
+| `TeammateIdle` | Agent teams — un teammate por quedar idle, exit 2 lo mantiene trabajando |
+| `CwdChanged` | El cwd cambia (ej. un `cd` en Bash) — no bloquea |
+| `ConfigChange` | Un archivo de config cambia durante la sesión — bloquea con exit 2 |
+| `InstructionsLoaded` | CLAUDE.md o `.claude/rules/*.md` se cargan — no bloquea |
+| `PermissionDenied` | Auto-mode deniega una tool — no bloquea, pero soporta `retry: true` |
+| `PostToolUseFailure` | Una tool call falla — no bloquea |
+| `Elicitation` / `ElicitationResult` | Un MCP server pide input al usuario — bloquea con `action: decline` |
+| `WorktreeCreate` / `WorktreeRemove` | Ciclo de vida de worktrees (`--worktree`, isolation) |
+| `Notification` / `MessageDisplay` | Solo de UI — nunca bloquean |
+| `Setup` | Con flags `--init-only`/`--init`/`--maintenance` — preparación única |
+| `UserPromptExpansion` | Un slash command se expande a un prompt — bloquea la expansión |
+
 ### Tipos de handler
 
 La guía usa `"type": "command"` (Python/shell) en todos los ejemplos. Existen 3 tipos más:
@@ -1139,7 +1163,7 @@ allowed-tools: Read
 | <tarea-1> | @<agente> | <condición> |
 | <tarea-2> | @<agente> | <condición> |
 ```
-> Límite: < 40 líneas. Si CLAUDE.md ya tiene el dispatch → `skillOverrides: "user-invocable-only"`.
+> Límite: < 40 líneas. Si CLAUDE.md ya tiene el dispatch, ocultarla del menú `/` sin tocar el SKILL.md — **`skillOverrides` va en `.claude/settings.json`, NO en el frontmatter** (corregido 2026-07-04, error fácil: escribirlo en el SKILL.md no falla, simplemente no hace nada): `{"skillOverrides": {"<proyecto>-hub": "user-invocable-only"}}`.
 
 ---
 
@@ -2321,6 +2345,9 @@ Eventos al top level (como en algunos ejemplos viejos) → el archivo se rechaza
 
 **`user-invocable: false` + `disable-model-invocation: true` = skill inalcanzable.**
 Nadie puede cargarla — ni usuario ni modelo. Las skills de referencia (templates, convenciones) que un flujo del modelo debe cargar necesitan `disable-model-invocation: false` (el costo es solo la description en contexto).
+
+**Agentes de plugin: `hooks`, `mcpServers` y `permissionMode` en el frontmatter se ignoran en silencio.**
+Verificado 2026-07-04 contra la doc oficial de sub-agents: por seguridad, estos 3 campos NO se aplican cuando el agente se carga desde un plugin — ni error ni warning, el agente simplemente corre sin ellos. Si el autor del plugin escribió `hooks:` esperando scoping por-agente, no pasa nada — mismo patrón de fallo silencioso que `rules/` en plugins (arriba en esta sección). Fix: si el consumidor necesita esos campos, debe copiar el archivo del agente a `.claude/agents/` o `~/.claude/agents/` locales — ahí sí se respetan.
 
 **Los subagentes con `tools:` restringido NO pueden cargar skills.**
 La tool `Skill` existe en subagentes sin restricción de tools (verificado 2026-07-02), pero los agentes de plugin bien diseñados restringen `tools:` al mínimo — y ahí `Skill` no está. Un agente restringido que dice "Cargar skill X" es una instrucción imposible. Patrón correcto: el hilo principal (la skill de creación) carga la template y o bien escribe los archivos él mismo, o pasa el contenido en el prompt de invocación del agente. El agente lleva su patrón esencial inline como fallback.

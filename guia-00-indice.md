@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.17 · §25 corregido contra doc oficial (sub-agents + model-config, 2026-07-04): el drift de modelo está en los alias de tier desnudos (`sonnet`/`haiku`/`opus`), no en los IDs con versión; `model:` omitido default a `inherit`, nunca a Fable 5
+**Versión:** v5.18 · auditoría de datos desactualizados (2026-07-04): fast mode no tiene parámetro de API (era invención — §25); `Stop`/`SubagentStop` SÍ bloquean, no solo observacionales (§7); `hooks`/`mcpServers`/`permissionMode` se ignoran en agentes de plugin (§5/§11); `skillOverrides` es de settings.json, no de frontmatter (§6)
 
 ---
 

@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.17 · §25 corrected against official docs (sub-agents + model-config, 2026-07-04): drift risk lives in bare tier aliases (`sonnet`/`haiku`/`opus`), not in versioned IDs; an omitted `model:` defaults to `inherit`, never to Fable 5
+**Author:** Félix Sotelo · **Version:** v5.18 · Stale-data audit (2026-07-04): fast mode has no API parameter — that was invented (§25); `Stop`/`SubagentStop` can actually block, not observational-only (§7); `hooks`/`mcpServers`/`permissionMode` are silently ignored on plugin agents (§5/§11); `skillOverrides` lives in settings.json, not frontmatter (§6)
 
 ---
 

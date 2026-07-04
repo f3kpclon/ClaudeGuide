@@ -410,15 +410,20 @@ No es que "la documentación exija poner el nombre completo" — los propios eje
 
 **Sin `model:` en el agente → NO usa "el modelo más caro" ni Fable 5 por default.** Verificado contra la doc de sub-agents: el campo, si se omite, **default a `inherit`** — el agente hereda el modelo de la conversación principal. (Corrección: versiones anteriores de esta guía afirmaban que el default era `claude-fable-5` — no es así.)
 
-### Fast Mode — inferencia rápida (solo Opus 4.8/4.7)
+### Fast Mode — inferencia rápida (solo Opus 4.8, research preview)
 
-**Verificado 2026-07-02:** fast mode corre el MISMO modelo Opus con hasta ~2.5× más tokens/segundo de output, a pricing premium. Solo existe en Opus 4.8 y 4.7 — no hay fast mode para haiku ni sonnet. En Claude Code se activa con `/fast`; vía API es beta (`speed: "fast"` + header `fast-mode-2026-02-01`).
+**Corregido 2026-07-04 contra doc oficial (`/en/fast-mode`) — la versión anterior tenía un dato inventado:** fast mode NO es un parámetro de la Messages API — no existe `speed: "fast"` ni un beta header para esto (confirmado contra la referencia de parámetros de `/v1/messages` y contra `/en/api/beta-headers`: ninguno lista fast mode). Es exclusivamente una feature de producto — Claude Code (`/fast`) y Claude.ai/Console. Mismo modelo Opus, hasta ~2.5× más rápido, con pricing propio: **$10/$50 por MTok en Opus 4.8** (2× el precio estándar de Opus). No existe fast mode para Sonnet ni Haiku.
+
+**Opus 4.7 en fast mode está deprecado desde el 25/06/2026 y se retira el 24/07/2026** — después de esa fecha, los requests en fast mode sobre Opus 4.7 devuelven error sin fallback a Opus 4.7 estándar. Migrar a Opus 4.8.
+
+**Trampa de costo no obvia:** la primera vez que activás fast mode en una conversación, pagás el precio full de fast mode por TODO el contexto acumulado hasta ese punto (no solo los tokens nuevos). Activarlo desde el inicio de la sesión es mucho más barato que activarlo a mitad de una conversación larga.
 
 | Escenario | Fast Mode |
 |---|---|
-| Sesión interactiva en Opus donde la latencia molesta | ✅ — mismo modelo, más rápido |
+| Sesión interactiva en Opus donde la latencia molesta | ✅ — mismo modelo, más rápido, activar desde el inicio |
 | Agentes haiku/sonnet (git, postmortem, implementador) | ❌ — no disponible, y no lo necesitan |
-| Trabajo batch/CI sin humano esperando | ❌ — pagás premium por velocidad que nadie ve |
+| Trabajo batch/CI sin humano esperando | ❌ — pagás 2× premium por velocidad que nadie ve |
+| Activarlo a mitad de una sesión larga | ❌ — paga fast-mode-price por todo el contexto acumulado; activar al inicio |
 
 ### Contexto largo — ya no hay "extended premium"
 
@@ -456,7 +461,7 @@ Lo que sigue vigente es la física del costo: el input se cobra por token usado.
 □ Agentes Opus tienen tools mínimas (Read/Grep/Glob) — el costo extra debe estar en razonamiento, no en ejecución
 □ effort: xhigh no en settings.json global — solo en agentes/skills que lo necesitan
 □ Evitar alias de tier desnudo (haiku ❌, sonnet ❌, opus ❌ — cambian de versión solos); claude-haiku-4-5 ✅ y claude-haiku-4-5-20251001 ✅ son AMBOS formas pinneadas válidas para Haiku
-□ Fast Mode: solo Opus 4.8/4.7 (/fast en Claude Code) — pricing premium, solo con humano esperando
+□ Fast Mode: solo Opus 4.8 (/fast en Claude Code, NO es parámetro de API) — $10/$50/MTok, activar desde el inicio de sesión; Opus 4.7 fast mode se retira 24/07/2026
 □ Contexto: 1M es estándar sin premium en Opus 4.6+/Sonnet 5 — pero cada token en contexto se paga; fragmentar sigue siendo la regla
 ```
 
