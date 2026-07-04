@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.16 · split en 5 archivos temáticos (índice + fundamentos/construcción/calidad/avanzado) — mismo contenido, misma numeración §N, tooling actualizado (2026-07-04)
+**Versión:** v5.17 · §25 corregido contra doc oficial (sub-agents + model-config, 2026-07-04): el drift de modelo está en los alias de tier desnudos (`sonnet`/`haiku`/`opus`), no en los IDs con versión; `model:` omitido default a `inherit`, nunca a Fable 5
 
 ---
 

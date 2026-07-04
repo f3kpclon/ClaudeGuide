@@ -980,7 +980,7 @@ Nunca opus en CI — no hay one-shot irreversible que lo justifique.
 | Deploy automático al marketplace | Plugins requieren revisión manual de Anthropic |
 | Coverage report + badge | No hay target de coverage — solo tests de fallos silenciosos |
 | Dependabot auto-update | Deps auto-actualizadas pueden romper agentes silenciosamente |
-| Claude en CI sin `--model` explícito | Usa el default (Fable 5 / sonnet) — costo impredecible por PR |
+| Claude en CI sin `--model` explícito | Usa el default de la cuenta (Opus 4.8 en Anthropic API/Max/Enterprise pay-as-you-go, Sonnet 5 en Pro/Team Standard) — nunca Fable 5, pero igual impredecible por PR si cambia el default de cuenta |
 
 ### Checklist §20
 

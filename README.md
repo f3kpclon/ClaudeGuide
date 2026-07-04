@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.16 · Split into 5 themed files (index + fundamentals/construction/quality/advanced) — same content, same §N numbering, tooling updated · 2026-07-04
+**Author:** Félix Sotelo · **Version:** v5.17 · §25 corrected against official docs (sub-agents + model-config, 2026-07-04): drift risk lives in bare tier aliases (`sonnet`/`haiku`/`opus`), not in versioned IDs; an omitted `model:` defaults to `inherit`, never to Fable 5
 
 ---
 

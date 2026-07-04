@@ -387,18 +387,28 @@ tools: Read, Glob, Grep
 
 **Por qué no `effort: xhigh` en Sonnet:** patrones de seguridad sutiles (IDOR, timing attacks, second-order injection) requieren el nivel de razonamiento de Opus. En auditorías de seguridad, el costo del error justifica el modelo más capaz disponible.
 
-### Aliases y defaults actuales — Fable 5
+### Aliases y defaults actuales — qué es realmente "pinear" (verificado 2026-07-04 contra sub-agents y model-config oficiales)
 
-Los model IDs cambian entre versiones. La guía usa IDs explícitos — el default puede cambiar sin aviso:
+**El frontmatter `model:` acepta 3 formas, todas oficiales — no hace falta el ID completo:**
 
-| ID explícito | Rol | ¿Default? |
+```yaml
+model: sonnet              # alias de tier — ej. usado en la documentación oficial
+model: claude-sonnet-5     # ID completo
+model: inherit             # mismo modelo que la conversación principal
+```
+
+No es que "la documentación exija poner el nombre completo" — los propios ejemplos oficiales de subagentes usan `model: sonnet` sin más. La distinción real no es alias-vs-ID-completo, es **cuál de los dos strings puede moverse solo con el tiempo**:
+
+| Forma | Ejemplo | ¿Puede cambiar sin que lo toques? |
 |---|---|---|
-| `claude-haiku-4-5` | Tareas estructuradas, bajo costo | — |
-| `claude-sonnet-5` | Implementación, debugging | — |
-| `claude-opus-4-8` | Razonamiento profundo, security | — |
-| `claude-fable-5` | Modelo más reciente / alias del CLI | ✅ si no se pineó |
+| Alias de **tier** (sin número de versión) | `sonnet`, `opus`, `haiku`, `fable` | **Sí** — "apunta a la versión recomendada para tu proveedor y se actualiza con el tiempo" (doc oficial). Hoy `sonnet`→Sonnet 5, mañana puede ser Sonnet 6 sin que edites nada |
+| ID/alias **con versión, sin fecha** (Sonnet 5, Opus 4.8, Fable 5 — generación 4.6+) | `claude-sonnet-5`, `claude-opus-4-8`, `claude-fable-5` | **No** — desde la generación 4.6, el formato sin fecha ES el snapshot pinneado, no un puntero evergreen |
+| ID **con fecha** (modelos pre-4.6, ej. Haiku 4.5) | `claude-haiku-4-5-20251001` | No — es el ID real, pinneado por definición |
+| Alias con versión, sin fecha, de un modelo **pre-4.6** | `claude-haiku-4-5` | Es un puntero de conveniencia al ID con fecha — en la práctica estable, pero la forma explícitamente pinneada es la fechada |
 
-**Regla:** siempre pinear `model:` en el frontmatter del agente. Sin `model:`, el CLI usa el default actual (`claude-fable-5`) — que puede cambiar en cualquier update. Pinear = predecibilidad de costo.
+**Regla corregida:** el riesgo de drift está en los alias de **tier sin número** (`sonnet`, `opus`, `haiku`, `fable`), no en `claude-haiku-4-5-20251001` — ese SÍ es la forma más pinneada que existe para Haiku, no un anti-patrón. Para Sonnet 5 / Opus 4.8 / Fable 5 no hay una forma "más pinneada" que `claude-sonnet-5` / `claude-opus-4-8` / `claude-fable-5` — ya es el snapshot, no hace falta fecha.
+
+**Sin `model:` en el agente → NO usa "el modelo más caro" ni Fable 5 por default.** Verificado contra la doc de sub-agents: el campo, si se omite, **default a `inherit`** — el agente hereda el modelo de la conversación principal. (Corrección: versiones anteriores de esta guía afirmaban que el default era `claude-fable-5` — no es así.)
 
 ### Fast Mode — inferencia rápida (solo Opus 4.8/4.7)
 
@@ -426,7 +436,8 @@ Lo que sigue vigente es la física del costo: el input se cobra por token usado.
 | Reviewer de bugs/seguridad con haiku | Falsos negativos silenciosos — no detecta lo que no puede razonar. Sonnet mínimo |
 | Plan arquitectónico con haiku | Aprueba el primer approach que se le ocurre sin evaluar trade-offs — sonnet |
 | Opus para git/postmortem | haiku — tarea estructurada |
-| Sin `model:` en el agente | Todos usan el modelo más caro disponible → especificar siempre |
+| Alias de tier sin versión (`sonnet`, `haiku`, `opus`) en el agente | Drift silencioso — se actualiza solo con el tiempo, rompe reproducibilidad de costo. Usar `claude-sonnet-5` / `claude-haiku-4-5` |
+| Asumir que sin `model:` el agente usa el modelo más caro | Falso — default a `inherit` (hereda el modelo de la sesión principal), no a Fable 5 |
 | Sonnet para triage/dispatch | haiku — decisión simple sobre keywords |
 | Opus por defecto "para estar seguros" | Sonnet + `effort: xhigh` primero — 5× más barato |
 | `effort: xhigh` global en settings.json | Solo en agentes o skills específicas — el costo se multiplica por cada tool call |
@@ -434,7 +445,7 @@ Lo que sigue vigente es la física del costo: el input se cobra por token usado.
 ### Checklist §25
 
 ```
-□ Cada agente tiene model: especificado con ID pinneado (ej. claude-haiku-4-5, NO haiku)
+□ Cada agente tiene model: especificado con alias de versión, NO alias de tier desnudo (ej. claude-haiku-4-5 o claude-sonnet-5, NO haiku ni sonnet a secas)
 □ Reviewer de convenciones (checklist fijo) → claude-haiku-4-5
 □ Reviewer de correctness (bugs, seguridad, edge cases) → claude-sonnet-5 mínimo
 □ git, postmortem, curador → claude-haiku-4-5
@@ -444,7 +455,7 @@ Lo que sigue vigente es la física del costo: el input se cobra por token usado.
 □ Opus solo si: security/arch one-shot O contexto > 10k tokens O costo de error es irreversible
 □ Agentes Opus tienen tools mínimas (Read/Grep/Glob) — el costo extra debe estar en razonamiento, no en ejecución
 □ effort: xhigh no en settings.json global — solo en agentes/skills que lo necesitan
-□ Siempre pinear model: con alias sin fecha (claude-haiku-4-5 ✅, haiku ❌, claude-haiku-4-5-20251001 ❌) — el default cambia
+□ Evitar alias de tier desnudo (haiku ❌, sonnet ❌, opus ❌ — cambian de versión solos); claude-haiku-4-5 ✅ y claude-haiku-4-5-20251001 ✅ son AMBOS formas pinneadas válidas para Haiku
 □ Fast Mode: solo Opus 4.8/4.7 (/fast en Claude Code) — pricing premium, solo con humano esperando
 □ Contexto: 1M es estándar sin premium en Opus 4.6+/Sonnet 5 — pero cada token en contexto se paga; fragmentar sigue siendo la regla
 ```
