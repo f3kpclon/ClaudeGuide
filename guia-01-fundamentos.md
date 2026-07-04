@@ -311,7 +311,7 @@ Leer `.claude/scope/scope-index.md` antes de cualquier tarea.
 
 ### Antes de Opus — probar `effort` primero
 
-`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar, sin cambiar el precio por token. Subir a Opus multiplica el precio por token ~1.7× (verificado 2026-07-02: Sonnet 5 $3/$15, Opus 4.8 $5/$25).
+`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar, sin cambiar el precio por token. Subir a Opus multiplica el precio por token **~2.5× ahora mismo** (verificado 2026-07-04 contra `platform.claude.com/.../pricing`: Sonnet 5 tiene pricing **introductorio $2/$10 hasta el 31/08/2026** — Opus 4.8 $5/$25 → 2.5×. El ~1.7× que citaban versiones anteriores de esta guía es el precio de Sonnet 5 **desde el 01/09/2026** ($3/$15) — todavía no vigente. <!-- vence: 2026-08-31 --> Recalcular esta sección después de esa fecha).
 
 ```yaml
 # En el agente o en la skill
@@ -339,7 +339,7 @@ La pregunta no es "¿es una tarea difícil?" — es:
 
 > **¿El costo de que Sonnet se equivoque supera el costo de Opus?**
 
-Opus 4.8 cuesta ~1.7× más por token que Sonnet 5 ($5/$25 vs $3/$15 — verificado 2026-07-02; el "~5×" de versiones anteriores era pricing viejo). El threshold para justificar Opus bajó: si un error de Sonnet cuesta más que un ~70% extra de tokens en la tarea → Opus vale la pena. El orden de escalación no cambia — Sonnet + effort primero, porque effort es gratis en precio por token.
+Opus 4.8 cuesta ~2.5× más por token que Sonnet 5 hoy ($5/$25 vs $2/$10 introductorio — verificado 2026-07-04 <!-- vence: 2026-08-31 -->; baja a ~1.7× cuando Sonnet 5 pase a $3/$15 el 01/09/2026; el "~5×" de versiones anteriores era pricing viejo). El threshold para justificar Opus: si un error de Sonnet cuesta más que el extra de tokens en la tarea (~150% hoy, ~70% desde septiembre) → Opus vale la pena. El orden de escalación no cambia — Sonnet + effort primero, porque effort es gratis en precio por token.
 
 **Cuándo Opus tiene justificación real:**
 

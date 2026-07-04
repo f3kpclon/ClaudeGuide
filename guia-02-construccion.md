@@ -419,7 +419,7 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 
 ### Eventos — los más usados (no es la lista completa)
 
-29 eventos existen en total (verificado 2026-07-04) — acá solo los de uso lowcost. Nicho (agent teams, MCP, worktrees) → §7-ref. `PreCompact`/`PostCompact` → §33.
+30 eventos existen en total (verificado 2026-07-04 contra la referencia oficial, corregido de "29" — off-by-one en la versión anterior) — acá solo los de uso lowcost. Nicho (agent teams, MCP, worktrees) → §7-ref. `PreCompact`/`PostCompact` → §33.
 
 **Bloqueantes** — corregido 2026-07-04: `Stop`/`SubagentStop` SÍ bloquean (la guía anterior los daba como solo observacionales) — no deniegan una acción, fuerzan que la conversación **continúe** en vez de terminar. Distinto de `PreToolUse`/`UserPromptSubmit`/`PermissionRequest`, que deniegan ANTES de que la acción ocurra:
 
@@ -436,15 +436,16 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 
 | Evento | Matcher | Cuándo dispara | Uso típico |
 |---|---|---|---|
-| `PostToolUse` | Nombre de tool | Después de que la tool tuvo éxito | Auto-formatear, encadenar acciones, notificar |
 | `StopFailure` | Tipo de error | Cuando Claude para por error | Reaccionar a `rate_limit`, `overloaded`, `authentication_failed` |
 | `SessionStart` | `startup\|resume\|clear\|compact` | Al iniciar o retomar sesión | Inyectar contexto inicial, `watchPaths`, `reloadSkills` |
 | `FileChanged` | Nombre de archivo | Archivo vigilado cambia en disco | Recargar `.env`, disparar validaciones externas |
 
+**`PostToolUse` — caso aparte (corregido 2026-07-04):** NO es puramente observacional como los tres de arriba. No puede deshacer la tool (ya se ejecutó), pero SÍ soporta `"decision": "block"` + `"reason"` — un mecanismo real de tercera vía, distinto de `systemMessage`/`additionalContext`: fuerza que el error se muestre a Claude en el mismo turno para que lo corrija. Es exactamente lo que usa el ejemplo "El compilador como juez" más abajo en esta sección. La versión anterior de esta guía clasificaba PostToolUse junto a los observacionales puros — es una simplificación excesiva, no un error de la doc oficial.
+
 <!-- §7-ref -->
 ### Eventos de nicho — no cubiertos arriba
 
-Verificado 2026-07-04 contra la referencia oficial de hooks — 29 eventos existen en total, estos son los que esta guía no desarrolla porque son de casos puntuales (agent teams, MCP elicitation, worktrees, config):
+Verificado 2026-07-04 contra la referencia oficial de hooks — 30 eventos existen en total, estos son los que esta guía no desarrolla porque son de casos puntuales (agent teams, MCP elicitation, worktrees, config):
 
 | Evento | Contexto |
 |---|---|
@@ -2158,7 +2159,7 @@ Atrapa las tres clases de error que fallan **en silencio** en runtime: manifest 
 
 ### Componentes soportados — whitelist cerrada
 
-`skills/` · `commands/` · `agents/` · `hooks/` · `.mcp.json` · `output-styles/` · `lspServers` · `themes` · `monitors`. Nada más:
+`skills/` · `commands/` · `agents/` · `hooks/` · `.mcp.json` · `output-styles/` · `lspServers` (`.lsp.json`) · `themes` (experimental) · `monitors` · `bin/` (ejecutables agregados al PATH de Bash mientras el plugin está activo — agregado 2026-07-04, faltaba en versiones anteriores) · `settings.json` (defaults del plugin). Nada más:
 
 - **`rules/` NO es componente de plugin** — `.claude/rules/*.md` con glob es feature de proyecto local. En un plugin, las reglas universales van en la skill hub o inline en los agentes.
 - **`output-styles/` de plugin aplica a TODA la conversación principal** mientras el plugin esté activo — no por-agente. Un `swift-only.md` global silencia la prose de toda la sesión. Reglas de output por agente → inline en el agente (son 3-6 líneas).
@@ -2398,7 +2399,7 @@ Sin instrucción de "no leas componentes existentes", el modelo lee 2-4 archivos
 
 > Como un sous-chef que revisa el plato antes de que salga a la mesa: no cocina — solo dice si algo está mal. El chef sigue siendo sonnet; el revisor es haiku. El plato mejora sin cambiar al chef Michelin.
 
-El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus" (~1.7× por token — §25). La solución no es subir de modelo — es agregar un segundo agente barato que revisa el output del primero.
+El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus" (~2.5× por token hoy, baja a ~1.7× desde el 01/09/2026 — §25 <!-- vence: 2026-08-31 -->). La solución no es subir de modelo — es agregar un segundo agente barato que revisa el output del primero.
 
 ### Cuándo aplicar
 
@@ -2406,7 +2407,7 @@ El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus"
 |---|---|---|
 | Sonnet genera output que incumple un criterio fijo (schema, formato, campos obligatorios) | Iterar con sonnet hasta que funcione | haiku detecta y reporta el fallo en un turno |
 | El output de un agente es input del siguiente (pipeline) | Error se propaga silenciosamente | Advisor corta la cadena antes de que escale |
-| Subir a opus parece la única solución | ~1.7× costo por token | Sonnet + haiku advisor (~1.15× costo) |
+| Subir a opus parece la única solución | ~2.5× costo por token hoy (~1.7× desde 01/09/2026) | Sonnet + haiku advisor (~1.15× costo) |
 
 **No aplicar cuando:** ya existe un agente reviewer explícito en el sistema. Dos revisores para lo mismo = costo duplicado sin beneficio.
 
@@ -2450,12 +2451,12 @@ El advisor no itera — emite veredicto. Si hacés más de 1 retry, el problema 
 
 ### Costo comparado
 
-| Estrategia | Costo relativo (por token, pricing 2026-07) | Cuándo |
+| Estrategia | Costo relativo (por token, pricing introductorio 2026-07 <!-- vence: 2026-08-31 -->) | Cuándo |
 |---|---|---|
 | Sonnet solo | 1× | Output predecible, stack conocido |
 | Sonnet + haiku advisor | ~1.15× | Output con consecuencias si está mal |
-| Opus solo | ~1.7× | Si sonnet + advisor sigue fallando |
-| Opus + advisor | ~1.85× | Security/one-shot donde el error es irreversible |
+| Opus solo | ~2.5× (baja a ~1.7× desde 01/09/2026) | Si sonnet + advisor sigue fallando |
+| Opus + advisor | ~2.65× (baja a ~1.85× desde 01/09/2026) | Security/one-shot donde el error es irreversible |
 
 ---
 

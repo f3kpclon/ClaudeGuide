@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.18 · auditoría de datos desactualizados (2026-07-04): fast mode no tiene parámetro de API (era invención — §25); `Stop`/`SubagentStop` SÍ bloquean, no solo observacionales (§7); `hooks`/`mcpServers`/`permissionMode` se ignoran en agentes de plugin (§5/§11); `skillOverrides` es de settings.json, no de frontmatter (§6)
+**Versión:** v5.19 · auditoría contra doc oficial + staleness tooling (2026-07-04): Sonnet 5 tiene pricing introductorio $2/$10 hasta 31/08/2026 — ratio real hoy es ~2.5× Opus, no 1.7× (§25/§31, vence 31/08/2026); 30 eventos de hooks, no 29 (§7); `PostToolUse` sí soporta `decision: block` — no es puramente observacional (§7); falta `bin/` en whitelist de plugin (§11); `tools/audit_guia.py` ahora detecta hechos vencidos y verificaciones con más de 90 días
 
 ---
 
@@ -430,7 +430,7 @@ Leer `.claude/scope/scope-index.md` antes de cualquier tarea.
 
 ### Antes de Opus — probar `effort` primero
 
-`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar, sin cambiar el precio por token. Subir a Opus multiplica el precio por token ~1.7× (verificado 2026-07-02: Sonnet 5 $3/$15, Opus 4.8 $5/$25).
+`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar, sin cambiar el precio por token. Subir a Opus multiplica el precio por token **~2.5× ahora mismo** (verificado 2026-07-04 contra `platform.claude.com/.../pricing`: Sonnet 5 tiene pricing **introductorio $2/$10 hasta el 31/08/2026** — Opus 4.8 $5/$25 → 2.5×. El ~1.7× que citaban versiones anteriores de esta guía es el precio de Sonnet 5 **desde el 01/09/2026** ($3/$15) — todavía no vigente. <!-- vence: 2026-08-31 --> Recalcular esta sección después de esa fecha).
 
 ```yaml
 # En el agente o en la skill
@@ -458,7 +458,7 @@ La pregunta no es "¿es una tarea difícil?" — es:
 
 > **¿El costo de que Sonnet se equivoque supera el costo de Opus?**
 
-Opus 4.8 cuesta ~1.7× más por token que Sonnet 5 ($5/$25 vs $3/$15 — verificado 2026-07-02; el "~5×" de versiones anteriores era pricing viejo). El threshold para justificar Opus bajó: si un error de Sonnet cuesta más que un ~70% extra de tokens en la tarea → Opus vale la pena. El orden de escalación no cambia — Sonnet + effort primero, porque effort es gratis en precio por token.
+Opus 4.8 cuesta ~2.5× más por token que Sonnet 5 hoy ($5/$25 vs $2/$10 introductorio — verificado 2026-07-04 <!-- vence: 2026-08-31 -->; baja a ~1.7× cuando Sonnet 5 pase a $3/$15 el 01/09/2026; el "~5×" de versiones anteriores era pricing viejo). El threshold para justificar Opus: si un error de Sonnet cuesta más que el extra de tokens en la tarea (~150% hoy, ~70% desde septiembre) → Opus vale la pena. El orden de escalación no cambia — Sonnet + effort primero, porque effort es gratis en precio por token.
 
 **Cuándo Opus tiene justificación real:**
 
@@ -1083,7 +1083,7 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 
 ### Eventos — los más usados (no es la lista completa)
 
-29 eventos existen en total (verificado 2026-07-04) — acá solo los de uso lowcost. Nicho (agent teams, MCP, worktrees) → §7-ref. `PreCompact`/`PostCompact` → §33.
+30 eventos existen en total (verificado 2026-07-04 contra la referencia oficial, corregido de "29" — off-by-one en la versión anterior) — acá solo los de uso lowcost. Nicho (agent teams, MCP, worktrees) → §7-ref. `PreCompact`/`PostCompact` → §33.
 
 **Bloqueantes** — corregido 2026-07-04: `Stop`/`SubagentStop` SÍ bloquean (la guía anterior los daba como solo observacionales) — no deniegan una acción, fuerzan que la conversación **continúe** en vez de terminar. Distinto de `PreToolUse`/`UserPromptSubmit`/`PermissionRequest`, que deniegan ANTES de que la acción ocurra:
 
@@ -1100,15 +1100,16 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 
 | Evento | Matcher | Cuándo dispara | Uso típico |
 |---|---|---|---|
-| `PostToolUse` | Nombre de tool | Después de que la tool tuvo éxito | Auto-formatear, encadenar acciones, notificar |
 | `StopFailure` | Tipo de error | Cuando Claude para por error | Reaccionar a `rate_limit`, `overloaded`, `authentication_failed` |
 | `SessionStart` | `startup\|resume\|clear\|compact` | Al iniciar o retomar sesión | Inyectar contexto inicial, `watchPaths`, `reloadSkills` |
 | `FileChanged` | Nombre de archivo | Archivo vigilado cambia en disco | Recargar `.env`, disparar validaciones externas |
 
+**`PostToolUse` — caso aparte (corregido 2026-07-04):** NO es puramente observacional como los tres de arriba. No puede deshacer la tool (ya se ejecutó), pero SÍ soporta `"decision": "block"` + `"reason"` — un mecanismo real de tercera vía, distinto de `systemMessage`/`additionalContext`: fuerza que el error se muestre a Claude en el mismo turno para que lo corrija. Es exactamente lo que usa el ejemplo "El compilador como juez" más abajo en esta sección. La versión anterior de esta guía clasificaba PostToolUse junto a los observacionales puros — es una simplificación excesiva, no un error de la doc oficial.
+
 <!-- §7-ref -->
 ### Eventos de nicho — no cubiertos arriba
 
-Verificado 2026-07-04 contra la referencia oficial de hooks — 29 eventos existen en total, estos son los que esta guía no desarrolla porque son de casos puntuales (agent teams, MCP elicitation, worktrees, config):
+Verificado 2026-07-04 contra la referencia oficial de hooks — 30 eventos existen en total, estos son los que esta guía no desarrolla porque son de casos puntuales (agent teams, MCP elicitation, worktrees, config):
 
 | Evento | Contexto |
 |---|---|
@@ -2822,7 +2823,7 @@ Atrapa las tres clases de error que fallan **en silencio** en runtime: manifest 
 
 ### Componentes soportados — whitelist cerrada
 
-`skills/` · `commands/` · `agents/` · `hooks/` · `.mcp.json` · `output-styles/` · `lspServers` · `themes` · `monitors`. Nada más:
+`skills/` · `commands/` · `agents/` · `hooks/` · `.mcp.json` · `output-styles/` · `lspServers` (`.lsp.json`) · `themes` (experimental) · `monitors` · `bin/` (ejecutables agregados al PATH de Bash mientras el plugin está activo — agregado 2026-07-04, faltaba en versiones anteriores) · `settings.json` (defaults del plugin). Nada más:
 
 - **`rules/` NO es componente de plugin** — `.claude/rules/*.md` con glob es feature de proyecto local. En un plugin, las reglas universales van en la skill hub o inline en los agentes.
 - **`output-styles/` de plugin aplica a TODA la conversación principal** mientras el plugin esté activo — no por-agente. Un `swift-only.md` global silencia la prose de toda la sesión. Reglas de output por agente → inline en el agente (son 3-6 líneas).
@@ -3062,7 +3063,7 @@ Sin instrucción de "no leas componentes existentes", el modelo lee 2-4 archivos
 
 > Como un sous-chef que revisa el plato antes de que salga a la mesa: no cocina — solo dice si algo está mal. El chef sigue siendo sonnet; el revisor es haiku. El plato mejora sin cambiar al chef Michelin.
 
-El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus" (~1.7× por token — §25). La solución no es subir de modelo — es agregar un segundo agente barato que revisa el output del primero.
+El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus" (~2.5× por token hoy, baja a ~1.7× desde el 01/09/2026 — §25 <!-- vence: 2026-08-31 -->). La solución no es subir de modelo — es agregar un segundo agente barato que revisa el output del primero.
 
 ### Cuándo aplicar
 
@@ -3070,7 +3071,7 @@ El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus"
 |---|---|---|
 | Sonnet genera output que incumple un criterio fijo (schema, formato, campos obligatorios) | Iterar con sonnet hasta que funcione | haiku detecta y reporta el fallo en un turno |
 | El output de un agente es input del siguiente (pipeline) | Error se propaga silenciosamente | Advisor corta la cadena antes de que escale |
-| Subir a opus parece la única solución | ~1.7× costo por token | Sonnet + haiku advisor (~1.15× costo) |
+| Subir a opus parece la única solución | ~2.5× costo por token hoy (~1.7× desde 01/09/2026) | Sonnet + haiku advisor (~1.15× costo) |
 
 **No aplicar cuando:** ya existe un agente reviewer explícito en el sistema. Dos revisores para lo mismo = costo duplicado sin beneficio.
 
@@ -3114,12 +3115,12 @@ El advisor no itera — emite veredicto. Si hacés más de 1 retry, el problema 
 
 ### Costo comparado
 
-| Estrategia | Costo relativo (por token, pricing 2026-07) | Cuándo |
+| Estrategia | Costo relativo (por token, pricing introductorio 2026-07 <!-- vence: 2026-08-31 -->) | Cuándo |
 |---|---|---|
 | Sonnet solo | 1× | Output predecible, stack conocido |
 | Sonnet + haiku advisor | ~1.15× | Output con consecuencias si está mal |
-| Opus solo | ~1.7× | Si sonnet + advisor sigue fallando |
-| Opus + advisor | ~1.85× | Security/one-shot donde el error es irreversible |
+| Opus solo | ~2.5× (baja a ~1.7× desde 01/09/2026) | Si sonnet + advisor sigue fallando |
+| Opus + advisor | ~2.65× (baja a ~1.85× desde 01/09/2026) | Security/one-shot donde el error es irreversible |
 
 ---
 
@@ -5032,10 +5033,10 @@ Precios oficiales por 1M tokens (input/output, verificados 2026-07-02):
 | Modelo | Precio | Costo relativo | Cuándo |
 |---|---|---|---|
 | haiku 4.5 | $1 / $5 | 1× | Tareas fijas: git, postmortem, reviewer de checklist |
-| sonnet 5 | $3 / $15 | 3× | Implementación, debugging |
+| sonnet 5 | $2 / $10 (introductorio hasta 31/08/2026 <!-- vence: 2026-08-31 -->, luego $3/$15) | 2× hoy, 3× desde 01/09/2026 | Implementación, debugging |
 | opus 4.8 | $5 / $25 | 5× | Arquitectura con trade-offs complejos, security |
 
-Un reviewer en sonnet cuesta 3× más que en haiku — mismo resultado. Nota: Opus ya NO es 15× haiku ni 5× sonnet (pricing viejo) — hoy es ~1.7× sonnet, el threshold para justificarlo bajó (→ §25).
+Un reviewer en sonnet cuesta 2× más que en haiku hoy (3× desde septiembre) — mismo resultado. Nota: Opus ya NO es 15× haiku ni 5× sonnet (pricing viejo) — hoy es ~2.5× sonnet, baja a ~1.7× cuando termine el pricing introductorio el 01/09/2026 — el threshold para justificarlo bajó igual (→ §25).
 
 ### Prompt Caching — reglas clave
 
@@ -6400,9 +6401,9 @@ Por eso los agentes y prompts de artifact-factory están en inglés — el CLAUD
 
 **haiku** — El más barato. 1x costo de referencia. Para tareas con instrucciones fijas: git, commits, checklists, postmortem. Si el agente no necesita razonar sobre contexto variable, usa haiku.
 
-**sonnet** — El intermedio. 3× más caro que haiku ($3/$15 por 1M tokens). Para implementación, debugging, tareas que requieren razonar sobre contexto variable. La mayoría de los agentes especialistas viven aquí.
+**sonnet** — El intermedio. 2× más caro que haiku hoy ($2/$10 por 1M tokens — pricing introductorio hasta el 31/08/2026 <!-- vence: 2026-08-31 -->; sube a $3/$15 = 3× desde el 01/09/2026). Para implementación, debugging, tareas que requieren razonar sobre contexto variable. La mayoría de los agentes especialistas viven aquí.
 
-**opus** — El más poderoso. 5× más caro que haiku y ~1.7× más que sonnet ($5/$25 por 1M tokens — Opus 4.5+ bajó de precio; el 15× histórico ya no aplica). Para arquitectura con trade-offs complejos y security. Si crees que lo necesitas, primero intenta con sonnet + effort.
+**opus** — El más poderoso. 5× más caro que haiku y ~2.5× más que sonnet hoy ($5/$25 por 1M tokens — Opus 4.5+ bajó de precio; el 15× histórico ya no aplica). Baja a ~1.7× sonnet desde el 01/09/2026 cuando termine el pricing introductorio de Sonnet 5. Para arquitectura con trade-offs complejos y security. Si crees que lo necesitas, primero intenta con sonnet + effort.
 
 ### Los componentes
 

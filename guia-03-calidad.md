@@ -443,10 +443,10 @@ Precios oficiales por 1M tokens (input/output, verificados 2026-07-02):
 | Modelo | Precio | Costo relativo | Cuándo |
 |---|---|---|---|
 | haiku 4.5 | $1 / $5 | 1× | Tareas fijas: git, postmortem, reviewer de checklist |
-| sonnet 5 | $3 / $15 | 3× | Implementación, debugging |
+| sonnet 5 | $2 / $10 (introductorio hasta 31/08/2026 <!-- vence: 2026-08-31 -->, luego $3/$15) | 2× hoy, 3× desde 01/09/2026 | Implementación, debugging |
 | opus 4.8 | $5 / $25 | 5× | Arquitectura con trade-offs complejos, security |
 
-Un reviewer en sonnet cuesta 3× más que en haiku — mismo resultado. Nota: Opus ya NO es 15× haiku ni 5× sonnet (pricing viejo) — hoy es ~1.7× sonnet, el threshold para justificarlo bajó (→ §25).
+Un reviewer en sonnet cuesta 2× más que en haiku hoy (3× desde septiembre) — mismo resultado. Nota: Opus ya NO es 15× haiku ni 5× sonnet (pricing viejo) — hoy es ~2.5× sonnet, baja a ~1.7× cuando termine el pricing introductorio el 01/09/2026 — el threshold para justificarlo bajó igual (→ §25).
 
 ### Prompt Caching — reglas clave
 

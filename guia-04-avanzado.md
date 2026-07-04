@@ -1268,9 +1268,9 @@ Por eso los agentes y prompts de artifact-factory están en inglés — el CLAUD
 
 **haiku** — El más barato. 1x costo de referencia. Para tareas con instrucciones fijas: git, commits, checklists, postmortem. Si el agente no necesita razonar sobre contexto variable, usa haiku.
 
-**sonnet** — El intermedio. 3× más caro que haiku ($3/$15 por 1M tokens). Para implementación, debugging, tareas que requieren razonar sobre contexto variable. La mayoría de los agentes especialistas viven aquí.
+**sonnet** — El intermedio. 2× más caro que haiku hoy ($2/$10 por 1M tokens — pricing introductorio hasta el 31/08/2026 <!-- vence: 2026-08-31 -->; sube a $3/$15 = 3× desde el 01/09/2026). Para implementación, debugging, tareas que requieren razonar sobre contexto variable. La mayoría de los agentes especialistas viven aquí.
 
-**opus** — El más poderoso. 5× más caro que haiku y ~1.7× más que sonnet ($5/$25 por 1M tokens — Opus 4.5+ bajó de precio; el 15× histórico ya no aplica). Para arquitectura con trade-offs complejos y security. Si crees que lo necesitas, primero intenta con sonnet + effort.
+**opus** — El más poderoso. 5× más caro que haiku y ~2.5× más que sonnet hoy ($5/$25 por 1M tokens — Opus 4.5+ bajó de precio; el 15× histórico ya no aplica). Baja a ~1.7× sonnet desde el 01/09/2026 cuando termine el pricing introductorio de Sonnet 5. Para arquitectura con trade-offs complejos y security. Si crees que lo necesitas, primero intenta con sonnet + effort.
 
 ### Los componentes
 

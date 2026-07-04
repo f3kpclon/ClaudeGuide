@@ -16,11 +16,18 @@ Checks:
   5. Sección > 150 líneas sin split quick/ref
   6. Fences balanceados al final de cada archivo
   7. Versión del header (guia-00-indice.md) == versión de README.md y README.es.md
+  8. Staleness de hechos fechados (§3 del protocolo: cazar el fallo silencioso,
+     aplicado a la guía misma):
+       - <!-- vence: YYYY-MM-DD --> ya pasada → ERROR (hecho con fecha de expiración
+         conocida — ej. pricing introductorio — que nadie recheckeó a tiempo)
+       - "verificado/corregido YYYY-MM-DD" con > STALE_DAYS de antigüedad → WARNING
+         (no bloquea el exit code, solo avisa que puede valer la pena recheckear)
 
 Uso: python3 tools/audit_guia.py   (exit 0 = limpio, 1 = violaciones)
 """
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -29,8 +36,12 @@ HUB = REPO / "guia-00-indice.md"
 HOOK = Path.home() / ".claude" / "hooks" / "guia_context.py"
 EXEMPT = {1, 4, 15}  # intro/analogía/glosario — sin entry por diseño
 MARKER = re.compile(r"^<!-- §(\d+)(-quick|-ref)? -->$")
+STALE_DAYS = 90
+VENCE = re.compile(r"<!--\s*vence:\s*(\d{4}-\d{2}-\d{2})\s*-->")
+VERIFICADO = re.compile(r"(?:[Vv]erificado|[Cc]orregido)(?:\s+\d{4}-\d{2}-\d{2})?[^\n.]{0,60}?(\d{4}-\d{2}-\d{2})")
 
 errors: list[str] = []
+warnings: list[str] = []
 
 
 def fence_state_machine(lines):
@@ -110,6 +121,21 @@ def main() -> int:
             if end - ln > 150 and n not in quicks:
                 errors.append(f"{path.name} §{n}: {end - ln} líneas sin split quick/ref")
 
+        # --- staleness: hechos fechados que vencieron o quedaron viejos ----
+        today = date.today()
+        for ln, line in enumerate(lines, 1):
+            for m in VENCE.finditer(line):
+                d = date.fromisoformat(m.group(1))
+                if d < today:
+                    errors.append(
+                        f"{path.name}:{ln}: <!-- vence: {d} --> ya pasó ({(today - d).days} días) — recheckear el hecho")
+            for m in VERIFICADO.finditer(line):
+                d = date.fromisoformat(m.group(1))
+                age = (today - d).days
+                if age > STALE_DAYS:
+                    warnings.append(
+                        f"{path.name}:{ln}: fecha de verificación de {age} días — considerar recheck")
+
     # --- KEYWORD_MAP: instalado vs embebido (§26) vs anchors (todos los archivos) ---
     all_text = "\n".join(all_texts)
     embedded, embedded_budget = parse_keyword_map(all_text, "copia embebida §26")
@@ -140,6 +166,11 @@ def main() -> int:
                 errors.append(f"{readme}: sin línea de versión parseable")
             elif rv.group(1) != ver.group(1):
                 errors.append(f"{readme}: {rv.group(1)} != guía {ver.group(1)}")
+
+    if warnings:
+        print(f"⚠️  {len(warnings)} advertencia(s) de staleness (no bloquean el exit code):")
+        for w in warnings:
+            print(f"  - {w}")
 
     if errors:
         print(f"❌ {len(errors)} violación(es):")

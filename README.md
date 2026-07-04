@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.18 · Stale-data audit (2026-07-04): fast mode has no API parameter — that was invented (§25); `Stop`/`SubagentStop` can actually block, not observational-only (§7); `hooks`/`mcpServers`/`permissionMode` are silently ignored on plugin agents (§5/§11); `skillOverrides` lives in settings.json, not frontmatter (§6)
+**Author:** Félix Sotelo · **Version:** v5.19 · Audit vs. official docs + staleness tooling (2026-07-04): Sonnet 5 has introductory pricing $2/$10 through 2026-08-31 — today's real ratio is ~2.5× Opus, not 1.7× (§25/§31, expires 2026-08-31); 30 hook events, not 29 (§7); `PostToolUse` does support `decision: block` — it's not purely observational (§7); `bin/` was missing from the plugin whitelist (§11); `tools/audit_guia.py` now flags expired facts and verifications older than 90 days
 
 ---
 
