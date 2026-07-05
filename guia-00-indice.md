@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.19 · auditoría contra doc oficial + staleness tooling (2026-07-04): Sonnet 5 tiene pricing introductorio $2/$10 hasta 31/08/2026 — ratio real hoy es ~2.5× Opus, no 1.7× (§25/§31, vence 31/08/2026); 30 eventos de hooks, no 29 (§7); `PostToolUse` sí soporta `decision: block` — no es puramente observacional (§7); falta `bin/` en whitelist de plugin (§11); `tools/audit_guia.py` ahora detecta hechos vencidos y verificaciones con más de 90 días
+**Versión:** v5.20 · template de CLAUDE.md de proyecto (§1); hub con gate humano, `user-invocable: false` y dispatch mixto agente/skill (§6); ejemplo real validado (design-ios) de reglas universales inline en hub (§11) — 2026-07-05
 
 ---
 

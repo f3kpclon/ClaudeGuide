@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.19 · auditoría contra doc oficial + staleness tooling (2026-07-04): Sonnet 5 tiene pricing introductorio $2/$10 hasta 31/08/2026 — ratio real hoy es ~2.5× Opus, no 1.7× (§25/§31, vence 31/08/2026); 30 eventos de hooks, no 29 (§7); `PostToolUse` sí soporta `decision: block` — no es puramente observacional (§7); falta `bin/` en whitelist de plugin (§11); `tools/audit_guia.py` ahora detecta hechos vencidos y verificaciones con más de 90 días
+**Versión:** v5.20 · template de CLAUDE.md de proyecto (§1); hub con gate humano, `user-invocable: false` y dispatch mixto agente/skill (§6); ejemplo real validado (design-ios) de reglas universales inline en hub (§11) — 2026-07-05
 
 ---
 
@@ -278,6 +278,32 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 | Compartir | Solo via el repo | Solo via el repo | `claude plugin add github:...` |
 
 **Regla:** empezar con agentes y skills locales. Convertir a plugin solo cuando se reutiliza en otro proyecto.
+
+### Template — CLAUDE.md de proyecto
+
+> Si una línea necesita más de 5 líneas de explicación, no es una regla — es un procedimiento. Sacarlo a una skill (§6), no inflar CLAUDE.md.
+
+```markdown
+# <Proyecto>
+
+## Reglas siempre-activas
+- <convención de stack no negociable — 1 línea>
+- <regla de proceso/seguridad — ej. "nunca push directo a main">
+- Build/test: `<comando canónico>`
+
+## Dispatch                         # solo si hay ≥2 agentes/skills locales
+| Tarea | Agente/Skill |
+|---|---|
+| <tarea-1> | @<agente> |
+| <tarea-2> | skill `<nombre>` |
+
+## Referencias                      # apuntar, no copiar — el contenido vive en su archivo
+- Convenciones → skill `<dominio>-conventions`
+- Estado del proyecto → `.claude/scope/scope-index.md`
+- Lecciones → `.claude/learnings/learnings-general.md`
+```
+
+**Tope real:** < 30 líneas totales (§12). Todo lo que no sea "hecho que aplica siempre en toda tarea" va a otro lado: hooks para enforcement real, skills para procedimientos, scope para contexto del proyecto.
 
 ---
 
@@ -1819,14 +1845,15 @@ La tarea contamina el hilo con logs/diffs largos →  skill con context: fork
 name: <proyecto>-hub
 description: "<Proyecto> dispatch. [caso A] → @<agente-a> | [caso B] → @<agente-b>."
 disable-model-invocation: false     # Claude lo activa solo — descripción siempre en contexto
+user-invocable: false                # el hub es dispatch puro — nadie escribe /<proyecto>-hub a mano
 allowed-tools: Read
 ---
 
 # <Proyecto> — Dispatch
-| Tarea | Agente | Cuándo |
+| Tarea | Agente / Skill | Cuándo |
 |---|---|---|
 | <tarea-1> | @<agente> | <condición> |
-| <tarea-2> | @<agente> | <condición> |
+| <tarea-2> | skill `<nombre>` | <condición> |
 ```
 > Límite: < 40 líneas. Si CLAUDE.md ya tiene el dispatch, ocultarla del menú `/` sin tocar el SKILL.md — **`skillOverrides` va en `.claude/settings.json`, NO en el frontmatter** (corregido 2026-07-04, error fácil: escribirlo en el SKILL.md no falla, simplemente no hace nada): `{"skillOverrides": {"<proyecto>-hub": "user-invocable-only"}}`.
 
@@ -1864,6 +1891,16 @@ Investigar $ARGUMENTS:
 ```
 
 <!-- §6-ref -->
+---
+
+**Variante — Hub con gate humano:** cuando el plugin necesita forzar plan-antes-de-implementar y no hay CLAUDE.md que contenga esa regla (los plugins no tienen uno propio — §11), el gate vive en el hub mismo:
+```markdown
+## Implementación — gate obligatorio
+`<skill-plan>`/`<skill-new-X>` tienen `disable-model-invocation: true` — **no podés invocarlos vía Skill tool**.
+Pedile al usuario que corra `/<proyecto>:plan [target]` y esperá su output antes de dispatchear al especialista.
+```
+> El bloqueo real es el frontmatter (`disable-model-invocation: true` en las skills de implementación) — la instrucción en el hub es la que le explica al modelo por qué no debe intentarlo. Validado en producción: design-ios.
+
 ---
 
 **Librería interna** — invocada solo por otra skill o agente, nunca directamente:
@@ -2826,6 +2863,7 @@ Atrapa las tres clases de error que fallan **en silencio** en runtime: manifest 
 `skills/` · `commands/` · `agents/` · `hooks/` · `.mcp.json` · `output-styles/` · `lspServers` (`.lsp.json`) · `themes` (experimental) · `monitors` · `bin/` (ejecutables agregados al PATH de Bash mientras el plugin está activo — agregado 2026-07-04, faltaba en versiones anteriores) · `settings.json` (defaults del plugin). Nada más:
 
 - **`rules/` NO es componente de plugin** — `.claude/rules/*.md` con glob es feature de proyecto local. En un plugin, las reglas universales van en la skill hub o inline en los agentes.
+  > Validado en producción (design-ios): la sección `## Reglas universales Swift` vive inline en el hub (`disable-model-invocation: false`, siempre en contexto) — nunca en un archivo `rules/` que el plugin no puede cargar.
 - **`output-styles/` de plugin aplica a TODA la conversación principal** mientras el plugin esté activo — no por-agente. Un `swift-only.md` global silencia la prose de toda la sesión. Reglas de output por agente → inline en el agente (son 3-6 líneas).
 - **`plugin.json` no tiene campo `components`** — los componentes se descubren por convención de directorios; el campo se ignora.
 

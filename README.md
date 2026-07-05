@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.19 · Audit vs. official docs + staleness tooling (2026-07-04): Sonnet 5 has introductory pricing $2/$10 through 2026-08-31 — today's real ratio is ~2.5× Opus, not 1.7× (§25/§31, expires 2026-08-31); 30 hook events, not 29 (§7); `PostToolUse` does support `decision: block` — it's not purely observational (§7); `bin/` was missing from the plugin whitelist (§11); `tools/audit_guia.py` now flags expired facts and verifications older than 90 days
+**Author:** Félix Sotelo · **Version:** v5.20 · project CLAUDE.md template (§1); hub with human gate, `user-invocable: false`, and mixed agent/skill dispatch (§6); real-world validated example (design-ios) of inline universal rules in hub (§11) — 2026-07-05
 
 ---
 

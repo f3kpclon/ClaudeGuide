@@ -160,6 +160,32 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 
 **Regla:** empezar con agentes y skills locales. Convertir a plugin solo cuando se reutiliza en otro proyecto.
 
+### Template — CLAUDE.md de proyecto
+
+> Si una línea necesita más de 5 líneas de explicación, no es una regla — es un procedimiento. Sacarlo a una skill (§6), no inflar CLAUDE.md.
+
+```markdown
+# <Proyecto>
+
+## Reglas siempre-activas
+- <convención de stack no negociable — 1 línea>
+- <regla de proceso/seguridad — ej. "nunca push directo a main">
+- Build/test: `<comando canónico>`
+
+## Dispatch                         # solo si hay ≥2 agentes/skills locales
+| Tarea | Agente/Skill |
+|---|---|
+| <tarea-1> | @<agente> |
+| <tarea-2> | skill `<nombre>` |
+
+## Referencias                      # apuntar, no copiar — el contenido vive en su archivo
+- Convenciones → skill `<dominio>-conventions`
+- Estado del proyecto → `.claude/scope/scope-index.md`
+- Lecciones → `.claude/learnings/learnings-general.md`
+```
+
+**Tope real:** < 30 líneas totales (§12). Todo lo que no sea "hecho que aplica siempre en toda tarea" va a otro lado: hooks para enforcement real, skills para procedimientos, scope para contexto del proyecto.
+
 ---
 
 
