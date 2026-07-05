@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.20 · template de CLAUDE.md de proyecto (§1); hub con gate humano, `user-invocable: false` y dispatch mixto agente/skill (§6); ejemplo real validado (design-ios) de reglas universales inline en hub (§11) — 2026-07-05
+**Versión:** v5.21 · fix inconsistencia 40 vs 60 líneas en budget de hub — §6 no reflejaba la excepción de plugin-sin-CLAUDE.md que ya existía en §2, encontrada auditando design-ios contra la guía — 2026-07-05
 
 ---
 
@@ -1855,7 +1855,7 @@ allowed-tools: Read
 | <tarea-1> | @<agente> | <condición> |
 | <tarea-2> | skill `<nombre>` | <condición> |
 ```
-> Límite: < 40 líneas. Si CLAUDE.md ya tiene el dispatch, ocultarla del menú `/` sin tocar el SKILL.md — **`skillOverrides` va en `.claude/settings.json`, NO en el frontmatter** (corregido 2026-07-04, error fácil: escribirlo en el SKILL.md no falla, simplemente no hace nada): `{"skillOverrides": {"<proyecto>-hub": "user-invocable-only"}}`.
+> Límite: < 40 líneas si el proyecto tiene CLAUDE.md · < 60 líneas si es hub de plugin sin CLAUDE.md, ya que ahí también carga reglas universales (§2, §11). Si CLAUDE.md ya tiene el dispatch, ocultarla del menú `/` sin tocar el SKILL.md — **`skillOverrides` va en `.claude/settings.json`, NO en el frontmatter** (corregido 2026-07-04, error fácil: escribirlo en el SKILL.md no falla, simplemente no hace nada): `{"skillOverrides": {"<proyecto>-hub": "user-invocable-only"}}`.
 
 ---
 

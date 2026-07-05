@@ -1165,7 +1165,7 @@ allowed-tools: Read
 | <tarea-1> | @<agente> | <condición> |
 | <tarea-2> | skill `<nombre>` | <condición> |
 ```
-> Límite: < 40 líneas. Si CLAUDE.md ya tiene el dispatch, ocultarla del menú `/` sin tocar el SKILL.md — **`skillOverrides` va en `.claude/settings.json`, NO en el frontmatter** (corregido 2026-07-04, error fácil: escribirlo en el SKILL.md no falla, simplemente no hace nada): `{"skillOverrides": {"<proyecto>-hub": "user-invocable-only"}}`.
+> Límite: < 40 líneas si el proyecto tiene CLAUDE.md · < 60 líneas si es hub de plugin sin CLAUDE.md, ya que ahí también carga reglas universales (§2, §11). Si CLAUDE.md ya tiene el dispatch, ocultarla del menú `/` sin tocar el SKILL.md — **`skillOverrides` va en `.claude/settings.json`, NO en el frontmatter** (corregido 2026-07-04, error fácil: escribirlo en el SKILL.md no falla, simplemente no hace nada): `{"skillOverrides": {"<proyecto>-hub": "user-invocable-only"}}`.
 
 ---
 

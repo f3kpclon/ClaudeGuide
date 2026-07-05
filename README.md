@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.20 · project CLAUDE.md template (§1); hub with human gate, `user-invocable: false`, and mixed agent/skill dispatch (§6); real-world validated example (design-ios) of inline universal rules in hub (§11) — 2026-07-05
+**Author:** Félix Sotelo · **Version:** v5.21 · fixed 40-vs-60-line hub budget inconsistency — §6 was missing the plugin-without-CLAUDE.md exception already present in §2, found by auditing design-ios against the guide — 2026-07-05
 
 ---
 

@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.20 · template de CLAUDE.md de proyecto (§1); hub con gate humano, `user-invocable: false` y dispatch mixto agente/skill (§6); ejemplo real validado (design-ios) de reglas universales inline en hub (§11) — 2026-07-05
+**Versión:** v5.21 · fix inconsistencia 40 vs 60 líneas en budget de hub — §6 no reflejaba la excepción de plugin-sin-CLAUDE.md que ya existía en §2, encontrada auditando design-ios contra la guía — 2026-07-05
 
 ---
 
