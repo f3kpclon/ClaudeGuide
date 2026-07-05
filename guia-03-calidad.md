@@ -196,6 +196,8 @@ El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando o
 <!-- §13 -->
 ## 13. Checklist de calidad
 
+> Automatizable: skill global `/audit-guia` (proyecto con CLAUDE.md) o `/audit-plugin` (plugin distribuible) corre este checklist contra el repo actual vía Read/Glob/Grep — ver §29.
+
 ```
 CLAUDE.md
 □ < 30 líneas
@@ -230,8 +232,9 @@ Agentes
 □ Contexto definido antes de invocar: output esperado + scope + criterio de éxito (ver §24)
 
 Skills
-□ Hub: disable-model-invocation: false, < 40 líneas
+□ Hub: disable-model-invocation: false, user-invocable: false, < 40 líneas (proyecto con CLAUDE.md) / < 60 líneas (plugin sin CLAUDE.md — §2/§6)
 □ Hub con dispatch duplicado en CLAUDE.md → skillOverrides: user-invocable-only
+□ Plugin con gate de implementación: skills de creación (`plan`/`new-X`) con disable-model-invocation: true + el hub instruye explícitamente esperar al usuario (§6)
 □ Referencias que solo el usuario pide: disable-model-invocation: true
 □ Referencias que un flujo del modelo debe cargar (templates, convenciones): disable-model-invocation: false — con user-invocable: false + disable-model-invocation: true la skill es INALCANZABLE
 □ Frontmatter con ":" dentro de description → quotear (YAML roto = metadata vacía en silencio)

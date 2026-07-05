@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.21 · fixed 40-vs-60-line hub budget inconsistency — §6 was missing the plugin-without-CLAUDE.md exception already present in §2, found by auditing design-ios against the guide — 2026-07-05
+**Author:** Félix Sotelo · **Version:** v5.22 · checklist §13 was out of sync with v5.20/v5.21 changes: Hub was missing `user-invocable: false` and the 60-line plugin exception; the CLAUDE.md template (§1) had a table violating its own "no tables" rule — fixed to inline format — 2026-07-05
 
 ---
 

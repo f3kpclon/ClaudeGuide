@@ -172,11 +172,9 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 - <regla de proceso/seguridad — ej. "nunca push directo a main">
 - Build/test: `<comando canónico>`
 
-## Dispatch                         # solo si hay ≥2 agentes/skills locales
-| Tarea | Agente/Skill |
-|---|---|
-| <tarea-1> | @<agente> |
-| <tarea-2> | skill `<nombre>` |
+## Dispatch                         # solo si hay ≥2 agentes/skills locales — inline, nunca tabla (costo por línea, §13)
+- <tarea-1> → @<agente>
+- <tarea-2> → skill `<nombre>`
 
 ## Referencias                      # apuntar, no copiar — el contenido vive en su archivo
 - Convenciones → skill `<dominio>-conventions`

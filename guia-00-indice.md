@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.21 · fix inconsistencia 40 vs 60 líneas en budget de hub — §6 no reflejaba la excepción de plugin-sin-CLAUDE.md que ya existía en §2, encontrada auditando design-ios contra la guía — 2026-07-05
+**Versión:** v5.22 · checklist §13 desincronizado con cambios de v5.20/v5.21: Hub le faltaba `user-invocable: false` y la excepción de 60 líneas para plugin; template de CLAUDE.md (§1) tenía una tabla que violaba su propia regla "sin tablas" — corregido a formato inline — 2026-07-05
 
 ---
 

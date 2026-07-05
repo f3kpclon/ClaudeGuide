@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.21 · fix inconsistencia 40 vs 60 líneas en budget de hub — §6 no reflejaba la excepción de plugin-sin-CLAUDE.md que ya existía en §2, encontrada auditando design-ios contra la guía — 2026-07-05
+**Versión:** v5.22 · checklist §13 desincronizado con cambios de v5.20/v5.21: Hub le faltaba `user-invocable: false` y la excepción de 60 líneas para plugin; template de CLAUDE.md (§1) tenía una tabla que violaba su propia regla "sin tablas" — corregido a formato inline — 2026-07-05
 
 ---
 
@@ -291,11 +291,9 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 - <regla de proceso/seguridad — ej. "nunca push directo a main">
 - Build/test: `<comando canónico>`
 
-## Dispatch                         # solo si hay ≥2 agentes/skills locales
-| Tarea | Agente/Skill |
-|---|---|
-| <tarea-1> | @<agente> |
-| <tarea-2> | skill `<nombre>` |
+## Dispatch                         # solo si hay ≥2 agentes/skills locales — inline, nunca tabla (costo por línea, §13)
+- <tarea-1> → @<agente>
+- <tarea-2> → skill `<nombre>`
 
 ## Referencias                      # apuntar, no copiar — el contenido vive en su archivo
 - Convenciones → skill `<dominio>-conventions`
@@ -4824,6 +4822,8 @@ El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando o
 <!-- §13 -->
 ## 13. Checklist de calidad
 
+> Automatizable: skill global `/audit-guia` (proyecto con CLAUDE.md) o `/audit-plugin` (plugin distribuible) corre este checklist contra el repo actual vía Read/Glob/Grep — ver §29.
+
 ```
 CLAUDE.md
 □ < 30 líneas
@@ -4858,8 +4858,9 @@ Agentes
 □ Contexto definido antes de invocar: output esperado + scope + criterio de éxito (ver §24)
 
 Skills
-□ Hub: disable-model-invocation: false, < 40 líneas
+□ Hub: disable-model-invocation: false, user-invocable: false, < 40 líneas (proyecto con CLAUDE.md) / < 60 líneas (plugin sin CLAUDE.md — §2/§6)
 □ Hub con dispatch duplicado en CLAUDE.md → skillOverrides: user-invocable-only
+□ Plugin con gate de implementación: skills de creación (`plan`/`new-X`) con disable-model-invocation: true + el hub instruye explícitamente esperar al usuario (§6)
 □ Referencias que solo el usuario pide: disable-model-invocation: true
 □ Referencias que un flujo del modelo debe cargar (templates, convenciones): disable-model-invocation: false — con user-invocable: false + disable-model-invocation: true la skill es INALCANZABLE
 □ Frontmatter con ":" dentro de description → quotear (YAML roto = metadata vacía en silencio)
