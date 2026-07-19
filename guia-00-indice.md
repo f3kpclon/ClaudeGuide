@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.23 · §5: nuevo bloque "ciclo de vida del subagente" (reanudar con `SendMessage` vs re-spawnear en frío, síncrono vs background, relay obligatorio del reporte); §7: receta para acotar una tool peligrosa a un solo subagente vía `agent_type` + gotcha del payload de prueba incompleto; §6: gotchas al pelear con el cap de 200 líneas — 2026-07-18
+**Versión:** v5.24 · §7: nueva sección "el impuesto de latencia de un hook síncrono" — un `PreToolUse` bloqueante corre en cada tool call que matchea; palancas LowCost (gate barato inline / mover a PostToolUse o background / matcher estrecho) — 2026-07-18
 
 ---
 

@@ -890,6 +890,17 @@ Un hook que falla sin error visible es difícil de debuggear. Checklist en orden
 
 **Los guards PreToolUse solo ven las tools de Claude.** Un subproceso lanzado por OTRO hook (ej. un Stop hook que hace `git push` vía subprocess) no pasa por ningún guard — si un hook necesita la excepción, validarla dentro del propio hook (ej. push a master permitido solo si el commit toca exclusivamente `.claude/`).
 
+### El impuesto de latencia de un hook síncrono
+
+> Un `PreToolUse` síncrono no se paga una vez: corre **en cada tool call que matchea** y suma su wall-clock a **todas**. Es física — para poder denegar *antes* de la acción, el hook tiene que bloquear; no hay forma de denegar después. Así que el costo no es la latencia del hook, es esa latencia **× cuántas veces dispara la tool**. Un guard sobre `Bash` que hace I/O pesado o spawnea un binario lento tasa cada Bash de la sesión — invisible en el test de una sola llamada, brutal en un loop.
+
+Palancas LowCost, en orden:
+- **Gate barato e in-process** (regex, `str` checks, un `.get()` del payload) → síncrono inline. Es lo que un guard debe ser: microsegundos, bloquea sin que se note.
+- **Necesita latencia real pero NO tiene que bloquear** (avisar, loggear, correr tests, formatear) → moverlo a **`PostToolUse`** (observacional, corre después) o marcarlo `background: true` / `async: true` — no serializa el hilo.
+- **Necesita bloquear Y es caro** → es la tensión difícil: no podés diferirlo. Reducí *cuántas veces dispara* con un matcher estrecho (`if: "Bash(git push *)"` dispara mucho menos que un matcher `Bash` pelado — ver §7 arriba), o precomputá/cacheá el chequeo fuera del hot path. Un guard que corre en 20 llamadas × 300 ms es 6 s de sesión que nadie ve en el diseño.
+
+**Regla:** al escribir un hook, preguntá "¿cuántas veces por sesión va a disparar esto?" antes de "¿qué hace?". Un gate correcto pero lento sobre una tool caliente es el mismo fallo silencioso de §7 con otra cara — no rompe nada, solo hace lenta cada tool call para siempre.
+
 ### updatedInput — reescribir en vez de bloquear
 
 `updatedInput` es más potente que `deny`: en vez de rechazar la acción, la corrige silenciosamente antes de ejecutar. El agente no sabe que el comando cambió.
