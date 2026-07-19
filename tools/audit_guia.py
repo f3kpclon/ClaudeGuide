@@ -12,7 +12,10 @@ Checks:
      Y en la copia embebida de §26 (exentas: §1, §4, §15 — intro/glosario)
   2. LINES_BUDGET del hook instalado == el de la copia embebida
   3. Ningún <!-- §N[-quick|-ref] --> dentro de un code fence
-  4. Cada bloque -quick cabe en LINES_BUDGET (lo que excede se trunca al inyectar)
+  4. Inyección fence-safe (mirror de build_injection del hook):
+       - con -quick: el bloque quick entero está balanceado, no vacío y ≤ QUICK_CEILING
+       - sin -quick: la cápsula del head es no vacía y sin code fence
+     (vacío = la sección nunca se inyecta; fence impar = contexto corrupto — silenciosos)
   5. Sección > 150 líneas sin split quick/ref
   6. Fences balanceados al final de cada archivo
   7. Versión del header (guia-00-indice.md) == versión de README.md y README.es.md
@@ -37,6 +40,7 @@ HOOK = Path.home() / ".claude" / "hooks" / "guia_context.py"
 EXEMPT = {1, 4, 15}  # intro/analogía/glosario — sin entry por diseño
 MARKER = re.compile(r"^<!-- §(\d+)(-quick|-ref)? -->$")
 STALE_DAYS = 90
+QUICK_CEILING = 5500  # mirror del hook: un -quick más grande que esto se inyecta como cápsula
 VENCE = re.compile(r"<!--\s*vence:\s*(\d{4}-\d{2}-\d{2})\s*-->")
 VERIFICADO = re.compile(r"(?:[Vv]erificado|[Cc]orregido)(?:\s+\d{4}-\d{2}-\d{2})?[^\n.]{0,60}?(\d{4}-\d{2}-\d{2})")
 
@@ -65,10 +69,38 @@ def fence_state_machine(lines):
 def parse_keyword_map(text: str, label: str):
     """Extrae números de sección y LINES_BUDGET de un KEYWORD_MAP en `text`."""
     sections = {int(n) for n in re.findall(r"\],\s*(\d+)\),", text)}
-    budget = re.search(r"LINES_BUDGET\s*=\s*(\d+)", text)
+    budget = re.search(r"CAP_CHARS\s*=\s*(\d+)", text)
     if not sections:
         errors.append(f"{label}: no pude parsear el KEYWORD_MAP")
     return sections, int(budget.group(1)) if budget else None
+
+
+def build_capsule_lines(lines, start, budget):
+    """Réplica del build_capsule del hook — devuelve las líneas de la cápsula o None.
+    Debe seguir espejando ~/.claude/hooks/guia_context.py (misma clase de divergencia
+    silenciosa que el KEYWORD_MAP)."""
+    def has_body(acc):
+        return any(l.strip() and not l.lstrip().startswith("#") for l in acc)
+    out, used, in_fence = [], 0, False
+    for line in lines[start:]:
+        if re.match(r"<!-- §\d", line):
+            break
+        if re.match(r"\s*```", line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if not line.strip() and (not out or not out[-1].strip()):
+            continue
+        if line.strip() in ("---", "***", "___"):
+            continue
+        if has_body(out) and used + len(line) + 1 > budget:
+            break
+        out.append(line)
+        used += len(line) + 1
+    while out and not out[-1].strip():
+        out.pop()
+    return out if has_body(out) else None
 
 
 def main() -> int:
@@ -79,7 +111,7 @@ def main() -> int:
 
     hook_src = HOOK.read_text() if HOOK.exists() else ""
     _, installed_budget = parse_keyword_map(hook_src, "hook instalado") if hook_src else (set(), None)
-    budget = installed_budget or 80
+    budget = installed_budget or 550
 
     anchors: set[int] = set()
     quicks: dict[int, tuple[Path, int]] = {}  # n -> (archivo, línea)
@@ -104,15 +136,44 @@ def main() -> int:
                 elif kind == "-quick":
                     quicks[n] = (path, ln)
 
-        # --- tamaño de quicks: corta en el próximo marker DE ESTE ARCHIVO ---
-        positions = sorted(ln for ln, _, _ in file_marks)
-        for n, (qpath, qln) in list(quicks.items()):
-            if qpath != path:
+        # --- inyección fence-safe: mirror de build_injection del hook ---
+        # con -quick: se inyecta el bloque quick COMPLETO → debe estar balanceado, no vacío
+        #   y ≤ QUICK_CEILING (si no, corrompe el contexto o infla la inyección).
+        # sin -quick: cápsula fence-safe del head → no vacía y sin fence.
+        # Ambos fallos son silenciosos (vacío = nunca se inyecta; fence impar = contexto roto).
+        by_kind: dict[int, dict] = {}
+        for ln, n, kind in file_marks:
+            by_kind.setdefault(n, {})[kind] = ln
+        marker_lines = sorted(ln for ln, _, _ in file_marks)
+        for n, kinds in by_kind.items():
+            if n in EXEMPT:
                 continue
-            nxt = next((p for p in positions if p > qln), len(lines) + 1)
-            size = nxt - qln - 1
-            if size > budget:
-                errors.append(f"{path.name} §{n}-quick: {size} líneas > budget {budget} — se trunca al inyectar")
+            if "-quick" in kinds:
+                q = kinds["-quick"]
+                nxt = next((p for p in marker_lines if p > q), len(lines) + 1)
+                block = lines[q:nxt - 1]
+                while block and not block[0].strip():
+                    block = block[1:]
+                while block and not block[-1].strip():
+                    block = block[:-1]
+                has_body = any(l.strip() and not l.lstrip().startswith("#") for l in block)
+                fences = sum(1 for l in block if re.match(r"\s*```", l))
+                chars = len("\n".join(block))
+                if not has_body:
+                    errors.append(f"{path.name} §{n}-quick: bloque sin sustancia — no se inyectaría nada")
+                elif fences % 2:
+                    errors.append(f"{path.name} §{n}-quick: {fences} fences (impar) — el quick se inyecta entero y rompería el contexto")
+                elif chars > QUICK_CEILING:
+                    errors.append(f"{path.name} §{n}-quick: {chars} chars > techo {QUICK_CEILING} — se inyecta entero; recortalo o movelo a -ref")
+            else:
+                start = kinds.get(None)
+                if start is None:
+                    continue
+                cap = build_capsule_lines(lines, start, budget)
+                if cap is None:
+                    errors.append(f"{path.name} §{n}: cápsula de inyección vacía (la cabeza es toda código/marcadores) — no se inyectaría nada")
+                elif any(x.lstrip().startswith("```") for x in cap):
+                    errors.append(f"{path.name} §{n}: cápsula con code fence — la lógica de skip está rota")
 
         # --- secciones > 150 sin split, dentro de ESTE archivo -------------
         plains = sorted((ln, n) for ln, n, k in file_marks if k is None)
@@ -149,7 +210,7 @@ def main() -> int:
             errors.append(f"KEYWORD_MAP divergió entre hook instalado y copia §26: {sorted(diff)}")
         if embedded_budget is not None and installed_budget != embedded_budget:
             errors.append(
-                f"LINES_BUDGET divergió: instalado={installed_budget} vs embebido={embedded_budget}")
+                f"CAP_CHARS divergió: instalado={installed_budget} vs embebido={embedded_budget}")
     for miss in sorted(expected - embedded):
         errors.append(f"§{miss}: sin entry en la copia embebida del KEYWORD_MAP (§26)")
 
@@ -177,8 +238,9 @@ def main() -> int:
         for e in errors:
             print(f"  - {e}")
         return 1
-    print(f"✅ audit limpio — {len(GUIA_FILES)} archivos, {len(anchors)} secciones, {len(quicks)} quicks ≤ {budget} líneas, "
-          f"KEYWORD_MAP sincronizado, versión {ver.group(1) if ver else '?'} en sync")
+    print(f"✅ audit limpio — {len(GUIA_FILES)} archivos, {len(anchors)} secciones, inyección fence-safe "
+          f"({len(quicks)} quicks completos / resto cápsula ≤{budget}c), KEYWORD_MAP sincronizado, "
+          f"versión {ver.group(1) if ver else '?'} en sync")
     return 0
 
 

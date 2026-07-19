@@ -209,7 +209,7 @@ CLAUDE.md
 Guía (al actualizar guia-agentes-plugins-claude-code.md)
 □ §N en el Índice si se agregó
 □ Sección > 150 líneas → agregar <!-- §N-quick --> (reglas) y <!-- §N-ref --> (código/ejemplos)
-□ El bloque quick cabe en el LINES_BUDGET del hook (80 líneas) — lo que exceda se trunca al inyectar
+□ Inyección del hook fence-safe: `-quick` completo (curado, balanceado, ≤5500 chars) o cápsula del head sin quick — `audit_guia.py` verifica que ninguna sección quede vacía o con fence impar (§26)
 □ Ningún marker <!-- §N... --> dentro de un code fence — la inyección corta el fence sin cerrar
 □ NUNCA renumerar §N — son IDs estables (KEYWORD_MAP, anchors, CLAUDE.md global dependen de ellos); el orden físico es append-only, el Índice define el orden temático
 □ Cada concepto tiene UNA casa — otras secciones enlazan con → §N, nunca copian (las copias divergen)

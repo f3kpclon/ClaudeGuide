@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.27 · §35 deepened with Anthropic's 3 agent-harness patterns (primary source), secondary verification, context separation & permissions-as-design; §34 with the per-cycle cost formula (`/cost` × cycles/day) and `Monitor` "stop polling, start reacting"; `audit-guia`/`audit-plugin` skills extended with harness/loop checks (gate between phases, irreversible `loop.md`, judge-role permissions) — 2026-07-19
+**Author:** Félix Sotelo · **Version:** v5.29 · context hook (§26), two injection paths: section with `-quick` → the **full** curated block (with its code — restores the §5/§6/§7 templates/JSON that the v5.28 capsule stripped); prose section without a quick → fence-safe head capsule + `sed` pointer. Fence-safety guaranteed (quick balanced by construction). `sed` pointer fixed (the old pattern stopped at the `-quick`/`-ref` sub-markers, returning 2 lines instead of the section). Validated end-to-end: 268 checks across all 35 sections — routing, fence-safety, code fidelity, pointer round-trip, concat, dedup. `audit_guia.py` mirrors both paths — 2026-07-19
 
 ---
 

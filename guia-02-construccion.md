@@ -3034,8 +3034,9 @@ from pathlib import Path
 # ← Ajustar con la ruta donde clonaste este repo
 GUIA = Path("~/ruta/a/guia-agentes-plugins-claude-code.md").expanduser()
 MAX_SECTIONS = 2    # máximo de secciones a inyectar por prompt
-LINES_BUDGET = 80   # presupuesto total — se divide entre secciones encontradas
-                    # (los <!-- §N-quick --> deben caber en este budget — ver §13)
+CAP_CHARS = 550       # presupuesto de la CÁPSULA para secciones SIN -quick (prosa): corta, fence-safe.
+QUICK_CEILING = 5500  # secciones con -quick: se inyecta el bloque curado COMPLETO (incluye su código);
+                      # si un -quick excede este techo cae a cápsula. Sin -quick: cápsula + puntero sed.
 
 # Orden importa: más específico primero.
 # Se recorren TODOS los entries y se acumulan hasta MAX_SECTIONS matches.
@@ -3148,21 +3149,58 @@ def detect_sections(prompt: str) -> list:
                 break
     return results
 
-def extract_section(n: int, max_lines: int) -> str:
+def _has_body(acc):                          # ≥1 línea sustantiva que NO sea el header (##)
+    return any(l.strip() and not l.lstrip().startswith("#") for l in acc)
+
+def _capsule(body, budget):
+    """Cápsula fence-safe para secciones SIN -quick: salta el código (nunca emite un ```),
+    colapsa blancos, acota por chars. La primera línea de sustancia entra siempre."""
+    out, used, in_fence = [], 0, False
+    for line in body:
+        if re.match(r"\s*```", line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if not line.strip() and (not out or not out[-1].strip()):
+            continue
+        if line.strip() in ("---", "***", "___"):
+            continue
+        if _has_body(out) and used + len(line) + 1 > budget:
+            break
+        out.append(line)
+        used += len(line) + 1
+    while out and not out[-1].strip():
+        out.pop()
+    return "\n".join(out).strip() if _has_body(out) else None
+
+def build_injection(n: int, budget: int):
+    """Con -quick: inyecta el bloque quick COMPLETO (curado, con su código; balanceado
+    por construcción — el marcador -ref nunca cae dentro de un fence). Sin -quick: cápsula."""
     lines = GUIA.read_text().splitlines()
-    for anchor in [f"<!-- §{n}-quick -->", f"<!-- §{n} -->"]:
+    for anchor, curated in [(f"<!-- §{n}-quick -->", True), (f"<!-- §{n} -->", False)]:
         try:
             start = next(i for i, l in enumerate(lines) if anchor in l) + 1
         except StopIteration:
             continue
-        result = []
+        body = []
         for line in lines[start:]:
             if re.match(r"<!-- §\d", line):
                 break
-            result.append(line)
-        if len(result) > 3:
-            return "\n".join(result[:max_lines]).strip()
-    return ""
+            body.append(line)
+        if curated:
+            while body and not body[0].strip(): body.pop(0)
+            while body and not body[-1].strip(): body.pop()
+            text = "\n".join(body).strip()
+            if len(text) > QUICK_CEILING:         # -quick anómalo → cae a cápsula
+                text = _capsule(body, budget)
+            if text and _has_body(body):
+                return text
+        else:
+            text = _capsule(body, budget)
+            if text:
+                return text
+    return None
 
 try:
     payload = json.load(sys.stdin)
@@ -3177,12 +3215,12 @@ sections = [n for n in detect_sections(payload.get("prompt", "")) if n not in al
 if not sections:
     sys.exit(0)
 
-max_lines = LINES_BUDGET // len(sections)
 parts = []
 for n in sections:
-    content = extract_section(n, max_lines)
-    if content:
-        parts.append(f"[Guía §{n}]\n{content}")
+    inj = build_injection(n, CAP_CHARS)
+    if inj:
+        pointer = f"↳ §{n} completa: sed -n '/<!-- §{n} -->/,/<!-- §[0-9][0-9]* -->/p' guia-*.md"
+        parts.append(f"[Guía §{n}]\n{inj}\n{pointer}")
 
 if parts:
     print("\n\n".join(parts))
@@ -3211,7 +3249,7 @@ chmod +x ~/.claude/hooks/guia_context.py
 
 ### Mantenimiento del KEYWORD_MAP
 
-> **Fuente de verdad: el hook instalado** (`~/.claude/hooks/guia_context.py`). La copia embebida arriba existe para instalar desde cero — diverge en silencio si no se actualizan ambas en el mismo commit (pasó: la copia estuvo semanas con `LINES_BUDGET=120` y sin §32/§33 mientras el hook real tenía 80 y ambas secciones). `tools/audit_guia.py` verifica la sincronía en pre-commit.
+> **Fuente de verdad: el hook instalado** (`~/.claude/hooks/guia_context.py`). La copia embebida arriba existe para instalar desde cero — diverge en silencio si no se actualizan ambas en el mismo commit (pasó: la copia estuvo semanas con un budget divergente y sin §32/§33 mientras el hook real tenía otro valor y ambas secciones). `tools/audit_guia.py` verifica la sincronía del KEYWORD_MAP y del `CAP_CHARS` en pre-commit.
 
 El KEYWORD_MAP no se actualiza solo — cada sección nueva que no tenga entry queda fuera del sistema de inyección. El §13 (Checklist de calidad) ya incluye el recordatorio, pero el protocolo es:
 
@@ -3229,14 +3267,17 @@ El KEYWORD_MAP no se actualiza solo — cada sección nueva que no tenga entry q
 - Específico al tema para evitar falsos positivos (`"advisor pattern"` > `"advisor"` si el término es ambiguo)
 - En el idioma del usuario (si mezclan ES/EN, incluir ambos)
 
-**Budget adaptativo — cómo funciona:**
+**Dos vías de inyección — cómo funciona:**
 ```python
-LINES_BUDGET = 80   # presupuesto total fijo
-# 1 sección encontrada → 80 líneas (máximo detalle)
-# 2 secciones encontradas → 40 líneas cada una (80 total)
+# Sección CON <!-- §N-quick -->  → se inyecta el bloque quick COMPLETO (curado por el
+#   autor, incluye su código/tablas). Balanceado por construcción: el marcador -ref nunca
+#   cae dentro de un fence, así que el quick tiene sus fences cerrados. QUICK_CEILING (5500)
+#   es solo una salvaguarda: un quick anómalamente grande cae a cápsula.
+# Sección SIN quick (prosa)      → cápsula fence-safe de la cabeza, acotada por CAP_CHARS,
+#   que SALTA los bloques de código + puntero sed para el detalle bajo demanda.
 ```
 
-Si una sección quick tiene < 40 líneas, se sirve completa. El budget solo limita secciones largas — no trunca lo que ya es conciso.
+Por qué dos vías (aprendido a los golpes en esta sesión): la primera versión inyectaba la sección entera truncada por líneas — cortaba a mitad de un code fence e inyectaba un delimitador sin cerrar que corrompía el contexto (verificado: §13 y §14 daban fences impares). El fix ingenuo fue *una cápsula para todo*, pero eso **stripeaba el código curado** de §5/§6/§7 — a §7 le tiraba el 88% de su quick (los JSON de ejemplo). La respuesta correcta separa los casos: **el quick ya es el resumen que curaste**, así que va completo (con su código); solo las secciones de prosa sin quick usan cápsula. El quick completo es fence-safe *porque* está balanceado, no porque se le quite el código. El hook dice *qué existe y por qué* con detalle suficiente para actuar; el puntero `sed` da el resto (progressive disclosure, §35 #2).
 
 ### Deduplicación por sesión
 
@@ -3742,7 +3783,7 @@ memory/                      ← aprendizajes acumulados entre sesiones
 
 ## Conocimiento de referencia
 `/ruta/a/tu/guia-o-docs.md`
-Solo la sección relevante: sed -n '/<!-- §N -->/,/<!-- §[0-9]/p' <archivo>
+Solo la sección relevante: sed -n '/<!-- §N -->/,/<!-- §[0-9][0-9]* -->/p' <archivo>   # el ` -->` salta los sub-markers -quick/-ref
 
 ## Principios de operación
 - [principio 1]
