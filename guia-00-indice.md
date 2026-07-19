@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.24 · §7: nueva sección "el impuesto de latencia de un hook síncrono" — un `PreToolUse` bloqueante corre en cada tool call que matchea; palancas LowCost (gate barato inline / mover a PostToolUse o background / matcher estrecho) — 2026-07-18
+**Versión:** v5.25 · §5: el `model:` del frontmatter es un default, no un candado — el `model` de la invocación tiene precedencia (una sola definición, el modelo más barato por tarea); `subagent_type: fork` siempre hereda el del padre; `claude-fable-5` agregado al enum del template — 2026-07-19
 
 ---
 

@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.24 · §7: new section "the latency tax of a synchronous hook" — a blocking `PreToolUse` runs on every matching tool call; LowCost levers (cheap in-process gate / move to PostToolUse or background / narrow matcher) — 2026-07-18
+**Author:** Félix Sotelo · **Version:** v5.25 · §5: the frontmatter `model:` is a default, not a lock — the spawn-time `model` takes precedence (one definition, cheapest model per task); `subagent_type: fork` always inherits the parent's; `claude-fable-5` added to the template enum — 2026-07-19
 
 ---
 

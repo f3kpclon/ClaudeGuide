@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.24 · §7: nueva sección "el impuesto de latencia de un hook síncrono" — un `PreToolUse` bloqueante corre en cada tool call que matchea; palancas LowCost (gate barato inline / mover a PostToolUse o background / matcher estrecho) — 2026-07-18
+**Versión:** v5.25 · §5: el `model:` del frontmatter es un default, no un candado — el `model` de la invocación tiene precedencia (una sola definición, el modelo más barato por tarea); `subagent_type: fork` siempre hereda el del padre; `claude-fable-5` agregado al enum del template — 2026-07-19
 
 ---
 
@@ -706,7 +706,7 @@ La optimización más barata del sistema no es un hook ni un agente más eficien
 name: <nombre-kebab-case>           # cómo se invoca: @nombre · único en el proyecto
 description: "<Qué hace este agente>. Usar cuando <caso principal>,
   <caso secundario>, o el contexto involucra <señal de activación>."
-model: <claude-haiku-4-5|claude-sonnet-5|claude-opus-4-8>   # pinear siempre — ver §25
+model: <claude-haiku-4-5|claude-sonnet-5|claude-opus-4-8|claude-fable-5>   # pinear siempre — ver §25
 tools: <Read, Glob, Grep>           # solo las necesarias — ver tabla de tools abajo
 ---
 
@@ -992,6 +992,18 @@ El orchestrador (o el usuario) invoca agentes con un prompt. Ese prompt se suma 
 | **Relay obligatorio** | El **reporte final del subagente NO se le muestra al usuario** — solo vuelve a vos, el orquestador. | Relayá lo que importa en tu respuesta. Si no lo hacés, el usuario no ve nada → re-invocás → **doble costo**. Es el fallo silencioso (§4, protocolo #3) a nivel orquestación. |
 
 **Gotcha del agente pendiente:** nunca fabriques ni "predigas" el resultado de un subagente que todavía no terminó — la notificación de fin la manda el harness, nunca la escribís vos. Si el usuario pregunta antes de que llegue, decí que sigue corriendo. Ver arquitectura multi-agente (§10) y el handoff cuando un agente largo cruza el corte de sesión (§27).
+
+### El `model:` del frontmatter es un default, no un candado
+
+> Verificado contra el schema del tool `Agent` (esta sesión, 2026-07-18): al spawnear, el **`model` de la invocación tiene precedencia sobre el `model:` del frontmatter**. Pinear el modelo en el agente fija su *caso típico*; no impide dispatchearlo más barato o más caro por invocación.
+
+La palanca lowcost: **una sola definición de agente, el modelo más barato que la tarea concreta permita**. Un `@reviewer` pineado en sonnet para correctness se puede spawnear en haiku para un check trivial de convenciones, sin duplicar el archivo ni tocar el frontmatter.
+
+- Override explícito al spawnear → gana sobre el frontmatter.
+- Sin override → usa el `model:` del frontmatter; si tampoco hay, hereda el del hilo padre.
+- **Excepción `fork`:** un subagente `subagent_type: fork` **ignora el override y siempre hereda el modelo del padre** — no intentes abaratarlo por invocación, no aplica.
+
+**Regla:** pinear en el frontmatter el modelo del 80% de los casos (§25); bajar a haiku en el spawn para las invocaciones triviales. Es el mismo principio del prompt mínimo — no repetir en la invocación lo que el agente ya sabe — aplicado al modelo: no clavar en el frontmatter lo que la invocación puede decidir mejor.
 
 ### Señales de agente mal dimensionado
 
