@@ -293,6 +293,18 @@ El orchestrador (o el usuario) invoca agentes con un prompt. Ese prompt se suma 
 
 **Para el reviewer en particular:** pasar SOLO los archivos directamente modificados en la sesión — nunca archivos de contexto o arquitectura. El reviewer tiene Grep/Glob disponibles y los usa para cruzar referencias; cada archivo de contexto extra añade ~3-5 tool uses. 4 archivos → ~8-10 tool uses → ~4-8k tokens. 7 archivos → ~34 tool uses → ~22k tokens (medido, 2026-05-31).
 
+### Ciclo de vida del subagente — reanudar, bloquear, relayar
+
+> El prompt mínimo (arriba) abarata *una* invocación. Estas tres reglas abaratan la **orquestación**: dónde se paga el spawn, cuándo bloquear y cómo no perder el resultado. Todas verificadas contra el harness de esta sesión (2026-07-18); son física del tool `Agent`, no estilo.
+
+| Palanca | Qué hace el harness | Regla LowCost |
+|---|---|---|
+| **Reanudar > re-spawnear** | `SendMessage <id\|nombre>` continúa un subagente **con su contexto intacto**. Un `Agent` nuevo **arranca frío y re-deriva todo el contexto** — es el camino caro. | Para continuar un agente ya vivo → `SendMessage`. `Agent` nuevo **solo** para empezar de cero. Re-spawnear "porque es más fácil" paga de nuevo toda la derivación de contexto. |
+| **Bloquear vs fire-and-forget** | Los subagentes corren en **background por defecto** — te notifican al terminar. `run_in_background: false` los hace **síncronos**. | Síncrono solo si necesitás el resultado para el **próximo paso**. Trabajo lateral → background y seguís. Bloquear lo paralelizable serializa sin necesidad. |
+| **Relay obligatorio** | El **reporte final del subagente NO se le muestra al usuario** — solo vuelve a vos, el orquestador. | Relayá lo que importa en tu respuesta. Si no lo hacés, el usuario no ve nada → re-invocás → **doble costo**. Es el fallo silencioso (§4, protocolo #3) a nivel orquestación. |
+
+**Gotcha del agente pendiente:** nunca fabriques ni "predigas" el resultado de un subagente que todavía no terminó — la notificación de fin la manda el harness, nunca la escribís vos. Si el usuario pregunta antes de que llegue, decí que sigue corriendo. Ver arquitectura multi-agente (§10) y el handoff cuando un agente largo cruza el corte de sesión (§27).
+
 ### Señales de agente mal dimensionado
 
 | Síntoma | Diagnóstico |
@@ -787,6 +799,34 @@ elif tool == 'MultiEdit':
 
 Un campo equivocado no da error: `inp.get('path', '')` retorna `''`, el filtro de extensión no matchea, `sys.exit(0)` — **el hook queda muerto y se ve idéntico a uno sano**. Caso real MathVoid: el gate de convenciones GDScript estuvo semanas validando solo Write porque leía `path`/`new_str` en Edit — con tests verdes, porque los tests alimentaban el mismo shape inventado. Regla: los campos del payload se copian de la doc oficial de hooks o de un payload real capturado, nunca de memoria.
 
+**Campos top-level + identidad del subagente (verificado empíricamente 2026-07-18, este harness + code.claude.com/docs/en/hooks):** además de `tool_name`/`tool_input`, un `PreToolUse` trae `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `effort` (es un **objeto**: `{"level":"high"}`, no un string), `hook_event_name`, `tool_use_id`. Y el dato que casi nadie documenta: **`agent_id` + `agent_type` aparecen SOLO cuando la llamada la dispara un subagente** — el agente principal no los trae. `agent_type` = el `name` del frontmatter, **plugin-scoped** (ej. `mi-plugin:debugger`; un built-in llega pelado como `general-purpose`). No es exclusivo de `SubagentStop`: un **`PreToolUse` puede saber qué subagente hizo la llamada**, lo que habilita gates a nivel subagente. Bonus verificado la misma sesión: un hook agregado a `.claude/settings.local.json` **se activó a mitad de sesión sin reload**.
+
+### Receta — acotar una tool peligrosa-pero-necesaria a UN solo subagente
+
+Extiende "física > prosa" (§4) al nivel de subagente. Caso real (swift-concurrency-plugin, v2.5.0): un agente diagnóstico (`@debugger`) necesita `Bash` para EL comando que Read/Glob/Grep no pueden —correr Thread Sanitizer— pero no debería correr shell arbitrario. Quitarle `Bash` rompe su función; dejar "solo TSan" en la prosa del agente **no es enforcement** — un prompt-injection en un log pegado, o un paso confundido, corre cualquier cosa. Un `@reviewer` read-only lo está **por su lista de tools** (física); este agente no puede estarlo así porque necesita la tool.
+
+El fix: un `PreToolUse:Bash` que lee `agent_type` del payload y solo actúa sobre ese agente.
+
+```python
+def is_target_agent(agent_type: str) -> bool:
+    at = (agent_type or "").strip().lower()
+    return at == "debugger" or at.endswith(":debugger")  # scoped Y pelado (defensivo)
+
+def main():
+    p = json.load(sys.stdin)
+    if p.get("tool_name") != "Bash":            # sin esto, el guard se desactiva (ver Testing)
+        sys.exit(0)
+    if not is_target_agent(p.get("agent_type", "")):
+        sys.exit(0)                             # otros agentes / main → intactos
+    cmd = p.get("tool_input", {}).get("command", "")
+    if is_allowed(cmd):                         # allowlist ESTRECHA (un comando, sin && ; | > $( )
+        sys.exit(0)
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+        "permissionDecision": "deny", "permissionDecisionReason": "..."}}))
+```
+
+Claves aprendidas: (1) matchear el nombre **plugin-scoped** (`endswith(":<nombre>")`), no el pelado, porque instalado llega scopeado; incluir el pelado por defensa. (2) La allowlist es la parte difícil (la misma tensión de un git-gate): muy estrecha rompe comandos legítimos, muy ancha no sirve — y **debe rechazar encadenamiento/redirección/sustitución** (`&&`/`||`/`;`/`|`/`>`/`` ` ``/`$(`), o `cmd-permitido && rm -rf` pasa. (3) El resultado: `@reviewer` acotado por lista-de-tools, `@debugger` por hook — misma garantía, distinta capa.
+
 ### Testing de hooks localmente
 
 Antes de registrar un hook, testearlo manualmente para no esperar a que el agente lo dispare:
@@ -806,6 +846,8 @@ echo '{"tool_name": "Bash", "tool_input": {"command": "git push origin master"}}
 ```
 
 Si el hook no imprime nada → exit 0 silencioso (correcto). Si imprime JSON con `permissionDecision: deny` → bloqueo activo.
+
+> **Gotcha del harness — un payload incompleto convierte el test en mentira (verificado 2026-07-18).** Un guard bien hecho arranca con `if payload.get("tool_name") != "Bash": sys.exit(0)`. Si tu payload de prueba **omite `tool_name`**, el guard sale temprano y **todo comando devuelve ALLOW** — el test que esperaba `deny` "pasa" como allow por la razón equivocada, y los que esperaban allow también pasan, así que la suite queda verde sobre un gate desactivado. Pasó al testear un git-gate: 5 falsos ALLOW, y el guard estaba perfecto; el payload de prueba era el roto. Es el mismo "se ve idéntico a uno sano" de §7, un nivel más arriba: no el hook muerto, sino **el test que no ejercita el hook**. Fix: el payload de prueba replica el shape REAL completo (`tool_name` + `tool_input` + `agent_type` cuando pruebas gates de subagente), y al menos un caso debe verificar que el guard efectivamente **deniega** algo — si nada deniega nunca, sospecha del harness antes que del código (el juez real > el proxy).
 
 ### Diagnóstico de hooks silenciosos
 
@@ -1181,6 +1223,8 @@ allowed-tools: []
 <Convenciones, patrones, API — sin prosa de relleno>
 ```
 > Límite: < 200 líneas. Si supera → dividir en `SKILL.md` + `reference.md`.
+
+> **Dos gotchas al pelear con el cap (2026-07-18):** (1) Si lo enforced con un test, el test suele ser `> 200` (falla estricto), así que el techo real es **≤200** y un archivo clavado en 200 tiene **cero margen** — la próxima línea rompe la suite; deja el archivo ~197 para poder editar sin recortar cada vez. (2) **Rewordear un párrafo con wrap NO baja el conteo de líneas** — el archivo tiene newlines literales, no wrap visual; acortar el texto de una línea que ya ocupa 4 líneas físicas la deja en 4. Para bajar UNA línea hay que **fusionar contenido en menos newlines** (unir dos oraciones wrapeadas en una), no solo escribir menos palabras. Perdí varias iteraciones reescribiendo sin que `wc -l` bajara hasta entenderlo.
 
 ---
 
@@ -2332,11 +2376,16 @@ Es REQUERIDO para distribución y ningún template lo mostraba:
 □ claude plugin validate ./plugins/<plugin> pasa limpio
 □ Tests de hooks pasan (subprocess con payloads reales — §19)
 □ Bump semver en plugin.json (fix → patch · componente nuevo → minor · breaking → major)
+□ CHANGELOG.md: entrada nueva (fecha + Added/Changed) — el bump sin changelog es media verdad
 □ marketplace.json actualizado si cambió nombre/description
-□ README.md refleja los componentes actuales
-□ Tag git: <plugin>-vX.Y.Z — el consumidor puede pinear
+□ README.md refleja los componentes actuales (conteos de hooks/agentes incluidos)
+□ Tag git: <plugin>--vX.Y.Z — el consumidor puede pinear
 □ Probar instalación limpia: claude --plugin-dir en un repo vacío
 ```
+
+**Naming del tag — el separador importa (2026-07-18).** Con un nombre que lleva guiones (`swift-concurrency-migration-plugin`), `nombre-vX.Y.Z` (un guion) es ambiguo — no se sabe dónde corta el nombre. El repo real usa **doble guion `--v`** (`swift-concurrency-migration-plugin--v2.5.0`), que separa nombre/versión sin ambigüedad y permite versionar varios plugins de un mismo marketplace-repo por separado. Elige un separador y mantenlo idéntico entre releases.
+
+**Flujo de release ejecutado (marketplace-repo, verificado 2026-07-18):** bump de `plugin.json` + `CHANGELOG` en una branch `release/vX.Y.Z` → `gh pr create --base main` → merge (`gh pr merge --merge`, la convención del repo eran merge commits, no squash) → `gh release create "<plugin>--vX.Y.Z" --target main --title "vX.Y.Z — <resumen>" --notes ...`. El release se tagea sobre main **después** del merge, no sobre la branch. `gh release create` crea el tag server-side; para verlo local, `git fetch --tags` y confirmar que apunta al merge commit.
 
 ### Trampas de distribución
 

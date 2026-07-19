@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.22 · checklist §13 desincronizado con cambios de v5.20/v5.21: Hub le faltaba `user-invocable: false` y la excepción de 60 líneas para plugin; template de CLAUDE.md (§1) tenía una tabla que violaba su propia regla "sin tablas" — corregido a formato inline — 2026-07-05
+**Versión:** v5.23 · §5: nuevo bloque "ciclo de vida del subagente" (reanudar con `SendMessage` vs re-spawnear en frío, síncrono vs background, relay obligatorio del reporte); §7: receta para acotar una tool peligrosa a un solo subagente vía `agent_type` + gotcha del payload de prueba incompleto; §6: gotchas al pelear con el cap de 200 líneas — 2026-07-18
 
 ---
 

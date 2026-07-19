@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.22 · checklist §13 was out of sync with v5.20/v5.21 changes: Hub was missing `user-invocable: false` and the 60-line plugin exception; the CLAUDE.md template (§1) had a table violating its own "no tables" rule — fixed to inline format — 2026-07-05
+**Author:** Félix Sotelo · **Version:** v5.23 · §5: new "subagent lifecycle" block (resume with `SendMessage` vs cold re-spawn, synchronous vs background, mandatory relay of the final report); §7: recipe to scope a dangerous tool to a single subagent via `agent_type` + gotcha of the incomplete test payload; §6: gotchas when fighting the 200-line cap — 2026-07-18
 
 ---
 

@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.22 · checklist §13 desincronizado con cambios de v5.20/v5.21: Hub le faltaba `user-invocable: false` y la excepción de 60 líneas para plugin; template de CLAUDE.md (§1) tenía una tabla que violaba su propia regla "sin tablas" — corregido a formato inline — 2026-07-05
+**Versión:** v5.23 · §5: nuevo bloque "ciclo de vida del subagente" (reanudar con `SendMessage` vs re-spawnear en frío, síncrono vs background, relay obligatorio del reporte); §7: receta para acotar una tool peligrosa a un solo subagente vía `agent_type` + gotcha del payload de prueba incompleto; §6: gotchas al pelear con el cap de 200 líneas — 2026-07-18
 
 ---
 
@@ -980,6 +980,18 @@ El orchestrador (o el usuario) invoca agentes con un prompt. Ese prompt se suma 
 **Cuánto ahorra:** un prompt de invocación corto vs. largo puede ser la diferencia entre 2k y 12k tokens para haiku — 6x de diferencia en una operación simple.
 
 **Para el reviewer en particular:** pasar SOLO los archivos directamente modificados en la sesión — nunca archivos de contexto o arquitectura. El reviewer tiene Grep/Glob disponibles y los usa para cruzar referencias; cada archivo de contexto extra añade ~3-5 tool uses. 4 archivos → ~8-10 tool uses → ~4-8k tokens. 7 archivos → ~34 tool uses → ~22k tokens (medido, 2026-05-31).
+
+### Ciclo de vida del subagente — reanudar, bloquear, relayar
+
+> El prompt mínimo (arriba) abarata *una* invocación. Estas tres reglas abaratan la **orquestación**: dónde se paga el spawn, cuándo bloquear y cómo no perder el resultado. Todas verificadas contra el harness de esta sesión (2026-07-18); son física del tool `Agent`, no estilo.
+
+| Palanca | Qué hace el harness | Regla LowCost |
+|---|---|---|
+| **Reanudar > re-spawnear** | `SendMessage <id\|nombre>` continúa un subagente **con su contexto intacto**. Un `Agent` nuevo **arranca frío y re-deriva todo el contexto** — es el camino caro. | Para continuar un agente ya vivo → `SendMessage`. `Agent` nuevo **solo** para empezar de cero. Re-spawnear "porque es más fácil" paga de nuevo toda la derivación de contexto. |
+| **Bloquear vs fire-and-forget** | Los subagentes corren en **background por defecto** — te notifican al terminar. `run_in_background: false` los hace **síncronos**. | Síncrono solo si necesitás el resultado para el **próximo paso**. Trabajo lateral → background y seguís. Bloquear lo paralelizable serializa sin necesidad. |
+| **Relay obligatorio** | El **reporte final del subagente NO se le muestra al usuario** — solo vuelve a vos, el orquestador. | Relayá lo que importa en tu respuesta. Si no lo hacés, el usuario no ve nada → re-invocás → **doble costo**. Es el fallo silencioso (§4, protocolo #3) a nivel orquestación. |
+
+**Gotcha del agente pendiente:** nunca fabriques ni "predigas" el resultado de un subagente que todavía no terminó — la notificación de fin la manda el harness, nunca la escribís vos. Si el usuario pregunta antes de que llegue, decí que sigue corriendo. Ver arquitectura multi-agente (§10) y el handoff cuando un agente largo cruza el corte de sesión (§27).
 
 ### Señales de agente mal dimensionado
 
