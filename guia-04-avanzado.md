@@ -1251,6 +1251,80 @@ Por eso los agentes y prompts de artifact-factory están en inglés — el CLAUD
 ---
 
 
+<!-- §35 -->
+<!-- §35-quick -->
+## 35. El patrón Harness — pipelines con gates
+
+> La palabra "harness" aparece por toda esta guía como "la física del tool". Acá se define y se convierte en patrón. **Harness = arnés**: el modelo pone la potencia, el arnés la canaliza en una dirección controlada. En la analogía del restaurante (§4) el harness es la *cocina misma* — la estación, el pase, el orden de los platos — no el cocinero. Un pipeline sin gates es potencia sin arnés: cada fase hereda el error de la anterior.
+
+> Cuándo llegás acá: tenés varios especialistas (§5) y `/loop` (§34) para cadencia, pero una tarea que cruza fases necesita **quién ejecuta la secuencia y corta cuando una fase falla**. Eso es el harness.
+
+### Harness vs `lead` (§10) — no son lo mismo
+
+| | `lead` (§10) | Harness |
+|---|---|---|
+| Qué es | Un **agente** planner (Advisor, §31) | Un **comando orquestador** (`commands/harness.md`) |
+| Hace | Produce un plan; el hilo principal lo ejecuta | **Ejecuta** el plan él mismo, fase por fase |
+| Gates | No — solo recomienda | **Sí** — un validador entre fases que puede cortar |
+| Modelo | sonnet (razona el plan) | El hilo principal; delega cada fase al modelo más barato |
+
+El `lead` decide *qué*; el harness hace *cumplir el orden y los gates*. Se combinan: el harness invoca al `lead` como paso 1 (plan) y ejecuta el resto con gates.
+
+### La forma mínima
+
+```
+comando harness:
+  1. plan     → @lead (Advisor) define orden + riesgos; si marca anti-pattern, CORTA
+  2. fase N   → @especialista-de-la-capa (el más barato que cierre)
+  3. gate N   → @reviewer sobre lo tocado; si bloquea, CORTA aquí (no propagar)
+  4. cierre   → reviewer del conjunto → @commits
+```
+
+Verificado en DesignPluging (`plugins/design-ios/commands/harness.md`, pasa `claude plugin validate`): orquesta `atoms→molecules→organisms` con `@design-reviewer` como gate entre capas, invocando `@design-lead` para el plan. Confirma de paso que **`commands/` es componente de plugin** (§11) — el comando es la pieza que faltaba entre "tengo 12 agentes" y "corren en orden con gates".
+
+<!-- §35-ref -->
+### Las palancas del harness (física verificada — este harness, 2026-07-18)
+
+Consolidado de lo que ya está disperso en la guía; son propiedades del tool `Agent`, no estilo:
+
+| Palanca | Qué hace el harness | Regla LowCost |
+|---|---|---|
+| **Background por defecto** | Los subagentes corren en background y te notifican al terminar; `run_in_background: false` los hace síncronos (§5) | Síncrono **solo** el gate y las fases cuyo output es input de la próxima. Fases independientes → background y seguís |
+| **Gate por `agent_type`** | Un `PreToolUse` sabe qué subagente disparó la llamada (`agent_type`, plugin-scoped) — habilita gates a nivel subagente (§7) | El validador entre fases puede ser un hook, no solo un agente |
+| **Worktrees** | `isolation: "worktree"` da a cada fase su copia aislada del repo, auto-limpiada (§10) | Fan-out paralelo sin conflictos de archivos |
+| **Advisor entre fases** | Un validador barato corta la cadena antes de que el error escale (§31) | El gate es lo que separa un pipeline de un harness |
+
+### Los 3 patrones de harness (Anthropic — fuente primaria, verificado)
+
+Anthropic define "harness" más amplio que "pipeline de especialistas": es **todo el andamiaje alrededor del modelo**. Tres patrones, cada uno con su regla LowCost:
+
+| Patrón | Qué dice | Regla LowCost |
+|---|---|---|
+| **1. Apoyarse en las capacidades del modelo** | Dale herramientas generales (bash, editor) antes que tools especializadas — Claude las compone en skills y llamadas programáticas (Sonnet 3.5 llegó a **49% en SWE-bench solo con bash + editor**) | No construyas una tool para lo que `bash` ya hace (§14 anti-overkill). Cada tool custom es superficie que mantener |
+| **2. Adelgazar el harness** | (a) *Claude orquesta*: no todo resultado pasa por el context window — filtra/pipea; (b) *Claude gestiona contexto*: progressive disclosure vía skills, no pre-cargar todo; (c) *Claude persiste*: memory + compaction | Menos en contexto = menos tokens. La skill bajo demanda (§6) **es** este patrón; el `context: fork` (§5) es "no contamines el hilo" |
+| **3. Poner límites con cuidado** | Contexto estático primero, dinámico al final (cache hits); promover acciones a **tools declarativas** que el harness intercepta/gatea/audita; acción difícil de revertir → confirmación | El orden estático→dinámico **es** el cache de §3. El gate por `agent_type` (§7) es una "tool declarativa que el harness intercepta" |
+
+**Verificación secundaria** — el gate a nivel tool: el auto-mode de Claude Code pone **un segundo Claude a leer el comando de bash y juzgar si es seguro** antes de correrlo. Mismo principio del reviewer entre fases, un nivel más abajo: un gate no tiene que ser un agente pesado; puede ser un juez barato de una sola pregunta (§31 Advisor).
+
+> El harness ya no es solo estático: Claude puede escribir uno **on-the-fly** para la tarea que tiene enfrente, y **Agent Teams** (experimental) es el orquestador multi-agente nativo — la evolución del `lead` de §10. Lo que no cambia son los gates y la separación de contexto de abajo.
+
+### El gate es innegociable
+
+El anti-patrón clásico (§10, §31): **el output de un agente es input del siguiente**. Sin gate, un error de la fase 1 se propaga silencioso hasta el final y explota caro. El gate —reviewer, hook, o `claude plugin validate`— es lo que hace que el harness sea un *arnés* y no una cinta transportadora. Regla: **una fase no arranca hasta que la anterior pasó su gate.**
+
+Dos principios que sostienen el gate (Anthropic, verificado):
+
+- **Separación de contexto — no pases el transcript completo entre fases.** El evaluador juzga mejor *porque no sabe qué estaba pensando el generador*: recibe el artefacto, no el razonamiento. Pasar el hilo entero es caro (tokens ×N) **y** contamina el juicio. Cada fase recibe el output de la anterior + su tarea, nada más — es el `context: fork` (§5) aplicado al pipeline. Es "the actual magic", no un detalle.
+- **Permisos como diseño — el que revisa no edita.** Un agente cuyo rol es *juzgar* (reviewer, evaluator) no lleva `Write`/`Edit`. Si el evaluador puede editar, deja de ser juez y se vuelve otro generador: el gate se autodisuelve. El acceso a tools *es* parte del diseño, no un detalle de config (§5, §18).
+
+### Cuándo NO montar un harness (anti-overkill, §14)
+
+- Una sola tarea que no se descompone en fases cross-especialista → especialista directo, sin orquestador (§10).
+- Dos agentes que corren en paralelo sin dependencia → fan-out simple, no necesitás secuencia ni gates.
+- El harness se justifica cuando hay **≥3 fases con dependencia** y el costo de propagar un error entre ellas supera el costo del gate.
+
+**Fuentes:** [Sub-agents](https://code.claude.com/docs/en/sub-agents.md) · [Building an agent harness with Claude Code — LogRocket](https://blog.logrocket.com/building-an-agent-harness-with-claude-code/) · patrón verificado en `DesignPluging/plugins/design-ios`.
+
 <!-- §15 -->
 ## 15. Glosario
 
@@ -1327,5 +1401,21 @@ Por eso los agentes y prompts de artifact-factory están en inglés — el CLAUD
 **Scope** — Archivos que describen el estado real del proyecto: qué existe, qué falta, qué se decidió. El lead lo lee para planificar. Los especialistas no lo necesitan — reciben contexto del lead.
 
 **ADR (Architecture Decision Record)** — Entrada en el scope que documenta una decisión de diseño: qué se eligió, qué se descartó y por qué. Inmutable — nunca se edita, solo se agrega. Permite entender meses después por qué se tomó una decisión.
+
+### Loops y orquestación
+
+**Harness** — El "arnés" que canaliza la potencia del modelo: la capa de física del tool (background, gates, worktrees) y, como patrón, un comando orquestador que ejecuta un pipeline de fases con un gate entre cada una (§35). El modelo pone la potencia; el harness la dirige.
+
+**`/loop`** — Skill bundled que corre un prompt en repetición dentro de la sesión: intervalo fijo (→ cron), o dinámico auto-pausado si omitís el intervalo. Session-scoped — muere al cerrar o a los 7 días (§34).
+
+**ScheduleWakeup** — Tool con que el modo dinámico de `/loop` agenda su propia próxima corrida. `delaySeconds` en `[60, 3600]`; `stop: true` termina el loop. No polear con él por trabajo que el harness ya notifica (§34).
+
+**Monitor** — Tool que corre un script en background y streamea cada línea de output. Reemplaza el polling en un loop dinámico: más barato y más responsivo que re-correr un prompt (§34).
+
+**Channels** — Mecanismo event-push: un sistema externo (CI) empuja el evento a la sesión en vez de que vos lo polees. Reaccionar gasta menos que polear (§34).
+
+**Routine** — Tarea programada que corre en infraestructura de Anthropic, sin tu máquina ni sesión abierta (`/schedule`, §30). El equivalente durable de `/loop`.
+
+**Gate** — Validador entre fases de un pipeline (reviewer, hook por `agent_type`, o `claude plugin validate`) que corta la cadena si una fase falla, antes de que el error se propague a la siguiente. Es lo que separa un harness de una cinta transportadora (§35, §31).
 
 ---

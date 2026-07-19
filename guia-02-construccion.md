@@ -3103,6 +3103,9 @@ KEYWORD_MAP = [
       "/nuevo-agente", "/nueva-skill", "/nuevo-hook",
       "/debug-agente", "/optimizar", "/audit-guia",
       "4 leyes", "las leyes"],                                         28),
+    # §34 — Loops in-session (antes de §30: "schedulewakeup"/"polling" son loop, no cloud)
+    (["/loop", "loop.md", "wakeup", "monitor tool", "self-paced",
+      "delayseconds", "channels", "polling"],                          34),
     # §30 — Cloud Agents
     (["schedule", "cron", "routine", "cloud agent",
       "/web-setup", "ccr"],                                            30),
@@ -3129,6 +3132,9 @@ KEYWORD_MAP = [
     (["/rewind", "/clear", "/compact", "/fork", "/branch",
       "precompact", "postcompact", "checkpoint", "comandos nativos",
       "slash command"],                                                33),
+    # §35 — Patrón Harness (pipelines con gates)
+    (["harness", "arnés", "orquestador", "orchestrator", "gated",
+      "fan-out", "gate entre fases"],                                  35),
 ]
 
 def detect_sections(prompt: str) -> list:
@@ -3820,6 +3826,8 @@ Cada pieza tiene su sección de referencia. Nada se inventó solo — todo se co
 ## 30. Cloud Agents programados — /schedule y /web-setup
 
 > Un hook local corre en tu máquina. Un cloud agent corre en la nube de Anthropic con un checkout limpio del repo — sin acceso a tu filesystem, sin tus variables de entorno, sin tus plugins instalados. Son dos cosas distintas. Úsalos para cosas distintas.
+>
+> Para scheduling **dentro de la sesión** (polling rápido, babysitting de un PR) el equivalente barato es `/loop` — ver **§34**. Cloud aquí es para lo durable: corre sin tu máquina ni sesión abierta.
 
 ### Las 3 reglas
 
@@ -3973,7 +3981,7 @@ Un prompt de CCR debe responder estas preguntas sin asumir contexto externo:
 | `/goal [condition]` | Claude sigue trabajando entre turnos hasta cumplir la condición | Loop autónomo acotado, sin montar `/loop` externo |
 | `/context [all]` | Visualiza uso de contexto por bloque | Diagnóstico antes de decidir `/compact` vs `/clear` |
 | `/batch <instruction>` | Descompone un cambio grande en 5-30 unidades, un subagente por unidad, cada uno en su propio worktree | Cambios cross-codebase demasiado grandes para un agente — ver §10 |
-| `/loop [interval] [prompt]` | Corre un prompt repetidamente, con pacing propio si se omite el intervalo | Polling o tareas recurrentes dentro de la sesión — ver skill `loop` |
+| `/loop [interval] [prompt]` | Corre un prompt repetidamente, con pacing propio si se omite el intervalo | Polling o tareas recurrentes dentro de la sesión — física completa (modos, `ScheduleWakeup`, `Monitor`, apagado) en **§34** |
 | `/agents` | Gestiona subagentes configurados | Alta/baja de subagentes del proyecto |
 | `/schedule` (alias `/routines`) | Rutinas cloud con cron, fuera de la sesión interactiva | Automatización que no depende de la sesión abierta — ver §30 |
 
@@ -4008,3 +4016,93 @@ Patrón real: archivar el estado de un agente largo (checkpoints de delegación,
 - El SDK (`--continue`, `--resume <id>`) continúa procesos, pero no expone `session.rewind()` ni `session.fork()` a nivel de código.
 
 **Fuentes:** [Commands](https://code.claude.com/docs/en/commands.md) · [Hooks](https://code.claude.com/docs/en/hooks.md) · [Checkpointing](https://code.claude.com/docs/en/checkpointing.md) · [Sub-agents](https://code.claude.com/docs/en/sub-agents.md)
+
+<!-- §34 -->
+<!-- §34-quick -->
+## 34. Loops y tareas programadas — /loop, ScheduleWakeup, Monitor
+
+> §33 mostró que `/loop` existe. Esta sección es la física: cuándo un loop es la herramienta correcta, cómo se auto-pausa y —lo más importante para un LowCost— cómo saber que un loop olvidado **no** te está quemando tokens en silencio. Un loop es un cron dentro de tu sesión; un cron sin apagado automático es un grifo abierto.
+
+> Regla previa: **antes de montar un loop, pregúntate si necesitás polling o event-push.** Reaccionar a un evento (CI que empuja el fallo a la sesión vía [Channels](https://code.claude.com/docs/en/channels)) siempre gasta menos que re-correr un prompt cada N minutos. Polling es el plan C. (verificado — doc oficial recomienda Channels y `Monitor` por sobre re-invocar un prompt).
+
+### Los tres modos de `/loop` (verificado — doc oficial)
+
+| Qué pasás | Ejemplo | Qué hace | Costo |
+|---|---|---|---|
+| **Intervalo + prompt** | `/loop 5m check the deploy` | Cron fijo. `s/m/h/d`; segundos redondean a minuto; intervalos que no mapean limpio (`7m`, `90m`) se ajustan al cron más cercano y te avisa | Fijo — corre aunque no pase nada |
+| **Solo prompt** | `/loop check CI and address comments` | Claude elige el delay cada iteración (**1 min – 1 h**), corto cuando algo se mueve, largo cuando está quieto. Imprime delay + motivo | **El más barato** — back-off automático en idle |
+| **Nada / solo intervalo** | `/loop` | Corre el prompt de mantenimiento (o tu `loop.md`) a delay dinámico | Según el prompt |
+
+**Elegí el modo dinámico (solo prompt) por defecto.** El intervalo fijo solo cuando el evento tiene cadencia real conocida (un build que tarda ~8 min → `/loop 8m`, no seis chequeos de 1 min).
+
+### El apagado — cómo un loop no se vuelve un grifo abierto
+
+Esto es el §3 del protocolo ("cazar el fallo silencioso") aplicado a vos mismo: un loop olvidado se ve idéntico a uno útil.
+
+| Palanca | Qué hace | Verificado |
+|---|---|---|
+| **Seven-day expiry** | Toda tarea recurrente se autodestruye 7 días tras crearse (una última corrida y muere). Acota cuánto puede correr un loop olvidado | doc oficial |
+| **`Esc`** | Corta el loop mientras espera la próxima iteración (limpia el wakeup pendiente). Solo aplica a `/loop`, no a tasks que agendaste "pidiéndole a Claude" | doc oficial |
+| **`ScheduleWakeup` con `stop: true`** | En modo dinámico Claude termina el loop solo cuando la tarea está lista | doc oficial |
+| **`CLAUDE_CODE_DISABLE_CRON=1`** | Kill-switch de entorno: desactiva el scheduler entero, `/loop` y los cron tools dejan de existir | doc oficial |
+| **Tope de 50 tasks** por sesión, IDs de 8 chars (`CronList`/`CronDelete`) | Cota dura | doc oficial |
+
+> ⚠️ **El fallo silencioso real (plausible — reportado como bug abierto):** hay casos reportados de `ScheduleWakeup` que persiste tras `Ctrl+C` y de daemons que re-spawnean el loop sin atención, causando gasto de tokens no acotado ([#64744](https://github.com/anthropics/claude-code/issues/64744), [#51304](https://github.com/anthropics/claude-code/issues/51304)). Traducción LowCost: **nunca dejes un `/loop` corriendo en una sesión que vas a abandonar.** Antes de irte, `Esc` o `CronList` → `CronDelete`. El seven-day expiry es la red, no el plan.
+
+<!-- §34-ref -->
+### `ScheduleWakeup` — cómo se auto-pausa el modo dinámico
+
+En modo dinámico el modelo agenda su propia próxima corrida con `ScheduleWakeup`, pasándose el mismo prompt del loop. Detalles verificados (doc oficial + este harness):
+
+- **`delaySeconds`** se clampa a `[60, 3600]` (1 min – 1 h). Elegir el delay según **qué estás esperando**, no según ventanas de cache: un CI de ~8 min → un chequeo de ~480s, no ocho de 60s.
+- **`stop: true`** cancela el wakeup pendiente y termina el loop de inmediato (omitir todos los demás campos).
+- **Fallback**: si una iteración termina sin reagendar ni frenar, Claude Code agenda **un** chequeo ~20 min después y ahí cierra. (Antes de v2.1.202, no-reagendar era la única forma de que un loop se cerrara solo.)
+- **No polear por trabajo en background que el harness ya te notifica** — cuando un subagente/tarea termina te re-invocan solo; agendar un wakeup corto para "chequear" es puro desperdicio. El wakeup es para estado externo que el harness NO puede observar (CI, deploy, cola remota).
+
+### El costo por ciclo — estimalo ANTES de fijar el intervalo
+
+Un loop es `tokens_por_ciclo × iteraciones`. Cada ciclo paga: el prompt, el contexto que Claude lee, la respuesta y las tool calls. A intervalo corto con tarea compleja se dispara silenciosamente. **Fórmula LowCost (verificado):** corré una iteración a mano, mirá `/cost`, y multiplicá por ciclos/día antes de agendar. Un `/loop 1m` = **1 440 ciclos/día**; si cada ciclo lee 5k tokens de contexto, son 7,2M tokens/día solo en input. Por eso el modo dinámico (back-off en idle) y `Monitor` casi siempre le ganan al intervalo fijo corto — hacé la cuenta antes, no cuando llega la factura.
+
+### `Monitor` — el patrón que evita el polling
+
+Para un loop dinámico, Claude puede usar el **`Monitor`** directamente: corre un script en background y te **streamea cada línea de output**. Evita el polling por completo — más eficiente en tokens y más responsivo que re-correr un prompt en intervalo (verificado — doc oficial lo recomienda explícitamente para loops dinámicos). El framing: *stop polling, start reacting*. Regla: si podés expresar "avisame cuando aparezca esta línea" como un script, `Monitor` le gana a `/loop N` — no re-lee el contexto cada ciclo, solo empuja la línea nueva.
+
+### `loop.md` — el prompt de mantenimiento propio
+
+Un `loop.md` reemplaza el prompt de mantenimiento built-in del bare `/loop`. Dos ubicaciones, gana la primera:
+
+| Ruta | Scope |
+|---|---|
+| `.claude/loop.md` | Proyecto — precede si existen ambos |
+| `~/.claude/loop.md` | Usuario — aplica donde el proyecto no define el suyo |
+
+Markdown plano, sin estructura obligatoria; se recarga **en caliente** (los edits aplican en la próxima iteración) y se **trunca a 25 000 bytes**. Verificado en DesignPluging: `.claude/loop.md` con un pase de mantenimiento (curar learnings → reviewer → `claude plugin validate`) hace del bare `/loop` un curador de plugin sin montar nada extra. El built-in por defecto ya hace lo sensato: continuar trabajo sin terminar, atender el PR de la branch (comments, CI roja, conflictos) y correr limpiezas — **sin iniciar nada nuevo** ni hacer acciones irreversibles que la conversación no autorizó.
+
+### `/loop` vs `/goal` — no confundir
+
+| | `/loop` | `/goal` |
+|---|---|---|
+| Cadencia | Por intervalo (fijo o dinámico), fire entre turnos | Turno tras turno, sin esperar |
+| Termina | Con `Esc`/`stop`/expiry | Cuando se cumple la condición |
+| Uso | Polling, babysitting de un PR/deploy | Loop autónomo acotado por una meta |
+
+### Gotchas verificados
+
+- **Skill en un fire programado** (v2.1.196+): una skill `disable-model-invocation: true` (o built-in como `/model`, `/clear`) **llega como texto plano, no se ejecuta**. Solo las que Claude puede auto-invocar corren en un fire. Si tu `/loop 20m /mi-skill` no hace nada, es esto.
+- **Jitter**: las tareas recurrentes disparan hasta 30 min después de la hora agendada (o medio intervalo, si corren más seguido que cada hora); el offset es determinista por task ID. Si el timing exacto importa, no uses `:00` ni `:30`.
+- **No hay catch-up**: si Claude está ocupado cuando vence una tarea, dispara **una** vez al quedar idle, no una por cada fire perdido.
+- **Resume**: `--resume`/`--continue` restaura tasks no expiradas; **background Bash y `Monitor` nunca se restauran** en resume.
+
+### Dónde vive cada opción (cross-ref §30)
+
+| | Cloud ([Routines](https://code.claude.com/docs/en/routines)) | Desktop | `/loop` |
+|---|---|---|---|
+| Máquina encendida | No | Sí | Sí |
+| Sesión abierta | No | No | **Sí** |
+| Archivos locales | No (clon fresco) | Sí | Sí |
+| Intervalo mínimo | 1 h | 1 min | 1 min |
+| Persiste solo | Sí | Sí | Restaurado en `--resume` si no expiró |
+
+`/loop` para polling rápido dentro de una sesión; **Routines/Desktop (§30)** cuando debe correr sin tu máquina o sin sesión abierta. El pipeline que orquesta un loop no es lo mismo que el patrón harness — ver §35.
+
+**Fuentes:** [Scheduled tasks](https://code.claude.com/docs/en/scheduled-tasks.md) · [Channels](https://code.claude.com/docs/en/channels) · [Tools reference — Monitor](https://code.claude.com/docs/en/tools-reference) · [`/goal`](https://code.claude.com/docs/en/goal)

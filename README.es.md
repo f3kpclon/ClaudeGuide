@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.25 · §5: el `model:` del frontmatter es un default, no un candado — el `model` de la invocación tiene precedencia (una sola definición, el modelo más barato por tarea); `subagent_type: fork` siempre hereda el del padre; `claude-fable-5` agregado al enum del template — 2026-07-19
+**Versión:** v5.27 · §35 profundizada con los 3 patrones de harness de Anthropic (fuente primaria), verificación secundaria, separación de contexto y permisos-como-diseño; §34 con la fórmula de costo-por-ciclo (`/cost` × ciclos/día) y `Monitor` "stop polling, start reacting"; skills `audit-guia`/`audit-plugin` extendidos con checks de harness/loops (gate entre fases, `loop.md` irreversible, permisos del rol-juez) — 2026-07-19
 
 ---
 
@@ -47,6 +47,8 @@
 | Preservar contexto entre sesiones | §27 — handoff protocol + auto-compaction |
 | Usar CLAUDE.local.md, rules/, output-styles/ | §32 — los archivos que nadie documenta |
 | Integrar /rewind, /fork, /compact con hooks | §33 — comandos nativos y sus límites reales |
+| Correr un prompt en loop / polling / babysitting | §34 — `/loop`, `ScheduleWakeup`, `Monitor`, apagado sin quemar tokens |
+| Orquestar un pipeline con gates entre fases | §35 — patrón harness, comando orquestador vs lead |
 
 ---
 
@@ -77,6 +79,7 @@
 - [§29 — Contexto global propio](guia-02-construccion.md#29-contexto-global-propio--construir-tu-sistema)
 - [§30 — Cloud Agents programados — /schedule y /web-setup](guia-02-construccion.md#30-cloud-agents-programados--schedule-y-web-setup)
 - [§33 — Comandos nativos (rewind, clear, compact, fork) + integración con hooks](guia-02-construccion.md#33-comandos-nativos--rewind-clear-compact-fork-y-su-integración-con-agenteshooks)
+- [§34 — Loops y tareas programadas (/loop, ScheduleWakeup, Monitor)](guia-02-construccion.md#34-loops-y-tareas-programadas--loop-schedulewakeup-monitor)
 
 ### Calidad y eficiencia
 - [§14 — Guía anti-overkill](guia-03-calidad.md#14-guía-anti-overkill)
@@ -92,6 +95,7 @@
 - [§20 — CI/CD](guia-04-avanzado.md#20-cicd)
 - [§21 — Observabilidad y debugging](guia-04-avanzado.md#21-observabilidad-y-debugging)
 - [§22 — Prompt engineering avanzado](guia-04-avanzado.md#22-prompt-engineering-avanzado)
+- [§35 — El patrón Harness — pipelines con gates](guia-04-avanzado.md#35-el-patrón-harness--pipelines-con-gates)
 - [§15 — Glosario](guia-04-avanzado.md#15-glosario)
 
 ---
@@ -102,9 +106,9 @@
 | Archivo | Contenido |
 |---|---|
 | `guia-01-fundamentos.md` | 01 · Fundamentos — §4, §1, §2, §25, §24 |
-| `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §31, §32, §17, §26, §27, §28, §29, §30, §33 |
+| `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §31, §32, §17, §26, §27, §28, §29, §30, §33, §34 |
 | `guia-03-calidad.md` | 03 · Calidad y eficiencia — §14, §12, §13, §23, §3 |
-| `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §15 |
+| `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §35, §15 |
 
 `grep -rn "<!-- §N -->" guia-*.md` encuentra la sección sin importar en qué archivo vive.
 
@@ -117,6 +121,7 @@
 - [Hooks](https://code.claude.com/docs/en/hooks-guide)
 - [Plugins](https://code.claude.com/docs/en/plugins)
 - [Agent Teams](https://code.claude.com/docs/en/agent-teams)
+
 # Guía del Dev Pobre — 01 · Fundamentos
 *Parte de [guia-00-indice.md](guia-00-indice.md) — volver al índice.*
 
@@ -686,6 +691,7 @@ La optimización más barata del sistema no es un hook ni un agente más eficien
 ```
 
 ---
+
 # Guía del Dev Pobre — 02 · Construcción
 *Parte de [guia-00-indice.md](guia-00-indice.md) — volver al índice.*
 
@@ -1499,6 +1505,34 @@ elif tool == 'MultiEdit':
 
 Un campo equivocado no da error: `inp.get('path', '')` retorna `''`, el filtro de extensión no matchea, `sys.exit(0)` — **el hook queda muerto y se ve idéntico a uno sano**. Caso real MathVoid: el gate de convenciones GDScript estuvo semanas validando solo Write porque leía `path`/`new_str` en Edit — con tests verdes, porque los tests alimentaban el mismo shape inventado. Regla: los campos del payload se copian de la doc oficial de hooks o de un payload real capturado, nunca de memoria.
 
+**Campos top-level + identidad del subagente (verificado empíricamente 2026-07-18, este harness + code.claude.com/docs/en/hooks):** además de `tool_name`/`tool_input`, un `PreToolUse` trae `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `effort` (es un **objeto**: `{"level":"high"}`, no un string), `hook_event_name`, `tool_use_id`. Y el dato que casi nadie documenta: **`agent_id` + `agent_type` aparecen SOLO cuando la llamada la dispara un subagente** — el agente principal no los trae. `agent_type` = el `name` del frontmatter, **plugin-scoped** (ej. `mi-plugin:debugger`; un built-in llega pelado como `general-purpose`). No es exclusivo de `SubagentStop`: un **`PreToolUse` puede saber qué subagente hizo la llamada**, lo que habilita gates a nivel subagente. Bonus verificado la misma sesión: un hook agregado a `.claude/settings.local.json` **se activó a mitad de sesión sin reload**.
+
+### Receta — acotar una tool peligrosa-pero-necesaria a UN solo subagente
+
+Extiende "física > prosa" (§4) al nivel de subagente. Caso real (swift-concurrency-plugin, v2.5.0): un agente diagnóstico (`@debugger`) necesita `Bash` para EL comando que Read/Glob/Grep no pueden —correr Thread Sanitizer— pero no debería correr shell arbitrario. Quitarle `Bash` rompe su función; dejar "solo TSan" en la prosa del agente **no es enforcement** — un prompt-injection en un log pegado, o un paso confundido, corre cualquier cosa. Un `@reviewer` read-only lo está **por su lista de tools** (física); este agente no puede estarlo así porque necesita la tool.
+
+El fix: un `PreToolUse:Bash` que lee `agent_type` del payload y solo actúa sobre ese agente.
+
+```python
+def is_target_agent(agent_type: str) -> bool:
+    at = (agent_type or "").strip().lower()
+    return at == "debugger" or at.endswith(":debugger")  # scoped Y pelado (defensivo)
+
+def main():
+    p = json.load(sys.stdin)
+    if p.get("tool_name") != "Bash":            # sin esto, el guard se desactiva (ver Testing)
+        sys.exit(0)
+    if not is_target_agent(p.get("agent_type", "")):
+        sys.exit(0)                             # otros agentes / main → intactos
+    cmd = p.get("tool_input", {}).get("command", "")
+    if is_allowed(cmd):                         # allowlist ESTRECHA (un comando, sin && ; | > $( )
+        sys.exit(0)
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+        "permissionDecision": "deny", "permissionDecisionReason": "..."}}))
+```
+
+Claves aprendidas: (1) matchear el nombre **plugin-scoped** (`endswith(":<nombre>")`), no el pelado, porque instalado llega scopeado; incluir el pelado por defensa. (2) La allowlist es la parte difícil (la misma tensión de un git-gate): muy estrecha rompe comandos legítimos, muy ancha no sirve — y **debe rechazar encadenamiento/redirección/sustitución** (`&&`/`||`/`;`/`|`/`>`/`` ` ``/`$(`), o `cmd-permitido && rm -rf` pasa. (3) El resultado: `@reviewer` acotado por lista-de-tools, `@debugger` por hook — misma garantía, distinta capa.
+
 ### Testing de hooks localmente
 
 Antes de registrar un hook, testearlo manualmente para no esperar a que el agente lo dispare:
@@ -1518,6 +1552,8 @@ echo '{"tool_name": "Bash", "tool_input": {"command": "git push origin master"}}
 ```
 
 Si el hook no imprime nada → exit 0 silencioso (correcto). Si imprime JSON con `permissionDecision: deny` → bloqueo activo.
+
+> **Gotcha del harness — un payload incompleto convierte el test en mentira (verificado 2026-07-18).** Un guard bien hecho arranca con `if payload.get("tool_name") != "Bash": sys.exit(0)`. Si tu payload de prueba **omite `tool_name`**, el guard sale temprano y **todo comando devuelve ALLOW** — el test que esperaba `deny` "pasa" como allow por la razón equivocada, y los que esperaban allow también pasan, así que la suite queda verde sobre un gate desactivado. Pasó al testear un git-gate: 5 falsos ALLOW, y el guard estaba perfecto; el payload de prueba era el roto. Es el mismo "se ve idéntico a uno sano" de §7, un nivel más arriba: no el hook muerto, sino **el test que no ejercita el hook**. Fix: el payload de prueba replica el shape REAL completo (`tool_name` + `tool_input` + `agent_type` cuando pruebas gates de subagente), y al menos un caso debe verificar que el guard efectivamente **deniega** algo — si nada deniega nunca, sospecha del harness antes que del código (el juez real > el proxy).
 
 ### Diagnóstico de hooks silenciosos
 
@@ -1904,6 +1940,8 @@ allowed-tools: []
 <Convenciones, patrones, API — sin prosa de relleno>
 ```
 > Límite: < 200 líneas. Si supera → dividir en `SKILL.md` + `reference.md`.
+
+> **Dos gotchas al pelear con el cap (2026-07-18):** (1) Si lo enforced con un test, el test suele ser `> 200` (falla estricto), así que el techo real es **≤200** y un archivo clavado en 200 tiene **cero margen** — la próxima línea rompe la suite; deja el archivo ~197 para poder editar sin recortar cada vez. (2) **Rewordear un párrafo con wrap NO baja el conteo de líneas** — el archivo tiene newlines literales, no wrap visual; acortar el texto de una línea que ya ocupa 4 líneas físicas la deja en 4. Para bajar UNA línea hay que **fusionar contenido en menos newlines** (unir dos oraciones wrapeadas en una), no solo escribir menos palabras. Perdí varias iteraciones reescribiendo sin que `wc -l` bajara hasta entenderlo.
 
 ---
 
@@ -3055,11 +3093,16 @@ Es REQUERIDO para distribución y ningún template lo mostraba:
 □ claude plugin validate ./plugins/<plugin> pasa limpio
 □ Tests de hooks pasan (subprocess con payloads reales — §19)
 □ Bump semver en plugin.json (fix → patch · componente nuevo → minor · breaking → major)
+□ CHANGELOG.md: entrada nueva (fecha + Added/Changed) — el bump sin changelog es media verdad
 □ marketplace.json actualizado si cambió nombre/description
-□ README.md refleja los componentes actuales
-□ Tag git: <plugin>-vX.Y.Z — el consumidor puede pinear
+□ README.md refleja los componentes actuales (conteos de hooks/agentes incluidos)
+□ Tag git: <plugin>--vX.Y.Z — el consumidor puede pinear
 □ Probar instalación limpia: claude --plugin-dir en un repo vacío
 ```
+
+**Naming del tag — el separador importa (2026-07-18).** Con un nombre que lleva guiones (`swift-concurrency-migration-plugin`), `nombre-vX.Y.Z` (un guion) es ambiguo — no se sabe dónde corta el nombre. El repo real usa **doble guion `--v`** (`swift-concurrency-migration-plugin--v2.5.0`), que separa nombre/versión sin ambigüedad y permite versionar varios plugins de un mismo marketplace-repo por separado. Elige un separador y mantenlo idéntico entre releases.
+
+**Flujo de release ejecutado (marketplace-repo, verificado 2026-07-18):** bump de `plugin.json` + `CHANGELOG` en una branch `release/vX.Y.Z` → `gh pr create --base main` → merge (`gh pr merge --merge`, la convención del repo eran merge commits, no squash) → `gh release create "<plugin>--vX.Y.Z" --target main --title "vX.Y.Z — <resumen>" --notes ...`. El release se tagea sobre main **después** del merge, no sobre la branch. `gh release create` crea el tag server-side; para verlo local, `git fetch --tags` y confirmar que apunta al merge commit.
 
 ### Trampas de distribución
 
@@ -3754,6 +3797,9 @@ KEYWORD_MAP = [
       "/nuevo-agente", "/nueva-skill", "/nuevo-hook",
       "/debug-agente", "/optimizar", "/audit-guia",
       "4 leyes", "las leyes"],                                         28),
+    # §34 — Loops in-session (antes de §30: "schedulewakeup"/"polling" son loop, no cloud)
+    (["/loop", "loop.md", "wakeup", "monitor tool", "self-paced",
+      "delayseconds", "channels", "polling"],                          34),
     # §30 — Cloud Agents
     (["schedule", "cron", "routine", "cloud agent",
       "/web-setup", "ccr"],                                            30),
@@ -3780,6 +3826,9 @@ KEYWORD_MAP = [
     (["/rewind", "/clear", "/compact", "/fork", "/branch",
       "precompact", "postcompact", "checkpoint", "comandos nativos",
       "slash command"],                                                33),
+    # §35 — Patrón Harness (pipelines con gates)
+    (["harness", "arnés", "orquestador", "orchestrator", "gated",
+      "fan-out", "gate entre fases"],                                  35),
 ]
 
 def detect_sections(prompt: str) -> list:
@@ -4471,6 +4520,8 @@ Cada pieza tiene su sección de referencia. Nada se inventó solo — todo se co
 ## 30. Cloud Agents programados — /schedule y /web-setup
 
 > Un hook local corre en tu máquina. Un cloud agent corre en la nube de Anthropic con un checkout limpio del repo — sin acceso a tu filesystem, sin tus variables de entorno, sin tus plugins instalados. Son dos cosas distintas. Úsalos para cosas distintas.
+>
+> Para scheduling **dentro de la sesión** (polling rápido, babysitting de un PR) el equivalente barato es `/loop` — ver **§34**. Cloud aquí es para lo durable: corre sin tu máquina ni sesión abierta.
 
 ### Las 3 reglas
 
@@ -4624,7 +4675,7 @@ Un prompt de CCR debe responder estas preguntas sin asumir contexto externo:
 | `/goal [condition]` | Claude sigue trabajando entre turnos hasta cumplir la condición | Loop autónomo acotado, sin montar `/loop` externo |
 | `/context [all]` | Visualiza uso de contexto por bloque | Diagnóstico antes de decidir `/compact` vs `/clear` |
 | `/batch <instruction>` | Descompone un cambio grande en 5-30 unidades, un subagente por unidad, cada uno en su propio worktree | Cambios cross-codebase demasiado grandes para un agente — ver §10 |
-| `/loop [interval] [prompt]` | Corre un prompt repetidamente, con pacing propio si se omite el intervalo | Polling o tareas recurrentes dentro de la sesión — ver skill `loop` |
+| `/loop [interval] [prompt]` | Corre un prompt repetidamente, con pacing propio si se omite el intervalo | Polling o tareas recurrentes dentro de la sesión — física completa (modos, `ScheduleWakeup`, `Monitor`, apagado) en **§34** |
 | `/agents` | Gestiona subagentes configurados | Alta/baja de subagentes del proyecto |
 | `/schedule` (alias `/routines`) | Rutinas cloud con cron, fuera de la sesión interactiva | Automatización que no depende de la sesión abierta — ver §30 |
 
@@ -4659,6 +4710,97 @@ Patrón real: archivar el estado de un agente largo (checkpoints de delegación,
 - El SDK (`--continue`, `--resume <id>`) continúa procesos, pero no expone `session.rewind()` ni `session.fork()` a nivel de código.
 
 **Fuentes:** [Commands](https://code.claude.com/docs/en/commands.md) · [Hooks](https://code.claude.com/docs/en/hooks.md) · [Checkpointing](https://code.claude.com/docs/en/checkpointing.md) · [Sub-agents](https://code.claude.com/docs/en/sub-agents.md)
+
+<!-- §34 -->
+<!-- §34-quick -->
+## 34. Loops y tareas programadas — /loop, ScheduleWakeup, Monitor
+
+> §33 mostró que `/loop` existe. Esta sección es la física: cuándo un loop es la herramienta correcta, cómo se auto-pausa y —lo más importante para un LowCost— cómo saber que un loop olvidado **no** te está quemando tokens en silencio. Un loop es un cron dentro de tu sesión; un cron sin apagado automático es un grifo abierto.
+
+> Regla previa: **antes de montar un loop, pregúntate si necesitás polling o event-push.** Reaccionar a un evento (CI que empuja el fallo a la sesión vía [Channels](https://code.claude.com/docs/en/channels)) siempre gasta menos que re-correr un prompt cada N minutos. Polling es el plan C. (verificado — doc oficial recomienda Channels y `Monitor` por sobre re-invocar un prompt).
+
+### Los tres modos de `/loop` (verificado — doc oficial)
+
+| Qué pasás | Ejemplo | Qué hace | Costo |
+|---|---|---|---|
+| **Intervalo + prompt** | `/loop 5m check the deploy` | Cron fijo. `s/m/h/d`; segundos redondean a minuto; intervalos que no mapean limpio (`7m`, `90m`) se ajustan al cron más cercano y te avisa | Fijo — corre aunque no pase nada |
+| **Solo prompt** | `/loop check CI and address comments` | Claude elige el delay cada iteración (**1 min – 1 h**), corto cuando algo se mueve, largo cuando está quieto. Imprime delay + motivo | **El más barato** — back-off automático en idle |
+| **Nada / solo intervalo** | `/loop` | Corre el prompt de mantenimiento (o tu `loop.md`) a delay dinámico | Según el prompt |
+
+**Elegí el modo dinámico (solo prompt) por defecto.** El intervalo fijo solo cuando el evento tiene cadencia real conocida (un build que tarda ~8 min → `/loop 8m`, no seis chequeos de 1 min).
+
+### El apagado — cómo un loop no se vuelve un grifo abierto
+
+Esto es el §3 del protocolo ("cazar el fallo silencioso") aplicado a vos mismo: un loop olvidado se ve idéntico a uno útil.
+
+| Palanca | Qué hace | Verificado |
+|---|---|---|
+| **Seven-day expiry** | Toda tarea recurrente se autodestruye 7 días tras crearse (una última corrida y muere). Acota cuánto puede correr un loop olvidado | doc oficial |
+| **`Esc`** | Corta el loop mientras espera la próxima iteración (limpia el wakeup pendiente). Solo aplica a `/loop`, no a tasks que agendaste "pidiéndole a Claude" | doc oficial |
+| **`ScheduleWakeup` con `stop: true`** | En modo dinámico Claude termina el loop solo cuando la tarea está lista | doc oficial |
+| **`CLAUDE_CODE_DISABLE_CRON=1`** | Kill-switch de entorno: desactiva el scheduler entero, `/loop` y los cron tools dejan de existir | doc oficial |
+| **Tope de 50 tasks** por sesión, IDs de 8 chars (`CronList`/`CronDelete`) | Cota dura | doc oficial |
+
+> ⚠️ **El fallo silencioso real (plausible — reportado como bug abierto):** hay casos reportados de `ScheduleWakeup` que persiste tras `Ctrl+C` y de daemons que re-spawnean el loop sin atención, causando gasto de tokens no acotado ([#64744](https://github.com/anthropics/claude-code/issues/64744), [#51304](https://github.com/anthropics/claude-code/issues/51304)). Traducción LowCost: **nunca dejes un `/loop` corriendo en una sesión que vas a abandonar.** Antes de irte, `Esc` o `CronList` → `CronDelete`. El seven-day expiry es la red, no el plan.
+
+<!-- §34-ref -->
+### `ScheduleWakeup` — cómo se auto-pausa el modo dinámico
+
+En modo dinámico el modelo agenda su propia próxima corrida con `ScheduleWakeup`, pasándose el mismo prompt del loop. Detalles verificados (doc oficial + este harness):
+
+- **`delaySeconds`** se clampa a `[60, 3600]` (1 min – 1 h). Elegir el delay según **qué estás esperando**, no según ventanas de cache: un CI de ~8 min → un chequeo de ~480s, no ocho de 60s.
+- **`stop: true`** cancela el wakeup pendiente y termina el loop de inmediato (omitir todos los demás campos).
+- **Fallback**: si una iteración termina sin reagendar ni frenar, Claude Code agenda **un** chequeo ~20 min después y ahí cierra. (Antes de v2.1.202, no-reagendar era la única forma de que un loop se cerrara solo.)
+- **No polear por trabajo en background que el harness ya te notifica** — cuando un subagente/tarea termina te re-invocan solo; agendar un wakeup corto para "chequear" es puro desperdicio. El wakeup es para estado externo que el harness NO puede observar (CI, deploy, cola remota).
+
+### El costo por ciclo — estimalo ANTES de fijar el intervalo
+
+Un loop es `tokens_por_ciclo × iteraciones`. Cada ciclo paga: el prompt, el contexto que Claude lee, la respuesta y las tool calls. A intervalo corto con tarea compleja se dispara silenciosamente. **Fórmula LowCost (verificado):** corré una iteración a mano, mirá `/cost`, y multiplicá por ciclos/día antes de agendar. Un `/loop 1m` = **1 440 ciclos/día**; si cada ciclo lee 5k tokens de contexto, son 7,2M tokens/día solo en input. Por eso el modo dinámico (back-off en idle) y `Monitor` casi siempre le ganan al intervalo fijo corto — hacé la cuenta antes, no cuando llega la factura.
+
+### `Monitor` — el patrón que evita el polling
+
+Para un loop dinámico, Claude puede usar el **`Monitor`** directamente: corre un script en background y te **streamea cada línea de output**. Evita el polling por completo — más eficiente en tokens y más responsivo que re-correr un prompt en intervalo (verificado — doc oficial lo recomienda explícitamente para loops dinámicos). El framing: *stop polling, start reacting*. Regla: si podés expresar "avisame cuando aparezca esta línea" como un script, `Monitor` le gana a `/loop N` — no re-lee el contexto cada ciclo, solo empuja la línea nueva.
+
+### `loop.md` — el prompt de mantenimiento propio
+
+Un `loop.md` reemplaza el prompt de mantenimiento built-in del bare `/loop`. Dos ubicaciones, gana la primera:
+
+| Ruta | Scope |
+|---|---|
+| `.claude/loop.md` | Proyecto — precede si existen ambos |
+| `~/.claude/loop.md` | Usuario — aplica donde el proyecto no define el suyo |
+
+Markdown plano, sin estructura obligatoria; se recarga **en caliente** (los edits aplican en la próxima iteración) y se **trunca a 25 000 bytes**. Verificado en DesignPluging: `.claude/loop.md` con un pase de mantenimiento (curar learnings → reviewer → `claude plugin validate`) hace del bare `/loop` un curador de plugin sin montar nada extra. El built-in por defecto ya hace lo sensato: continuar trabajo sin terminar, atender el PR de la branch (comments, CI roja, conflictos) y correr limpiezas — **sin iniciar nada nuevo** ni hacer acciones irreversibles que la conversación no autorizó.
+
+### `/loop` vs `/goal` — no confundir
+
+| | `/loop` | `/goal` |
+|---|---|---|
+| Cadencia | Por intervalo (fijo o dinámico), fire entre turnos | Turno tras turno, sin esperar |
+| Termina | Con `Esc`/`stop`/expiry | Cuando se cumple la condición |
+| Uso | Polling, babysitting de un PR/deploy | Loop autónomo acotado por una meta |
+
+### Gotchas verificados
+
+- **Skill en un fire programado** (v2.1.196+): una skill `disable-model-invocation: true` (o built-in como `/model`, `/clear`) **llega como texto plano, no se ejecuta**. Solo las que Claude puede auto-invocar corren en un fire. Si tu `/loop 20m /mi-skill` no hace nada, es esto.
+- **Jitter**: las tareas recurrentes disparan hasta 30 min después de la hora agendada (o medio intervalo, si corren más seguido que cada hora); el offset es determinista por task ID. Si el timing exacto importa, no uses `:00` ni `:30`.
+- **No hay catch-up**: si Claude está ocupado cuando vence una tarea, dispara **una** vez al quedar idle, no una por cada fire perdido.
+- **Resume**: `--resume`/`--continue` restaura tasks no expiradas; **background Bash y `Monitor` nunca se restauran** en resume.
+
+### Dónde vive cada opción (cross-ref §30)
+
+| | Cloud ([Routines](https://code.claude.com/docs/en/routines)) | Desktop | `/loop` |
+|---|---|---|---|
+| Máquina encendida | No | Sí | Sí |
+| Sesión abierta | No | No | **Sí** |
+| Archivos locales | No (clon fresco) | Sí | Sí |
+| Intervalo mínimo | 1 h | 1 min | 1 min |
+| Persiste solo | Sí | Sí | Restaurado en `--resume` si no expiró |
+
+`/loop` para polling rápido dentro de una sesión; **Routines/Desktop (§30)** cuando debe correr sin tu máquina o sin sesión abierta. El pipeline que orquesta un loop no es lo mismo que el patrón harness — ver §35.
+
+**Fuentes:** [Scheduled tasks](https://code.claude.com/docs/en/scheduled-tasks.md) · [Channels](https://code.claude.com/docs/en/channels) · [Tools reference — Monitor](https://code.claude.com/docs/en/tools-reference) · [`/goal`](https://code.claude.com/docs/en/goal)
+
 # Guía del Dev Pobre — 03 · Calidad y eficiencia
 *Parte de [guia-00-indice.md](guia-00-indice.md) — volver al índice.*
 
@@ -5205,6 +5347,7 @@ Tokens: 12,450 input (8,200 cache read · 1,100 cache creation) · 2,450 output
 `cache read >> cache creation` → sesión bien amortizada. Proporción similar → el prefix cambia entre llamadas — revisar contenido dinámico en CLAUDE.md.
 
 ---
+
 # Guía del Dev Pobre — 04 · Avanzado y referencia
 *Parte de [guia-00-indice.md](guia-00-indice.md) — volver al índice.*
 
@@ -6458,6 +6601,80 @@ Por eso los agentes y prompts de artifact-factory están en inglés — el CLAUD
 ---
 
 
+<!-- §35 -->
+<!-- §35-quick -->
+## 35. El patrón Harness — pipelines con gates
+
+> La palabra "harness" aparece por toda esta guía como "la física del tool". Acá se define y se convierte en patrón. **Harness = arnés**: el modelo pone la potencia, el arnés la canaliza en una dirección controlada. En la analogía del restaurante (§4) el harness es la *cocina misma* — la estación, el pase, el orden de los platos — no el cocinero. Un pipeline sin gates es potencia sin arnés: cada fase hereda el error de la anterior.
+
+> Cuándo llegás acá: tenés varios especialistas (§5) y `/loop` (§34) para cadencia, pero una tarea que cruza fases necesita **quién ejecuta la secuencia y corta cuando una fase falla**. Eso es el harness.
+
+### Harness vs `lead` (§10) — no son lo mismo
+
+| | `lead` (§10) | Harness |
+|---|---|---|
+| Qué es | Un **agente** planner (Advisor, §31) | Un **comando orquestador** (`commands/harness.md`) |
+| Hace | Produce un plan; el hilo principal lo ejecuta | **Ejecuta** el plan él mismo, fase por fase |
+| Gates | No — solo recomienda | **Sí** — un validador entre fases que puede cortar |
+| Modelo | sonnet (razona el plan) | El hilo principal; delega cada fase al modelo más barato |
+
+El `lead` decide *qué*; el harness hace *cumplir el orden y los gates*. Se combinan: el harness invoca al `lead` como paso 1 (plan) y ejecuta el resto con gates.
+
+### La forma mínima
+
+```
+comando harness:
+  1. plan     → @lead (Advisor) define orden + riesgos; si marca anti-pattern, CORTA
+  2. fase N   → @especialista-de-la-capa (el más barato que cierre)
+  3. gate N   → @reviewer sobre lo tocado; si bloquea, CORTA aquí (no propagar)
+  4. cierre   → reviewer del conjunto → @commits
+```
+
+Verificado en DesignPluging (`plugins/design-ios/commands/harness.md`, pasa `claude plugin validate`): orquesta `atoms→molecules→organisms` con `@design-reviewer` como gate entre capas, invocando `@design-lead` para el plan. Confirma de paso que **`commands/` es componente de plugin** (§11) — el comando es la pieza que faltaba entre "tengo 12 agentes" y "corren en orden con gates".
+
+<!-- §35-ref -->
+### Las palancas del harness (física verificada — este harness, 2026-07-18)
+
+Consolidado de lo que ya está disperso en la guía; son propiedades del tool `Agent`, no estilo:
+
+| Palanca | Qué hace el harness | Regla LowCost |
+|---|---|---|
+| **Background por defecto** | Los subagentes corren en background y te notifican al terminar; `run_in_background: false` los hace síncronos (§5) | Síncrono **solo** el gate y las fases cuyo output es input de la próxima. Fases independientes → background y seguís |
+| **Gate por `agent_type`** | Un `PreToolUse` sabe qué subagente disparó la llamada (`agent_type`, plugin-scoped) — habilita gates a nivel subagente (§7) | El validador entre fases puede ser un hook, no solo un agente |
+| **Worktrees** | `isolation: "worktree"` da a cada fase su copia aislada del repo, auto-limpiada (§10) | Fan-out paralelo sin conflictos de archivos |
+| **Advisor entre fases** | Un validador barato corta la cadena antes de que el error escale (§31) | El gate es lo que separa un pipeline de un harness |
+
+### Los 3 patrones de harness (Anthropic — fuente primaria, verificado)
+
+Anthropic define "harness" más amplio que "pipeline de especialistas": es **todo el andamiaje alrededor del modelo**. Tres patrones, cada uno con su regla LowCost:
+
+| Patrón | Qué dice | Regla LowCost |
+|---|---|---|
+| **1. Apoyarse en las capacidades del modelo** | Dale herramientas generales (bash, editor) antes que tools especializadas — Claude las compone en skills y llamadas programáticas (Sonnet 3.5 llegó a **49% en SWE-bench solo con bash + editor**) | No construyas una tool para lo que `bash` ya hace (§14 anti-overkill). Cada tool custom es superficie que mantener |
+| **2. Adelgazar el harness** | (a) *Claude orquesta*: no todo resultado pasa por el context window — filtra/pipea; (b) *Claude gestiona contexto*: progressive disclosure vía skills, no pre-cargar todo; (c) *Claude persiste*: memory + compaction | Menos en contexto = menos tokens. La skill bajo demanda (§6) **es** este patrón; el `context: fork` (§5) es "no contamines el hilo" |
+| **3. Poner límites con cuidado** | Contexto estático primero, dinámico al final (cache hits); promover acciones a **tools declarativas** que el harness intercepta/gatea/audita; acción difícil de revertir → confirmación | El orden estático→dinámico **es** el cache de §3. El gate por `agent_type` (§7) es una "tool declarativa que el harness intercepta" |
+
+**Verificación secundaria** — el gate a nivel tool: el auto-mode de Claude Code pone **un segundo Claude a leer el comando de bash y juzgar si es seguro** antes de correrlo. Mismo principio del reviewer entre fases, un nivel más abajo: un gate no tiene que ser un agente pesado; puede ser un juez barato de una sola pregunta (§31 Advisor).
+
+> El harness ya no es solo estático: Claude puede escribir uno **on-the-fly** para la tarea que tiene enfrente, y **Agent Teams** (experimental) es el orquestador multi-agente nativo — la evolución del `lead` de §10. Lo que no cambia son los gates y la separación de contexto de abajo.
+
+### El gate es innegociable
+
+El anti-patrón clásico (§10, §31): **el output de un agente es input del siguiente**. Sin gate, un error de la fase 1 se propaga silencioso hasta el final y explota caro. El gate —reviewer, hook, o `claude plugin validate`— es lo que hace que el harness sea un *arnés* y no una cinta transportadora. Regla: **una fase no arranca hasta que la anterior pasó su gate.**
+
+Dos principios que sostienen el gate (Anthropic, verificado):
+
+- **Separación de contexto — no pases el transcript completo entre fases.** El evaluador juzga mejor *porque no sabe qué estaba pensando el generador*: recibe el artefacto, no el razonamiento. Pasar el hilo entero es caro (tokens ×N) **y** contamina el juicio. Cada fase recibe el output de la anterior + su tarea, nada más — es el `context: fork` (§5) aplicado al pipeline. Es "the actual magic", no un detalle.
+- **Permisos como diseño — el que revisa no edita.** Un agente cuyo rol es *juzgar* (reviewer, evaluator) no lleva `Write`/`Edit`. Si el evaluador puede editar, deja de ser juez y se vuelve otro generador: el gate se autodisuelve. El acceso a tools *es* parte del diseño, no un detalle de config (§5, §18).
+
+### Cuándo NO montar un harness (anti-overkill, §14)
+
+- Una sola tarea que no se descompone en fases cross-especialista → especialista directo, sin orquestador (§10).
+- Dos agentes que corren en paralelo sin dependencia → fan-out simple, no necesitás secuencia ni gates.
+- El harness se justifica cuando hay **≥3 fases con dependencia** y el costo de propagar un error entre ellas supera el costo del gate.
+
+**Fuentes:** [Sub-agents](https://code.claude.com/docs/en/sub-agents.md) · [Building an agent harness with Claude Code — LogRocket](https://blog.logrocket.com/building-an-agent-harness-with-claude-code/) · patrón verificado en `DesignPluging/plugins/design-ios`.
+
 <!-- §15 -->
 ## 15. Glosario
 
@@ -6534,5 +6751,21 @@ Por eso los agentes y prompts de artifact-factory están en inglés — el CLAUD
 **Scope** — Archivos que describen el estado real del proyecto: qué existe, qué falta, qué se decidió. El lead lo lee para planificar. Los especialistas no lo necesitan — reciben contexto del lead.
 
 **ADR (Architecture Decision Record)** — Entrada en el scope que documenta una decisión de diseño: qué se eligió, qué se descartó y por qué. Inmutable — nunca se edita, solo se agrega. Permite entender meses después por qué se tomó una decisión.
+
+### Loops y orquestación
+
+**Harness** — El "arnés" que canaliza la potencia del modelo: la capa de física del tool (background, gates, worktrees) y, como patrón, un comando orquestador que ejecuta un pipeline de fases con un gate entre cada una (§35). El modelo pone la potencia; el harness la dirige.
+
+**`/loop`** — Skill bundled que corre un prompt en repetición dentro de la sesión: intervalo fijo (→ cron), o dinámico auto-pausado si omitís el intervalo. Session-scoped — muere al cerrar o a los 7 días (§34).
+
+**ScheduleWakeup** — Tool con que el modo dinámico de `/loop` agenda su propia próxima corrida. `delaySeconds` en `[60, 3600]`; `stop: true` termina el loop. No polear con él por trabajo que el harness ya notifica (§34).
+
+**Monitor** — Tool que corre un script en background y streamea cada línea de output. Reemplaza el polling en un loop dinámico: más barato y más responsivo que re-correr un prompt (§34).
+
+**Channels** — Mecanismo event-push: un sistema externo (CI) empuja el evento a la sesión en vez de que vos lo polees. Reaccionar gasta menos que polear (§34).
+
+**Routine** — Tarea programada que corre en infraestructura de Anthropic, sin tu máquina ni sesión abierta (`/schedule`, §30). El equivalente durable de `/loop`.
+
+**Gate** — Validador entre fases de un pipeline (reviewer, hook por `agent_type`, o `claude plugin validate`) que corta la cadena si una fase falla, antes de que el error se propague a la siguiente. Es lo que separa un harness de una cinta transportadora (§35, §31).
 
 ---

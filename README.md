@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.25 · §5: the frontmatter `model:` is a default, not a lock — the spawn-time `model` takes precedence (one definition, cheapest model per task); `subagent_type: fork` always inherits the parent's; `claude-fable-5` added to the template enum — 2026-07-19
+**Author:** Félix Sotelo · **Version:** v5.27 · §35 deepened with Anthropic's 3 agent-harness patterns (primary source), secondary verification, context separation & permissions-as-design; §34 with the per-cycle cost formula (`/cost` × cycles/day) and `Monitor` "stop polling, start reacting"; `audit-guia`/`audit-plugin` skills extended with harness/loop checks (gate between phases, irreversible `loop.md`, judge-role permissions) — 2026-07-19
 
 ---
 

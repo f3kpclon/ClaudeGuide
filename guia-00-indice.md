@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.25 · §5: el `model:` del frontmatter es un default, no un candado — el `model` de la invocación tiene precedencia (una sola definición, el modelo más barato por tarea); `subagent_type: fork` siempre hereda el del padre; `claude-fable-5` agregado al enum del template — 2026-07-19
+**Versión:** v5.27 · §35 profundizada con los 3 patrones de harness de Anthropic (fuente primaria), verificación secundaria, separación de contexto y permisos-como-diseño; §34 con la fórmula de costo-por-ciclo (`/cost` × ciclos/día) y `Monitor` "stop polling, start reacting"; skills `audit-guia`/`audit-plugin` extendidos con checks de harness/loops (gate entre fases, `loop.md` irreversible, permisos del rol-juez) — 2026-07-19
 
 ---
 
@@ -43,6 +43,8 @@
 | Preservar contexto entre sesiones | §27 — handoff protocol + auto-compaction |
 | Usar CLAUDE.local.md, rules/, output-styles/ | §32 — los archivos que nadie documenta |
 | Integrar /rewind, /fork, /compact con hooks | §33 — comandos nativos y sus límites reales |
+| Correr un prompt en loop / polling / babysitting | §34 — `/loop`, `ScheduleWakeup`, `Monitor`, apagado sin quemar tokens |
+| Orquestar un pipeline con gates entre fases | §35 — patrón harness, comando orquestador vs lead |
 
 ---
 
@@ -73,6 +75,7 @@
 - [§29 — Contexto global propio](guia-02-construccion.md#29-contexto-global-propio--construir-tu-sistema)
 - [§30 — Cloud Agents programados — /schedule y /web-setup](guia-02-construccion.md#30-cloud-agents-programados--schedule-y-web-setup)
 - [§33 — Comandos nativos (rewind, clear, compact, fork) + integración con hooks](guia-02-construccion.md#33-comandos-nativos--rewind-clear-compact-fork-y-su-integración-con-agenteshooks)
+- [§34 — Loops y tareas programadas (/loop, ScheduleWakeup, Monitor)](guia-02-construccion.md#34-loops-y-tareas-programadas--loop-schedulewakeup-monitor)
 
 ### Calidad y eficiencia
 - [§14 — Guía anti-overkill](guia-03-calidad.md#14-guía-anti-overkill)
@@ -88,6 +91,7 @@
 - [§20 — CI/CD](guia-04-avanzado.md#20-cicd)
 - [§21 — Observabilidad y debugging](guia-04-avanzado.md#21-observabilidad-y-debugging)
 - [§22 — Prompt engineering avanzado](guia-04-avanzado.md#22-prompt-engineering-avanzado)
+- [§35 — El patrón Harness — pipelines con gates](guia-04-avanzado.md#35-el-patrón-harness--pipelines-con-gates)
 - [§15 — Glosario](guia-04-avanzado.md#15-glosario)
 
 ---
@@ -98,9 +102,9 @@
 | Archivo | Contenido |
 |---|---|
 | `guia-01-fundamentos.md` | 01 · Fundamentos — §4, §1, §2, §25, §24 |
-| `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §31, §32, §17, §26, §27, §28, §29, §30, §33 |
+| `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §31, §32, §17, §26, §27, §28, §29, §30, §33, §34 |
 | `guia-03-calidad.md` | 03 · Calidad y eficiencia — §14, §12, §13, §23, §3 |
-| `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §15 |
+| `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §35, §15 |
 
 `grep -rn "<!-- §N -->" guia-*.md` encuentra la sección sin importar en qué archivo vive.
 
