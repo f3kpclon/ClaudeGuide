@@ -6,3 +6,7 @@ CLAUDE.local.md
 .claude/settings.local.json
 .claude/index/
 .claude/handoffs/
+
+# Python bytecode (audit importa gen_readme_es)
+__pycache__/
+*.pyc
