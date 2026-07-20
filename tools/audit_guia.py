@@ -25,6 +25,9 @@ Checks:
          conocida — ej. pricing introductorio — que nadie recheckeó a tiempo)
        - "verificado/corregido YYYY-MM-DD" con > STALE_DAYS de antigüedad → WARNING
          (no bloquea el exit code, solo avisa que puede valer la pena recheckear)
+  9. README.es.md == concat de las 5 guías (vía tools/gen_readme_es.build_es).
+     README.es.md es derivado; editar una guía sin regenerar lo deja stale en
+     silencio — el check 7 solo compara la versión, no el cuerpo.
 
 Uso: python3 tools/audit_guia.py   (exit 0 = limpio, 1 = violaciones)
 """
@@ -227,6 +230,19 @@ def main() -> int:
                 errors.append(f"{readme}: sin línea de versión parseable")
             elif rv.group(1) != ver.group(1):
                 errors.append(f"{readme}: {rv.group(1)} != guía {ver.group(1)}")
+
+    # --- README.es.md == concat de las 5 guías (check 9) --------------------
+    # README.es.md es un artefacto derivado (ver tools/gen_readme_es.py). Sin
+    # este check, editar una guía sin regenerar deja el ES stale en silencio
+    # (el check 7 solo compara la cadena de versión, no el cuerpo).
+    try:
+        from gen_readme_es import build_es
+        actual_es = (REPO / "README.es.md").read_text()
+        if actual_es != build_es():
+            errors.append("README.es.md desincronizado con las guías — corré: "
+                          "python3 tools/gen_readme_es.py")
+    except Exception as e:  # noqa: BLE001 — el generador ausente/roto es un hallazgo, no silencio
+        errors.append(f"no pude verificar README.es.md contra el generador: {e}")
 
     if warnings:
         print(f"⚠️  {len(warnings)} advertencia(s) de staleness (no bloquean el exit code):")
