@@ -1634,6 +1634,11 @@ git status --short
 
 **Gotcha — skill invisible:** si una skill con `disable-model-invocation: true` no aparece en la lista de usuario, diagnosticar en orden: (1) `user-invocable: true` declarado explícitamente — algunos combos de flags la silencian sin error visible; (2) `argument-hint` presente si recibe argumentos; (3) `/reload-plugins` ejecutado post-cambio. La declaración explícita es más confiable que depender del default.
 
+**Gotcha — hooks y el cwd del subagente (verificado 2026-07-19, design-ios):** dos fallos que se ven idénticos a código sano hasta que corren en un subagente:
+- Claves de flags/hashes por **`CLAUDE_PROJECT_DIR`, nunca `Path.cwd()`** — un subagente en background corre con otro cwd; si un hook escribe el flag (PostToolUse) y otro lo lee (SubagentStop) con esquemas distintos, computan hashes distintos → "flag no encontrado" en falso, y el flujo degrada sin ruido.
+- `Path(x).resolve().relative_to(project_dir)` necesita `project_dir` **también** `.resolve()`'d — bajo un symlink (`/var→/private/var` en macOS, worktrees, algunos `/home`) `relative_to` lanza y caés a paths absolutos frágiles.
+- Meta: un comentario que afirmaba "same scheme as X" ocultaba la inconsistencia. Los comentarios mienten — verificá el hash contra el código, no contra el comentario (verificar > recordar).
+
 ---
 
 
@@ -2243,6 +2248,8 @@ Atrapa las tres clases de error que fallan **en silencio** en runtime: manifest 
   > Validado en producción (design-ios): la sección `## Reglas universales Swift` vive inline en el hub (`disable-model-invocation: false`, siempre en contexto) — nunca en un archivo `rules/` que el plugin no puede cargar.
 - **`output-styles/` de plugin aplica a TODA la conversación principal** mientras el plugin esté activo — no por-agente. Un `swift-only.md` global silencia la prose de toda la sesión. Reglas de output por agente → inline en el agente (son 3-6 líneas).
 - **`plugin.json` no tiene campo `components`** — los componentes se descubren por convención de directorios; el campo se ignora.
+- **Código de soporte importable (módulos, no componentes) → dir whitelisted, NUNCA un `scripts/` propio.** Un `.py` que un hook importa o corre por subprocess anda en dev desde cualquier carpeta, pero un dir fuera de la whitelist puede no sobrevivir la instalación — y si se stripea, la falla es **silenciosa** (el import cae en un `except`, la feature muere sin ruido). Ponelo al lado de quien lo usa (ej. `hooks/design_catalog.py`): garantiza que viaja + simplifica el import a sibling.
+  > **[2026-07-19] design-ios:** `design_catalog.py` vivía en `scripts/` (importado por `post_write.py`, corrido por `/catalog`). Distinto de `rules/`: NO era dead weight, se ejecutaba de verdad — pero "vivo en dev" ≠ "viaja al install". Movido a `hooks/` (whitelisted): elimina el riesgo de strip no verificable, borra el hack `sys.path.insert(...parent.parent...)` (→ `import` sibling directo) y pasa compliance estricto. Solo `hooks.json` define qué es un hook; un `.py` que no está ahí es helper, no se mis-registra.
 
 > **[2026-06-02] design-ios:** `marketplace.json` en la raíz es REQUERIDO para el flujo "Browse plugins" del desktop app — no es un archivo opcional ni de metadata. Eliminarlo rompe la instalación UI para todos los usuarios del equipo. Error: confundirlo con dead weight porque la guía no lo mencionaba.
 

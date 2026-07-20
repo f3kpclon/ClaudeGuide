@@ -775,6 +775,8 @@ tests/
 
 Sin pytest-cov, sin mocking framework, sin fixtures complejas. Solo `pytest` + `subprocess`.
 
+> **[2026-07-19] design-ios:** Para testear hooks de un plugin **sin el repo target real**, levantá un *repo desechable real* (git init + dirs + archivos + el toolchain real), no un mock. Es fiel porque el hook solo hace lo que hace — `swiftc -parse` valida sintaxis sin las deps del design system, igual que en producción. Esa prueba real destapó un bug de symlink en el path del catálogo que la simulación con flags mockeados no podía ver. **El juez real > el proxy** no es lema: es lo que encuentra el bug que el mock esconde.
+
 ### Checklist §19
 
 ```
@@ -998,6 +1000,7 @@ Nunca opus en CI — no hay one-shot irreversible que lo justifique.
 □ @claude trigger: workflow escucha issue_comment + pull_request_review_comment
 □ Repo con plugin distribuible: job plugin-validate (claude plugin validate — sin API key)
 □ Tests que dependen de toolchains del runner (swiftc, tsc): gate operativo con warm-up, no which()
+□ Check ❌ en CI ≠ test roto: leer la annotation — "job was not started (billing/spending limit)" es infra, no fallo (verificado 2026-07-19)
 ```
 
 ---
@@ -1322,6 +1325,34 @@ Dos principios que sostienen el gate (Anthropic, verificado):
 - Una sola tarea que no se descompone en fases cross-especialista → especialista directo, sin orquestador (§10).
 - Dos agentes que corren en paralelo sin dependencia → fan-out simple, no necesitás secuencia ni gates.
 - El harness se justifica cuando hay **≥3 fases con dependencia** y el costo de propagar un error entre ellas supera el costo del gate.
+
+### El trigger es el estado de dependencias, no el tipo de artefacto
+
+> **[2026-07-19] design-ios:** Cablear el harness enseñó que **qué construís no dice si cruza fases — lo dice si los hijos ya existen.** Una molécula con sus átomos ya en el catálogo es 1 fase (skill directo); la misma molécula con átomos faltantes es pipeline. El Paso 0 (el `@lead` grepea el catálogo) decide por-tarea: hijos presentes → sale al skill y NO orquesta (anti-overkill §14); faltantes → pipeline con gates. Nunca hardcodees "organismo → harness siempre".
+
+Dos físicas que aparecen al cablear un `command` orquestador (§33):
+
+- **Un `command` no es auto-invocable por el modelo.** El hub dispatchea a *agentes* (tool `Agent`); a un `/command` lo tipea el Usuario, o el hub lo *recomienda* — el modelo no lo "llama". Si querés el flujo gateado automático, la lógica va en hub/lead (agentes), no en el command.
+- **Un command que dispara writes hay que cablearlo al gate de escritura.** El harness no figuraba en el trigger del plan-gate; su primer `Write` lo denegaba el hard-gate `pre_write` (regla 0) sin ruta de aprobación → **deadlock silencioso**. Un orquestador nuevo se cablea al mecanismo de gate existente o falla invisible (§7, física antes de diseño).
+
+### No todos los gates se endurecen igual — gate de estado vs gate de fase
+
+> **[2026-07-20] design-ios:** auditar el harness ya cableado reveló que la afirmación "el validador entre fases puede ser un hook" tiene un límite físico. **Un hook ve eventos de tool (`Write`, `Edit`, `SubagentStop`), no "fronteras de fase".** De ahí dos clases de gate con dureza distinta:
+>
+> - **Gate de estado — se endurece a `deny`.** Se ancla a estado persistente (un flag). El gate de plan (regla 0) lee `design-plan-approved` en `PreToolUse` y deniega el `Write` si falta. Imposible de saltar. Física real.
+> - **Gate de fase — NO se endurece; se hace observable.** "Ejecuta el reviewer entre la capa atoms y molecules" no tiene evento que lo dispare: "fase" es un concepto de la prosa del `command`, invisible al hook. Pedirle un `deny` es pedirle lo imposible (§reasoning: física antes de diseño) — el modelo improvisa y el gate se disuelve en silencio. La palanca correcta es **detectar el salto y hacerlo visible**, no bloquearlo: `SubagentStop` marca (mtime) cuándo corrió el reviewer; `Stop` compara contra el último write de la fase y avisa si se escribió después del último review. Convierte un salto silencioso en un nudge — que era el hallazgo, no el bloqueo.
+>
+> Corolario para la tabla de palancas: "el validador entre fases puede ser un hook" vale **solo si el gate es por-tool** (un `PreToolUse` por `agent_type` que revisa cada escritura). Un gate por-fase en un harness orquestado por prosa se queda en observabilidad.
+
+### Un gate roto se ve idéntico a uno sano — las 3 muertes silenciosas del harness
+
+> **[2026-07-20] design-ios:** aplicar "¿cómo sabría que esto está muerto?" (§reasoning #3) a cada gate del harness destapó tres fallos que no dan señal — el sistema con enforcement roto es visualmente idéntico al sano:
+>
+> 1. **El juez que no puede correr y calla.** El gate de sintaxis `swiftc -parse` retorna "OK" cuando no hay toolchain (`which('swiftc') → None`). En CI o una máquina sin Xcode pasa todo, y el dev cree tener red de compilación. Fix: cuando el juez no puede ejecutar, **emitir una señal** ("gate desactivado esta sesión"), nunca degradar a verde mudo.
+> 2. **El pipeline corrompe el input de su propio gate.** El `@lead` decide pipeline-vs-1-capa grepeando un catálogo que el hook actualiza con read-modify-write **sin lock**. El harness permite fases en background → dos escrituras concurrentes se pisan (lost update) y el gate decide sobre datos corruptos. Fix: `flock` + swap atómico (`os.replace`) en todo estado compartido que fases en background escriban.
+> 3. **El `except` que se traga la muerte.** `except Exception: return None` en la actualización del catálogo hacía invisible cualquier crash. Fix: distinguir "no aplica" (silencio OK) de "reventó" (señal) — solo el segundo llega al `except`.
+>
+> Regla destilada: **a cada gate del harness preguntarle por separado (a) qué pasa si no puede correr, (b) quién escribe su input y si compite, (c) qué esconde su `except`.** Los tres se ven sanos hasta que fallan caro.
 
 **Fuentes:** [Sub-agents](https://code.claude.com/docs/en/sub-agents.md) · [Building an agent harness with Claude Code — LogRocket](https://blog.logrocket.com/building-an-agent-harness-with-claude-code/) · patrón verificado en `DesignPluging/plugins/design-ios`.
 
