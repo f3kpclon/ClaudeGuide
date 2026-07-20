@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.29 · context hook (§26), two injection paths: section with `-quick` → the **full** curated block (with its code — restores the §5/§6/§7 templates/JSON that the v5.28 capsule stripped); prose section without a quick → fence-safe head capsule + `sed` pointer. Fence-safety guaranteed (quick balanced by construction). `sed` pointer fixed (the old pattern stopped at the `-quick`/`-ref` sub-markers, returning 2 lines instead of the section). Validated end-to-end: 268 checks across all 35 sections — routing, fence-safety, code fidelity, pointer round-trip, concat, dedup. `audit_guia.py` mirrors both paths — 2026-07-19
+**Author:** Félix Sotelo · **Version:** v5.30 · §35 (guia-04) harness observability — **state-gate** (anchored to a flag, hardens to `deny`) vs **phase-gate** (no event fires it, doesn't harden: made observable via a nudge); a gate's **3 silent deaths** (a judge that can't run and stays quiet, a lockless pipeline that corrupts its own input, an `except` that swallows the death); the phase-crossing trigger is **dependency state**, not artifact type. §02 (guia-02) cwd/whitelist learnings — flags keyed by `CLAUDE_PROJECT_DIR` never `Path.cwd()`, `resolve()` under symlinks, importable support code in a whitelisted dir (not your own `scripts/`), a real throwaway repo > a mock. README.es.md re-synced (b4b35d2 left it stale — the audit checks only the version string, not the concat) — 2026-07-20
 
 ---
 

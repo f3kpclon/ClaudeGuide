@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.29 · hook de contexto (§26), dos vías de inyección: sección con `-quick` → bloque curado **COMPLETO** (con su código — recupera los templates/JSON de §5/§6/§7 que la cápsula v5.28 stripeaba); sección de prosa sin quick → cápsula fence-safe del head + puntero `sed`. Fence-safe garantizado (quick balanceado por construcción). Puntero `sed` corregido (el patrón viejo cortaba en los sub-markers `-quick`/`-ref`, devolvía 2 líneas en vez de la sección). Validado end-to-end: 268 checks sobre las 35 secciones — routing, fence-safety, fidelidad de código, round-trip del puntero, concat, dedup. `audit_guia.py` refleja ambas vías — 2026-07-19
+**Versión:** v5.30 · §35 (guia-04) observabilidad del harness — **gate de estado** (anclado a un flag, se endurece a `deny`) vs **gate de fase** (sin evento que lo dispare, no se endurece: se hace observable con un nudge); las **3 muertes silenciosas** de un gate (juez que no puede correr y calla, pipeline sin lock que corrompe su propio input, `except` que traga la muerte); el trigger de cruce-de-fase es el **estado de dependencias**, no el tipo de artefacto. §02 (guia-02) learnings de cwd/whitelist — flags por `CLAUDE_PROJECT_DIR` nunca `Path.cwd()`, `resolve()` bajo symlinks, código importable en dir whitelisted (no `scripts/` propio), repo desechable real > mock. README.es.md re-sincronizado (b4b35d2 lo dejó stale — el audit no valida el concat, solo la versión) — 2026-07-20
 
 ---
 
@@ -2328,6 +2328,11 @@ git status --short
 
 **Gotcha — skill invisible:** si una skill con `disable-model-invocation: true` no aparece en la lista de usuario, diagnosticar en orden: (1) `user-invocable: true` declarado explícitamente — algunos combos de flags la silencian sin error visible; (2) `argument-hint` presente si recibe argumentos; (3) `/reload-plugins` ejecutado post-cambio. La declaración explícita es más confiable que depender del default.
 
+**Gotcha — hooks y el cwd del subagente (verificado 2026-07-19, design-ios):** dos fallos que se ven idénticos a código sano hasta que corren en un subagente:
+- Claves de flags/hashes por **`CLAUDE_PROJECT_DIR`, nunca `Path.cwd()`** — un subagente en background corre con otro cwd; si un hook escribe el flag (PostToolUse) y otro lo lee (SubagentStop) con esquemas distintos, computan hashes distintos → "flag no encontrado" en falso, y el flujo degrada sin ruido.
+- `Path(x).resolve().relative_to(project_dir)` necesita `project_dir` **también** `.resolve()`'d — bajo un symlink (`/var→/private/var` en macOS, worktrees, algunos `/home`) `relative_to` lanza y caés a paths absolutos frágiles.
+- Meta: un comentario que afirmaba "same scheme as X" ocultaba la inconsistencia. Los comentarios mienten — verificá el hash contra el código, no contra el comentario (verificar > recordar).
+
 ---
 
 
@@ -2937,6 +2942,8 @@ Atrapa las tres clases de error que fallan **en silencio** en runtime: manifest 
   > Validado en producción (design-ios): la sección `## Reglas universales Swift` vive inline en el hub (`disable-model-invocation: false`, siempre en contexto) — nunca en un archivo `rules/` que el plugin no puede cargar.
 - **`output-styles/` de plugin aplica a TODA la conversación principal** mientras el plugin esté activo — no por-agente. Un `swift-only.md` global silencia la prose de toda la sesión. Reglas de output por agente → inline en el agente (son 3-6 líneas).
 - **`plugin.json` no tiene campo `components`** — los componentes se descubren por convención de directorios; el campo se ignora.
+- **Código de soporte importable (módulos, no componentes) → dir whitelisted, NUNCA un `scripts/` propio.** Un `.py` que un hook importa o corre por subprocess anda en dev desde cualquier carpeta, pero un dir fuera de la whitelist puede no sobrevivir la instalación — y si se stripea, la falla es **silenciosa** (el import cae en un `except`, la feature muere sin ruido). Ponelo al lado de quien lo usa (ej. `hooks/design_catalog.py`): garantiza que viaja + simplifica el import a sibling.
+  > **[2026-07-19] design-ios:** `design_catalog.py` vivía en `scripts/` (importado por `post_write.py`, corrido por `/catalog`). Distinto de `rules/`: NO era dead weight, se ejecutaba de verdad — pero "vivo en dev" ≠ "viaja al install". Movido a `hooks/` (whitelisted): elimina el riesgo de strip no verificable, borra el hack `sys.path.insert(...parent.parent...)` (→ `import` sibling directo) y pasa compliance estricto. Solo `hooks.json` define qué es un hook; un `.py` que no está ahí es helper, no se mis-registra.
 
 > **[2026-06-02] design-ios:** `marketplace.json` en la raíz es REQUERIDO para el flujo "Browse plugins" del desktop app — no es un archivo opcional ni de metadata. Eliminarlo rompe la instalación UI para todos los usuarios del equipo. Error: confundirlo con dead weight porque la guía no lo mencionaba.
 
@@ -6166,6 +6173,8 @@ tests/
 
 Sin pytest-cov, sin mocking framework, sin fixtures complejas. Solo `pytest` + `subprocess`.
 
+> **[2026-07-19] design-ios:** Para testear hooks de un plugin **sin el repo target real**, levantá un *repo desechable real* (git init + dirs + archivos + el toolchain real), no un mock. Es fiel porque el hook solo hace lo que hace — `swiftc -parse` valida sintaxis sin las deps del design system, igual que en producción. Esa prueba real destapó un bug de symlink en el path del catálogo que la simulación con flags mockeados no podía ver. **El juez real > el proxy** no es lema: es lo que encuentra el bug que el mock esconde.
+
 ### Checklist §19
 
 ```
@@ -6389,6 +6398,7 @@ Nunca opus en CI — no hay one-shot irreversible que lo justifique.
 □ @claude trigger: workflow escucha issue_comment + pull_request_review_comment
 □ Repo con plugin distribuible: job plugin-validate (claude plugin validate — sin API key)
 □ Tests que dependen de toolchains del runner (swiftc, tsc): gate operativo con warm-up, no which()
+□ Check ❌ en CI ≠ test roto: leer la annotation — "job was not started (billing/spending limit)" es infra, no fallo (verificado 2026-07-19)
 ```
 
 ---
@@ -6713,6 +6723,34 @@ Dos principios que sostienen el gate (Anthropic, verificado):
 - Una sola tarea que no se descompone en fases cross-especialista → especialista directo, sin orquestador (§10).
 - Dos agentes que corren en paralelo sin dependencia → fan-out simple, no necesitás secuencia ni gates.
 - El harness se justifica cuando hay **≥3 fases con dependencia** y el costo de propagar un error entre ellas supera el costo del gate.
+
+### El trigger es el estado de dependencias, no el tipo de artefacto
+
+> **[2026-07-19] design-ios:** Cablear el harness enseñó que **qué construís no dice si cruza fases — lo dice si los hijos ya existen.** Una molécula con sus átomos ya en el catálogo es 1 fase (skill directo); la misma molécula con átomos faltantes es pipeline. El Paso 0 (el `@lead` grepea el catálogo) decide por-tarea: hijos presentes → sale al skill y NO orquesta (anti-overkill §14); faltantes → pipeline con gates. Nunca hardcodees "organismo → harness siempre".
+
+Dos físicas que aparecen al cablear un `command` orquestador (§33):
+
+- **Un `command` no es auto-invocable por el modelo.** El hub dispatchea a *agentes* (tool `Agent`); a un `/command` lo tipea el Usuario, o el hub lo *recomienda* — el modelo no lo "llama". Si querés el flujo gateado automático, la lógica va en hub/lead (agentes), no en el command.
+- **Un command que dispara writes hay que cablearlo al gate de escritura.** El harness no figuraba en el trigger del plan-gate; su primer `Write` lo denegaba el hard-gate `pre_write` (regla 0) sin ruta de aprobación → **deadlock silencioso**. Un orquestador nuevo se cablea al mecanismo de gate existente o falla invisible (§7, física antes de diseño).
+
+### No todos los gates se endurecen igual — gate de estado vs gate de fase
+
+> **[2026-07-20] design-ios:** auditar el harness ya cableado reveló que la afirmación "el validador entre fases puede ser un hook" tiene un límite físico. **Un hook ve eventos de tool (`Write`, `Edit`, `SubagentStop`), no "fronteras de fase".** De ahí dos clases de gate con dureza distinta:
+>
+> - **Gate de estado — se endurece a `deny`.** Se ancla a estado persistente (un flag). El gate de plan (regla 0) lee `design-plan-approved` en `PreToolUse` y deniega el `Write` si falta. Imposible de saltar. Física real.
+> - **Gate de fase — NO se endurece; se hace observable.** "Ejecuta el reviewer entre la capa atoms y molecules" no tiene evento que lo dispare: "fase" es un concepto de la prosa del `command`, invisible al hook. Pedirle un `deny` es pedirle lo imposible (§reasoning: física antes de diseño) — el modelo improvisa y el gate se disuelve en silencio. La palanca correcta es **detectar el salto y hacerlo visible**, no bloquearlo: `SubagentStop` marca (mtime) cuándo corrió el reviewer; `Stop` compara contra el último write de la fase y avisa si se escribió después del último review. Convierte un salto silencioso en un nudge — que era el hallazgo, no el bloqueo.
+>
+> Corolario para la tabla de palancas: "el validador entre fases puede ser un hook" vale **solo si el gate es por-tool** (un `PreToolUse` por `agent_type` que revisa cada escritura). Un gate por-fase en un harness orquestado por prosa se queda en observabilidad.
+
+### Un gate roto se ve idéntico a uno sano — las 3 muertes silenciosas del harness
+
+> **[2026-07-20] design-ios:** aplicar "¿cómo sabría que esto está muerto?" (§reasoning #3) a cada gate del harness destapó tres fallos que no dan señal — el sistema con enforcement roto es visualmente idéntico al sano:
+>
+> 1. **El juez que no puede correr y calla.** El gate de sintaxis `swiftc -parse` retorna "OK" cuando no hay toolchain (`which('swiftc') → None`). En CI o una máquina sin Xcode pasa todo, y el dev cree tener red de compilación. Fix: cuando el juez no puede ejecutar, **emitir una señal** ("gate desactivado esta sesión"), nunca degradar a verde mudo.
+> 2. **El pipeline corrompe el input de su propio gate.** El `@lead` decide pipeline-vs-1-capa grepeando un catálogo que el hook actualiza con read-modify-write **sin lock**. El harness permite fases en background → dos escrituras concurrentes se pisan (lost update) y el gate decide sobre datos corruptos. Fix: `flock` + swap atómico (`os.replace`) en todo estado compartido que fases en background escriban.
+> 3. **El `except` que se traga la muerte.** `except Exception: return None` en la actualización del catálogo hacía invisible cualquier crash. Fix: distinguir "no aplica" (silencio OK) de "reventó" (señal) — solo el segundo llega al `except`.
+>
+> Regla destilada: **a cada gate del harness preguntarle por separado (a) qué pasa si no puede correr, (b) quién escribe su input y si compite, (c) qué esconde su `except`.** Los tres se ven sanos hasta que fallan caro.
 
 **Fuentes:** [Sub-agents](https://code.claude.com/docs/en/sub-agents.md) · [Building an agent harness with Claude Code — LogRocket](https://blog.logrocket.com/building-an-agent-harness-with-claude-code/) · patrón verificado en `DesignPluging/plugins/design-ios`.
 

@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.29 · hook de contexto (§26), dos vías de inyección: sección con `-quick` → bloque curado **COMPLETO** (con su código — recupera los templates/JSON de §5/§6/§7 que la cápsula v5.28 stripeaba); sección de prosa sin quick → cápsula fence-safe del head + puntero `sed`. Fence-safe garantizado (quick balanceado por construcción). Puntero `sed` corregido (el patrón viejo cortaba en los sub-markers `-quick`/`-ref`, devolvía 2 líneas en vez de la sección). Validado end-to-end: 268 checks sobre las 35 secciones — routing, fence-safety, fidelidad de código, round-trip del puntero, concat, dedup. `audit_guia.py` refleja ambas vías — 2026-07-19
+**Versión:** v5.30 · §35 (guia-04) observabilidad del harness — **gate de estado** (anclado a un flag, se endurece a `deny`) vs **gate de fase** (sin evento que lo dispare, no se endurece: se hace observable con un nudge); las **3 muertes silenciosas** de un gate (juez que no puede correr y calla, pipeline sin lock que corrompe su propio input, `except` que traga la muerte); el trigger de cruce-de-fase es el **estado de dependencias**, no el tipo de artefacto. §02 (guia-02) learnings de cwd/whitelist — flags por `CLAUDE_PROJECT_DIR` nunca `Path.cwd()`, `resolve()` bajo symlinks, código importable en dir whitelisted (no `scripts/` propio), repo desechable real > mock. README.es.md re-sincronizado (b4b35d2 lo dejó stale — el audit no valida el concat, solo la versión) — 2026-07-20
 
 ---
 
