@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.31 · Re-verificación contra docs oficiales (2026-09-02) — **Opus 5** (`claude-opus-5`) reemplaza a Opus 4.8 como el Opus vigente y es el default de cuenta en Max/Team Premium/Enterprise/API; **Fable 5.1** encabeza el lineup. El pricing introductorio de Sonnet 5 ($2/$10) **pasó a estándar** — la suba a $3/$15 del 01/09/2026 fue cancelada, así que el ratio Opus:Sonnet es 2.5× y ya no vence (6 marcadores `vence:` resueltos). §25 corrige un error de hecho: **fast mode SÍ es parámetro de la API** (`speed: "fast"` + beta `fast-mode-2026-02-01`, Opus 5/4.8; Opus 4.6 lo ignora en silencio). Nuevo: `xhigh` no existe en Opus 4.6 ni Sonnet 4.6; aliases de Claude Code (`best`/`fable`/`opusplan`/`[1m]`) y las 4 formas de setear effort; §3 suma el **tokenizer nuevo de 4.7+ (~30% más tokens)** y el cache write de 1h; Haiku 4.5 se retira no antes del 15/10/2026 — 2026-09-02
+**Versión:** v5.32 · §7 hooks + §6 skills re-verificados contra docs oficiales (2026-09-02) — **33 eventos** (entraron `DirectoryAdded` y `PreModelSwitch`/`PostModelSwitch`: el primero permite bloquear una escalada de modelo con exit 2, la palanca lowcost que faltaba). **`continueOnBlock`**: sin ese flag un `PreToolUse`/`PostToolUse` denegado **mata el turno** en vez de devolverle el error a Claude — cambió en la v2.1.210. **`if` solo vale en 5 eventos de tool; en el resto impide que el hook corra, sin avisar.** Quinto handler `agent` (experimental) y prompt hooks corriendo en Haiku = Advisor Pattern nativo. Hooks se declaran en **7 lugares**, incluidos frontmatter de skill (persiste toda la sesión) y de subagente. §6: `background: true` es el nuevo default de `context: fork` (v2.1.218) — set de tools angosto y **`/rewind` no deshace sus ediciones**; **`skillOverrides` NO afecta skills de plugin** (trampa contra el consejo del propio hub); precedencia personal > proyecto; commands fusionados con skills — 2026-09-02
 
 ---
 
@@ -1224,7 +1224,7 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 
 ### Eventos — los más usados (no es la lista completa)
 
-30 eventos existen en total (verificado 2026-07-04 contra la referencia oficial, corregido de "29" — off-by-one en la versión anterior) — acá solo los de uso lowcost. Nicho (agent teams, MCP, worktrees) → §7-ref. `PreCompact`/`PostCompact` → §33.
+33 eventos existen en total (re-verificado 2026-09-02 contra la referencia oficial: eran 30 en julio, entraron `DirectoryAdded`, `PreModelSwitch` y `PostModelSwitch`) — acá solo los de uso lowcost. Nicho (agent teams, MCP, worktrees) → §7-ref. `PreCompact`/`PostCompact` → §33.
 
 **Bloqueantes** — corregido 2026-07-04: `Stop`/`SubagentStop` SÍ bloquean (la guía anterior los daba como solo observacionales) — no deniegan una acción, fuerzan que la conversación **continúe** en vez de terminar. Distinto de `PreToolUse`/`UserPromptSubmit`/`PermissionRequest`, que deniegan ANTES de que la acción ocurra:
 
@@ -1250,7 +1250,7 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 <!-- §7-ref -->
 ### Eventos de nicho — no cubiertos arriba
 
-Verificado 2026-07-04 contra la referencia oficial de hooks — 30 eventos existen en total, estos son los que esta guía no desarrolla porque son de casos puntuales (agent teams, MCP elicitation, worktrees, config):
+Re-verificado 2026-09-02 contra la referencia oficial de hooks — 33 eventos en total, estos son los que esta guía no desarrolla porque son de casos puntuales (agent teams, MCP elicitation, worktrees, config):
 
 | Evento | Contexto |
 |---|---|
@@ -1268,17 +1268,22 @@ Verificado 2026-07-04 contra la referencia oficial de hooks — 30 eventos exist
 | `Notification` / `MessageDisplay` | Solo de UI — nunca bloquean |
 | `Setup` | Con flags `--init-only`/`--init`/`--maintenance` — preparación única |
 | `UserPromptExpansion` | Un slash command se expande a un prompt — bloquea la expansión |
+| `DirectoryAdded` | Se agrega un directorio al workspace — no bloquea *(nuevo desde julio 2026)* |
+| `PreModelSwitch` / `PostModelSwitch` | Cambio de modelo en la sesión; el matcher matchea el **nombre del modelo** (`claude-opus-5`, `.*opus.*`) y `Pre` bloquea con exit 2 *(nuevos desde julio 2026)* |
+
+> **`PreModelSwitch` es la palanca lowcost que faltaba:** hasta ahora no había forma de impedir que una sesión escale de modelo sin querer. Un hook con `matcher: ".*opus.*"` que devuelve exit 2 convierte "no uses Opus salvo que lo decidas" de sugerencia del prompt en física del harness (§7 intro). Mismo argumento que cualquier otro guard: la regla escrita se ignora, el hook no.
 
 ### Tipos de handler
 
-La guía usa `"type": "command"` (Python/shell) en todos los ejemplos. Existen 3 tipos más:
+La guía usa `"type": "command"` (Python/shell) en todos los ejemplos. Existen **4 tipos más**:
 
 | Tipo | Cuándo usarlo |
 |---|---|
 | `"command"` | Script local — el más flexible, cubre el 95% de los casos |
 | `"http"` | POST a un servidor externo — webhooks, logging centralizado, CI |
 | `"mcp_tool"` | Llama directamente una tool de un servidor MCP ya conectado |
-| `"prompt"` | Claude decide sí/no con un prompt — para validaciones en lenguaje natural |
+| `"prompt"` | Un modelo decide sí/no con un prompt — validaciones en lenguaje natural |
+| `"agent"` | Un subagente **con tools** verifica antes de decidir — puede leer archivos y correr comandos. **Experimental** |
 
 ```json
 // http hook — logging externo sin script local
@@ -1288,6 +1293,65 @@ La guía usa `"type": "command"` (Python/shell) en todos los ejemplos. Existen 3
 {"type": "prompt", "prompt": "¿Este comando Bash es seguro para ejecutar en producción? $ARGUMENTS"}
 ```
 
+**Prompt hooks: corren en Haiku por defecto** (campo `model` para subirlo) y responden `{"ok": true|false, "reason": "..."}`. Es literalmente el Advisor Pattern (§31) implementado por el harness — un juez barato que no consume el contexto principal.
+
+**Agent hooks** (experimental, preferir `command` en producción): mismo formato `ok`/`reason`, timeout default **60s**, hasta **50 turnos de tool use**, sin campo `impossible`. Úsalo solo cuando la verificación necesita *mirar* el repo — "¿pasan los tests?" — y no alcanza con leer el payload.
+
+#### `ok: false` no significa lo mismo en cada evento
+
+Este es el detalle que rompe guards en silencio. Verificado 2026-09-02:
+
+| Evento | Qué pasa con `ok: false` |
+|---|---|
+| `Stop` / `SubagentStop` | El `reason` se le pasa a Claude y **sigue trabajando**. Con `"impossible": true` el harness acepta la parada y termina el turno |
+| `PreToolUse` | Se deniega la tool y **por default el turno TERMINA**, con el `reason` como línea de warning en el chat |
+| `PostToolUse` | **Por default el turno TERMINA**, `reason` como warning en el chat |
+| `PostToolBatch` / `UserPromptSubmit` / `UserPromptExpansion` | El turno termina, `reason` como warning |
+
+**`continueOnBlock: true` es el campo que casi nadie pone y casi todos quieren.** En `PreToolUse` y `PostToolUse` cambia "matar el turno con un warning" por "devolverle el `reason` a Claude como error de la tool para que corrija y siga". Sin ese flag, tu validador no es un juez que enseña — es un cortacircuitos.
+
+> **Cambio de comportamiento con fecha:** antes de la **v2.1.210**, un `PreToolUse` denegado devolvía el `reason` a Claude y el turno continuaba — o sea, el comportamiento de `continueOnBlock: true` era el default. Si tenés hooks escritos antes de esa versión, hoy cortan el turno donde antes corregían y siguen. Los agent hooks se comportan siempre como `continueOnBlock: true` y no tienen el campo.
+
+#### `if` solo funciona en 5 eventos — en el resto mata el hook
+
+`if` es válido únicamente en `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest` y `PermissionDenied`. **Ponerlo en cualquier otro evento impide que el hook corra** — no tira error, no avisa: simplemente nunca dispara. Es la muerte silenciosa clásica (§35): un `Stop` hook con `if` se ve idéntico a uno sano y no existe.
+
+Y sobre el `if` en Bash, la doc es explícita: el filtrado es *best-effort* — si el comando trae `$(...)`, backticks o `$VAR`, el hook corre igual porque el harness no puede determinar qué se ejecuta. La conclusión oficial coincide con la de esta guía: **para prohibir de verdad, usá el sistema de permisos, no un `if`.**
+
+### Dónde se pueden declarar hooks — 7 lugares, no 2
+
+La tabla de arriba (§7-quick) cubre los dos habituales. La lista completa, con el **scope** de cada uno, importa porque el scope es lo que decide si un guard sobrevive al final del turno:
+
+| Lugar | Scope | ¿Se comparte? |
+|---|---|---|
+| `~/.claude/settings.json` | Todos tus proyectos | No — local a tu máquina |
+| `.claude/settings.json` | Un proyecto | Sí — se commitea |
+| `.claude/settings.local.json` | Un proyecto | No — gitignored |
+| Managed policy settings | Toda la organización | Sí — lo controla admin |
+| Plugin `hooks/hooks.json` | Mientras el plugin esté activo | Sí — va con el plugin |
+| **Frontmatter de una skill** | **El resto de la sesión, desde que se invoca la skill** | Sí — vive en el SKILL.md |
+| **Frontmatter de un subagente** | **Solo mientras ese subagente corre** | Sí — vive en el .md del agente |
+
+Los dos últimos son la novedad que conecta §6 y §7: una skill puede **registrar sus propios hooks al invocarse** (campo `hooks` en el frontmatter, → §6). El detalle que hay que leer dos veces: el hook de una skill **queda registrado el resto de la sesión**, no solo durante la skill. Para que se desregistre después de disparar una vez, el campo es `once: true`.
+
+**`disableAllHooks: true`** apaga todo. Precedencia con trampa: gana el valor que queda **después** de resolver la precedencia de settings, así que el `settings.json` de un proyecto puede desactivar los hooks que definiste en tu `~/.claude/`. Los de managed settings siguen corriendo salvo que el `disableAllHooks` esté también ahí.
+
+**`/hooks` lista todos los hooks configurados agrupados por evento.** Es la respuesta directa a la pregunta de §35 ("¿cómo sabría que este hook está muerto?"): si tu guard no aparece en `/hooks`, no está registrado — no hace falta esperar a que falle un caso real para descubrirlo.
+
+### Sintaxis del matcher — la regla que decide si es string o regex
+
+No es "siempre regex". El harness elige según los caracteres que uses:
+
+| Valor del matcher | Se evalúa como |
+|---|---|
+| `"*"`, `""`, u omitido | Matchea todo |
+| Solo letras, dígitos, `_`, `-`, `,` y `\|` | String exacto o alternancia (`Bash`, `Edit\|Write`) |
+| Cualquier otro carácter | **Regex sin anclar** (`^Notebook`, `mcp__.*`) |
+
+Consecuencia práctica: `Bash` matchea exactamente `Bash`, pero `Bash.` es regex y matchea cualquier tool que empiece con "Bash". Si tu matcher no dispara, chequeá primero en cuál de las tres filas cayó.
+
+**Todos los hooks que matchean corren en paralelo**, y un hook duplicado entre varios archivos de settings corre **una sola vez**.
+
 ### Campos opcionales por hook
 
 ```json
@@ -1295,16 +1359,21 @@ La guía usa `"type": "command"` (Python/shell) en todos los ejemplos. Existen 3
   "matcher": "Bash",
   "hooks": [{
     "type": "command",
-    "command": "python3 .claude/hooks/guard.py",
-    "if": "Bash(npm *)",        // condición adicional — AND con matcher
+    "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard.py\"",
+    "args": [],                 // si se setea, ejecuta en forma exec (sin shell)
+    "shell": "bash",            // "bash" (default) o "powershell"
+    "if": "Bash(npm *)",        // AND con matcher — SOLO en los 5 eventos de tool
     "timeout": 30,              // segundos antes de timeout (default: sin límite)
     "statusMessage": "Verificando paquete...",  // spinner visible al usuario
-    "once": false,              // true = corre una vez por sesión y se desregistra
+    "once": false,              // true = corre una vez y se desregistra
     "async": false,             // true = corre en background, no bloquea
-    "asyncRewake": false        // true = background + despierta a Claude si exit 2
+    "asyncRewake": false,       // true = background + despierta a Claude si exit 2
+    "continueOnBlock": false    // true = el reason vuelve a Claude en vez de matar el turno
   }]
 }
 ```
+
+**Placeholders de path** — resuelven contra la raíz correcta sin importar el cwd: `${CLAUDE_PROJECT_DIR}` (raíz del proyecto), `${CLAUDE_PLUGIN_ROOT}` (instalación del plugin) y `${CLAUDE_PLUGIN_DATA}` (directorio persistente del plugin, **sobrevive a los updates** — ahí van caches y dependencias instaladas, nunca dentro de `PLUGIN_ROOT`). En worktrees `${CLAUDE_PROJECT_DIR}` queda fijo: para el directorio actual usá el campo `cwd` del payload del hook.
 
 **`if` y comandos encadenados** — un `if` angosto tipo `Bash(git push *)` NO matchea `git add -u && git commit && git push origin master`: la regla evalúa por prefijo y el comando parte con `git add`. Para guards de seguridad: `if` amplio (`Bash(git *)`) + el script segmenta internamente por `&&`/`||`/`;`. Un `if` angosto en un guard es un bypass, no una optimización.
 
@@ -2040,6 +2109,7 @@ description: "<Qué investiga>. Usar cuando la tarea lee > 3 archivos o produce 
 disable-model-invocation: false
 context: fork
 agent: Explore                      # solo lectura, no carga CLAUDE.md — contexto limpio y económico
+background: false                   # default es true (v2.1.218+): corre en background y /rewind no lo deshace
 ---
 
 Investigar $ARGUMENTS:
@@ -2151,6 +2221,39 @@ Una skill con `"on"` (default) consume tokens en el system prompt aunque nunca s
 ```
 
 Ventaja sobre borrar: el archivo sigue existiendo como referencia histórica, pero no consume tokens.
+
+> **⚠️ `skillOverrides` NO afecta a las skills de un plugin** (verificado 2026-09-02). Esas se manejan con `/plugin`. Es una trampa directa para el consejo del template de hub de arriba: si tu hub vive dentro de un plugin, poner `"mi-plugin-hub": "user-invocable-only"` en settings.json **no hace nada y no avisa** — el hub sigue consumiendo sus ~280 tokens en cada sesión. Para un hub de plugin, la palanca real es el frontmatter (`user-invocable: false` / `disable-model-invocation: true`), que sí viaja con el plugin.
+
+**Atajo de UI:** `/skills` escribe el `skillOverrides` por vos — resaltás una skill, `Space` cicla los 4 estados y `Esc` guarda en `.claude/settings.local.json`. En el menú, `user-invocable-only` aparece etiquetado como `user-only`.
+
+Desde la **v2.1.199**, `"off"` además oculta la skill de las listas que se le anuncian a los clientes de Remote Control y a los callers del Agent SDK, no solo del menú `/` de la terminal.
+
+### Dónde vive una skill — y quién gana cuando hay dos con el mismo nombre
+
+| Nivel | Path | Alcance |
+|---|---|---|
+| Enterprise | managed settings | Toda la organización |
+| Personal | `~/.claude/skills/<nombre>/SKILL.md` | Todos tus proyectos |
+| Proyecto | `.claude/skills/<nombre>/SKILL.md` | Solo ese proyecto |
+| Plugin | `<plugin>/skills/<nombre>/SKILL.md` | Donde el plugin esté activo |
+
+**El orden de precedencia es al revés de lo que uno espera: enterprise > personal > proyecto.** Si tenés una skill `deploy` en `~/.claude/skills/` y otra en el `.claude/skills/` del repo, `/deploy` corre **la personal**. Una skill tuya en cualquiera de esos niveles también pisa a una bundled del mismo nombre — pero no a sus alias (un `code-review` propio reemplaza `/code-review`, y `/review` sigue corriendo el bundled). Las de plugin usan namespace `plugin:skill`, así que nunca chocan.
+
+**Los custom commands se fusionaron con las skills.** `.claude/commands/deploy.md` y `.claude/skills/deploy/SKILL.md` producen los dos el mismo `/deploy`; si existen ambos, **gana la skill**. Los `.claude/commands/` viejos siguen funcionando — lo que suman las skills es directorio de archivos de apoyo, frontmatter y auto-invocación.
+
+**Skills anidadas (monorepo):** los `.claude/skills/` de subdirectorios se cargan cuando Claude toca archivos de ese subdirectorio. Si el nombre choca con una del root, **conviven**: la anidada aparece calificada por directorio, `apps/web:deploy`.
+
+### Prohibir skills desde permisos
+
+Además de los flags de frontmatter, las skills se pueden restringir con reglas de permiso — útil cuando no querés (o no podés) editar el SKILL.md:
+
+```text
+Skill                  # deny total: Claude no puede invocar ninguna skill
+Skill(commit)          # match exacto
+Skill(review-pr *)     # match por prefijo, con cualquier argumento
+```
+
+Y el matiz que se escapa: con `user-invocable: false` **vos** no podés invocarla, pero Claude sí. Para que tampoco pueda Claude hace falta `disable-model-invocation: true`. Son ejes independientes (tabla de las 4 combinaciones, arriba) — asumir que uno implica el otro es el error clásico.
 
 ### Lifecycle — qué pasa después de invocar una skill
 
@@ -2278,9 +2381,13 @@ Implementar el endpoint descrito. Las convenciones ya están cargadas en context
 | `effort` | hereda sesión | Override de esfuerzo: `low\|medium\|high\|xhigh\|max` |
 | `context` | — | `fork` = corre en subagente aislado |
 | `agent` | `general-purpose` | Qué subagente usa `context: fork` (`Explore`, `Plan`, o custom) |
-| `hooks` | — | Hooks scoped al ciclo de vida de la skill |
+| `background` | **`true`** | Solo con `context: fork`. `false` = esperar el resultado en el mismo turno. Requiere v2.1.218+ |
+| `hooks` | — | Hooks que se registran al invocar la skill — **y siguen el resto de la sesión**, salvo `once: true` (→ §7) |
 | `paths` | — | Glob — skill se activa solo cuando se trabaja con archivos que coinciden |
 | `shell` | `bash` | Shell para comandos `!`: `bash` o `powershell` |
+| `metadata` / `license` / `compatibility` | — | Campos del spec Agent Skills. Claude Code los acepta pero **no actúa sobre ellos** — son para tu propio tooling |
+
+> **Cuidado con `background` (cambió el default):** hasta la v2.1.218 una skill con `context: fork` **bloqueaba** el turno hasta terminar. Hoy el default es correr en background y devolver el resultado cuando termina. Tres consecuencias que no se anuncian: (1) un fork en background corre con el **set de tools más angosto** de los subagentes background — si tu skill necesita una tool fuera de ese set, hace falta `background: false`; (2) sus ediciones quedan **fuera de los checkpoints**, así que `/rewind` no las deshace — se revierten con git; (3) el harness igual espera el resultado en modo `-p`/Agent SDK, con `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, si ya hay otra corrida de la misma skill andando, o si la disparó una scheduled task.
 
 ### String substitutions
 
@@ -2288,10 +2395,16 @@ Implementar el endpoint descrito. Las convenciones ya están cargadas en context
 $ARGUMENTS          → todos los args como string ("123 --verbose")
 $ARGUMENTS[N]/$N   → arg por posición 0-based ($0 = primero)
 $nombre             → arg nombrado (con arguments: [issue, branch] → $issue, $branch)
-${CLAUDE_SESSION_ID} → ID de sesión actual (para logs, archivos por sesión)
-${CLAUDE_EFFORT}    → nivel de esfuerzo activo en este momento
-${CLAUDE_SKILL_DIR} → directorio de la skill — para referenciar scripts bundleados
+${CLAUDE_SESSION_ID}  → ID de sesión actual (para logs, archivos por sesión)
+${CLAUDE_EFFORT}      → nivel activo: low|medium|high|xhigh|max
+${CLAUDE_SKILL_DIR}   → directorio de la skill — para scripts bundleados (en plugins:
+                        el subdirectorio de la skill, NO la raíz del plugin)
+${CLAUDE_PROJECT_DIR} → raíz del proyecto — el mismo que reciben los hooks (§7)
+${CLAUDE_PLUGIN_ROOT} → instalación del plugin (solo en skills de plugin)
+${CLAUDE_PLUGIN_DATA} → directorio persistente del plugin, sobrevive updates
 ```
+
+> **`${CLAUDE_EFFORT}` nunca devuelve `ultracode`.** Ultracode no es un nivel propio: reporta `xhigh`. Si escribís una skill que se adapta al effort activo, no ramifiques por un valor que no puede llegar (→ §25).
 
 **Ejemplo con args nombrados:**
 ```yaml
