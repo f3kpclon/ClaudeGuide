@@ -18,7 +18,7 @@
 name: <nombre-kebab-case>           # cómo se invoca: @nombre · único en el proyecto
 description: "<Qué hace este agente>. Usar cuando <caso principal>,
   <caso secundario>, o el contexto involucra <señal de activación>."
-model: <claude-haiku-4-5|claude-sonnet-5|claude-opus-4-8|claude-fable-5>   # pinear siempre — ver §25
+model: <claude-haiku-4-5|claude-sonnet-5|claude-opus-5|claude-fable-5-1>   # pinear siempre — ver §25
 tools: <Read, Glob, Grep>           # solo las necesarias — ver tabla de tools abajo
 ---
 
@@ -48,7 +48,7 @@ Si un comando falla:
 name: security-auditor
 description: "Audit de seguridad. Usar cuando el PR modifica auth, permisos,
   storage o cualquier input de usuario. No usar para linting o code style."
-model: claude-opus-4-8              # one-shot irreversible — ver §25
+model: claude-opus-5                 # one-shot irreversible — ver §25
 tools: Read, Glob, Grep             # sin Write ni Bash — solo lectura
 ---
 
@@ -1101,7 +1101,7 @@ COMPLEXITY_MAP = [
     (["arquitectura", "diseño", "migración", "seguridad", "critico", "critical"],
      "claude-sonnet-5", "xhigh", "compleja"),
     (["irreversible", "producción", "production"],
-     "claude-opus-4-8", None, "crítica"),
+     "claude-opus-5", None, "crítica"),
 ]
 
 try:
@@ -2490,7 +2490,7 @@ Sin instrucción de "no leas componentes existentes", el modelo lee 2-4 archivos
 
 > Como un sous-chef que revisa el plato antes de que salga a la mesa: no cocina — solo dice si algo está mal. El chef sigue siendo sonnet; el revisor es haiku. El plato mejora sin cambiar al chef Michelin.
 
-El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus" (~2.5× por token hoy, baja a ~1.7× desde el 01/09/2026 — §25 <!-- vence: 2026-08-31 -->). La solución no es subir de modelo — es agregar un segundo agente barato que revisa el output del primero.
+El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus" (2.5× por token, ratio estable — §25). La solución no es subir de modelo — es agregar un segundo agente barato que revisa el output del primero.
 
 ### Cuándo aplicar
 
@@ -2542,12 +2542,14 @@ El advisor no itera — emite veredicto. Si hacés más de 1 retry, el problema 
 
 ### Costo comparado
 
-| Estrategia | Costo relativo (por token, pricing introductorio 2026-07 <!-- vence: 2026-08-31 -->) | Cuándo |
+| Estrategia | Costo relativo (por token, verificado 2026-09-02) | Cuándo |
 |---|---|---|
 | Sonnet solo | 1× | Output predecible, stack conocido |
 | Sonnet + haiku advisor | ~1.15× | Output con consecuencias si está mal |
-| Opus solo | ~2.5× (baja a ~1.7× desde 01/09/2026) | Si sonnet + advisor sigue fallando |
-| Opus + advisor | ~2.65× (baja a ~1.85× desde 01/09/2026) | Security/one-shot donde el error es irreversible |
+| Opus solo | 2.5× | Si sonnet + advisor sigue fallando |
+| Opus + advisor | ~2.65× | Security/one-shot donde el error es irreversible |
+
+El advisor barato mantiene su ventaja: haiku usa además el tokenizer viejo, así que consume ~30% menos tokens que sonnet/opus para el mismo texto de revisión (→ §3).
 
 ---
 

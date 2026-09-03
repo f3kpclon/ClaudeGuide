@@ -441,25 +441,47 @@ Si el hub tiene `skillOverrides: user-invocable-only`, los ~280 tokens no se gas
 
 ### Impacto del modelo
 
-Precios oficiales por 1M tokens (input/output, verificados 2026-07-02):
+Precios oficiales por 1M tokens (input/output, verificados 2026-09-02):
 
 | Modelo | Precio | Costo relativo | Cuándo |
 |---|---|---|---|
 | haiku 4.5 | $1 / $5 | 1× | Tareas fijas: git, postmortem, reviewer de checklist |
-| sonnet 5 | $2 / $10 (introductorio hasta 31/08/2026 <!-- vence: 2026-08-31 -->, luego $3/$15) | 2× hoy, 3× desde 01/09/2026 | Implementación, debugging |
-| opus 4.8 | $5 / $25 | 5× | Arquitectura con trade-offs complejos, security |
+| sonnet 5 | $2 / $10 | 2× | Implementación, debugging |
+| opus 5 | $5 / $25 | 5× | Arquitectura con trade-offs complejos, security |
+| fable 5.1 | $10 / $50 | 10× | Solo si tus evals con Opus 5 a effort alto se quedan cortos |
 
-Un reviewer en sonnet cuesta 2× más que en haiku hoy (3× desde septiembre) — mismo resultado. Nota: Opus ya NO es 15× haiku ni 5× sonnet (pricing viejo) — hoy es ~2.5× sonnet, baja a ~1.7× cuando termine el pricing introductorio el 01/09/2026 — el threshold para justificarlo bajó igual (→ §25).
+Un reviewer en sonnet cuesta 2× más que en haiku — mismo resultado. Opus ya NO es 15× haiku ni 5× sonnet (pricing retirado): es **2.5× sonnet**, y ese ratio es estable — la suba de Sonnet 5 a $3/$15 agendada para el 01/09/2026 **fue cancelada** y $2/$10 pasó a ser el precio estándar (nota oficial en la página de pricing). El threshold para justificar Opus bajó y se quedó ahí (→ §25).
+
+### El tokenizer cambió — tus estimados históricos están bajos
+
+**Verificado 2026-09-02** (nota oficial en la página de pricing): de Claude 4.7 en adelante — Opus 4.7, Opus 4.8, **Opus 5**, **Sonnet 5**, Fable 5/5.1 — el tokenizer es nuevo y produce **~30% más tokens para el mismo texto**. **Sonnet 4.6 y anteriores, y Haiku 4.5, usan el tokenizer viejo.**
+
+| Modelo | Tokenizer | Efecto sobre los estimados de esta sección |
+|---|---|---|
+| Haiku 4.5 | viejo | Los números de arriba valen tal cual |
+| Sonnet 5 · Opus 5 · Fable 5.1 | nuevo (~+30%) | **Multiplicar los estimados por ~1.3** |
+
+Dos consecuencias, ninguna obvia:
+
+1. **La tabla de costo fijo de arriba subestima ~30% en todo lo que no sea haiku.** Un CLAUDE.md de ~200 tokens con el tokenizer viejo son ~260 en Sonnet 5 u Opus 5: el techo real de §2 está 30% más abajo de lo que creías.
+2. **La ventaja de haiku es mayor que 2×.** "Sonnet cuesta 2× haiku" compara precio por token, pero haiku además necesita *menos tokens* para el mismo prompt: el ratio real ronda **~2.6×**. La regla "si haiku lo hace bien, no uses sonnet" se refuerza.
+
+**Opus 5 : Sonnet 5 sigue siendo 2.5×** — comparten tokenizer, ahí la comparación es directa.
+
+Para medir: `count_tokens` **con el modelo destino**. Extrapolar entre modelos es el error que este cambio vuelve caro (→ §21).
 
 ### Prompt Caching — reglas clave
 
 | Tipo | Costo relativo | Cuándo ocurre |
 |---|---|---|
-| Cache creation | ~1.25× | Primera llamada o después de expirar el TTL |
-| Cache read | ~0.1× | Mismo prefix dentro del TTL |
+| Cache write (TTL 5 min) | 1.25× | Primera llamada o después de expirar el TTL |
+| Cache write (TTL 1 hora) | 2× | Opt-in — para sesiones con huecos de más de 5 min |
+| Cache read | 0.1× | Mismo prefix dentro del TTL |
 | Sin cache (base) | 1× | Referencia |
 
-- **TTL: 5 minutos** — después de 5 min de inactividad el cache expira
+**Cuándo conviene cada TTL** (verificado 2026-09-02): el write de 5 min se paga solo **con 1 lectura**; el de 1 hora necesita **2 lecturas** para amortizarse. Si tu sesión tiene pausas de más de 5 minutos (pensar, revisar un PR, almorzar), el de 1 hora sale más barato que re-crear el cache desde cero. En Fable 5.1 el read baja a **0.025×** en vez de 0.1× — el único modelo con esa tarifa.
+
+- **TTL por defecto: 5 minutos** — después de 5 min de inactividad el cache expira
 - **Qué se cachea:** CLAUDE.md, system prompts de agentes, historial hasta el corte del prefix
 - **Regla de prefix:** contenido estable → CLAUDE.md. Contenido dinámico (paths, IDs, runtime) → `additionalContext` de hook. El dinámico invalida el cache si entra en el prefix.
 

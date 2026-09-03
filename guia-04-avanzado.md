@@ -982,7 +982,7 @@ Nunca opus en CI — no hay one-shot irreversible que lo justifique.
 | Deploy automático al marketplace | Plugins requieren revisión manual de Anthropic |
 | Coverage report + badge | No hay target de coverage — solo tests de fallos silenciosos |
 | Dependabot auto-update | Deps auto-actualizadas pueden romper agentes silenciosamente |
-| Claude en CI sin `--model` explícito | Usa el default de la cuenta (Opus 4.8 en Anthropic API/Max/Enterprise pay-as-you-go, Sonnet 5 en Pro/Team Standard) — nunca Fable 5, pero igual impredecible por PR si cambia el default de cuenta |
+| Claude en CI sin `--model` explícito | Usa el default de la cuenta (Opus 5 en Anthropic API/Max/Team Premium/Enterprise, Sonnet 5 en Pro/Team Standard, Sonnet 4.5 en Microsoft Foundry) — nunca Fable, pero igual impredecible por PR si cambia el default de cuenta |
 
 ### Checklist §20
 
@@ -1373,9 +1373,11 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
 **haiku** — El más barato. 1x costo de referencia. Para tareas con instrucciones fijas: git, commits, checklists, postmortem. Si el agente no necesita razonar sobre contexto variable, usa haiku.
 
-**sonnet** — El intermedio. 2× más caro que haiku hoy ($2/$10 por 1M tokens — pricing introductorio hasta el 31/08/2026 <!-- vence: 2026-08-31 -->; sube a $3/$15 = 3× desde el 01/09/2026). Para implementación, debugging, tareas que requieren razonar sobre contexto variable. La mayoría de los agentes especialistas viven aquí.
+**sonnet** — El intermedio. 2× más caro que haiku ($2/$10 por 1M tokens; ese precio dejó de ser introductorio y pasó a estándar — la suba a $3/$15 agendada para el 01/09/2026 fue cancelada). Para implementación, debugging, tareas que requieren razonar sobre contexto variable. La mayoría de los agentes especialistas viven aquí.
 
-**opus** — El más poderoso. 5× más caro que haiku y ~2.5× más que sonnet hoy ($5/$25 por 1M tokens — Opus 4.5+ bajó de precio; el 15× histórico ya no aplica). Baja a ~1.7× sonnet desde el 01/09/2026 cuando termine el pricing introductorio de Sonnet 5. Para arquitectura con trade-offs complejos y security. Si crees que lo necesitas, primero intenta con sonnet + effort.
+**opus** — El más poderoso. 5× más caro que haiku y 2.5× más que sonnet ($5/$25 por 1M tokens en Opus 5 — el 15× histórico ya no aplica). Ese 2.5× es estable, no un descuento temporal. Para arquitectura con trade-offs complejos y security. Si crees que lo necesitas, primero intenta con sonnet + effort.
+
+**fable** — El techo. 10× haiku, 5× sonnet ($10/$50 en Fable 5.1). Thinking siempre encendido, no se puede desactivar. Reservado para lo que Opus 5 a `xhigh` no resuelve — si no mediste eso primero, no es tu modelo.
 
 ### Los componentes
 
