@@ -2854,6 +2854,53 @@ CLAUDE.local.md
 **En plugins:** no existe — es personal por definición. Si el plugin necesita config por-usuario, usar `settings.local.json`.
 
 <!-- §32-ref -->
+### Orden de carga real — no es "el .local gana", es concatenación
+
+La tabla de arriba dice que `.local.md` "gana en conflicto". Es una simplificación cómoda pero el mecanismo real es otro, y cambia cómo escribís los archivos (verificado 2026-09-02):
+
+**Todos los archivos encontrados se concatenan, ninguno reemplaza a otro.** El orden va de la raíz del filesystem hacia tu working directory, y dentro de cada directorio `CLAUDE.local.md` va **después** de `CLAUDE.md`. Que el `.local` "gane" es solo un efecto de estar último: si dos instrucciones se contradicen, el modelo puede elegir cualquiera. La doc lo dice explícito: *"si dos reglas se contradicen, Claude puede elegir una arbitrariamente"*.
+
+Alcances, de más amplio a más específico:
+
+| Alcance | Ubicación |
+|---|---|
+| Managed policy | macOS `/Library/Application Support/ClaudeCode/CLAUDE.md` · Linux/WSL `/etc/claude-code/CLAUDE.md` · Windows `C:\Program Files\ClaudeCode\CLAUDE.md` |
+| Usuario | `~/.claude/CLAUDE.md` |
+| Proyecto | `./CLAUDE.md` **o** `./.claude/CLAUDE.md` |
+| Local | `./CLAUDE.local.md` |
+
+Los `CLAUDE.md` de **subdirectorios** no se cargan al arranque: entran cuando Claude lee archivos de ese subdirectorio.
+
+**Tres cosas que casi nadie sabe:**
+
+1. **Los comentarios HTML de bloque (`<!-- nota -->`) se eliminan antes de inyectar el archivo.** Notas para humanos a costo cero de contexto — los de adentro de bloques de código sí se conservan, y con la tool Read se ven todos.
+2. **Límite duro: Claude Code saltea un CLAUDE.md de más de 4 MiB** (no lo trunca: lo ignora). El objetivo recomendado sigue siendo **menos de 200 líneas**.
+3. **Los imports `@path/to/file` se expanden y cargan al arranque** — dividir en imports organiza, pero **no ahorra un solo token**. Máximo 4 saltos de profundidad; se ignoran los paths dentro de backticks o bloques de código. Un import de un archivo **fuera** del working directory dispara un diálogo de aprobación la primera vez (defensa contra lo que otro commitea en un repo compartido).
+
+**Para worktrees:** un `CLAUDE.local.md` gitignored existe solo en el worktree donde lo creaste. Para instrucciones personales compartidas entre worktrees, importá desde tu home: `@~/.claude/mis-instrucciones.md`.
+
+**`AGENTS.md`:** Claude Code lee `CLAUDE.md`, no `AGENTS.md`. Si el repo ya usa AGENTS.md para otros agentes, un `CLAUDE.md` con `@AGENTS.md` arriba (y lo específico de Claude abajo) evita duplicar.
+
+**En monorepos**, `claudeMdExcludes` en `.claude/settings.local.json` saltea CLAUDE.md ajenos por glob contra el path absoluto:
+
+```json
+{ "claudeMdExcludes": ["**/monorepo/CLAUDE.md", "/home/user/monorepo/otro-equipo/.claude/rules/**"] }
+```
+
+Los CLAUDE.md de managed policy **no se pueden excluir**.
+
+### Cómo saber qué se cargó realmente
+
+Tres herramientas, en orden de costo:
+
+| Herramienta | Qué te dice |
+|---|---|
+| `/context` → bloque **Memory files** | Qué archivos entraron en ESTA sesión. Si no está ahí, Claude no lo ve |
+| `/memory` | Lista y abre los archivos de memoria de todos los alcances; incluye los que todavía no existen |
+| Hook `InstructionsLoaded` (§7) | Log de exactamente qué se cargó, cuándo y por qué — la vía para debuggear reglas path-scoped y archivos lazy |
+
+**Y el dato que explica el "se olvidó de mi CLAUDE.md":** el CLAUDE.md de la raíz del proyecto **sobrevive a `/compact`** — se relee de disco y se reinyecta. Los CLAUDE.md anidados y las reglas con `paths:` recargan recién cuando Claude vuelve a tocar un archivo que matchea. Si una instrucción desapareció tras compactar, o vivía solo en la conversación, o es una regla path-scoped que todavía no volvió a matchear.
+
 ---
 
 ### 2. output-styles/ — formato de respuesta on tap
@@ -2930,11 +2977,29 @@ Archivos que Claude carga automáticamente cuando trabaja en archivos que hacen 
 - CLAUDE.md ya pasa las 30 líneas (§2) y no todo es siempre relevante
 - Distintos devs trabajan en distintos dominios — rules/ los mantiene aislados
 
+> ### ⚠️ Corrección 2026-09-02 — el campo es `paths:`, NO `glob:`
+>
+> Las versiones anteriores de esta guía escribían `glob: src/api/**` en el frontmatter. **Ese campo no existe.** El campo real es `paths:`, y acepta una lista YAML de globs.
+>
+> Y el modo de fallar es el peor posible: **una regla sin `paths:` se carga incondicionalmente, en cada sesión.** O sea que un `glob:` mal escrito no desactiva la regla ni tira error — la convierte en lo contrario de lo que querías: el archivo que creaste *para ahorrar contexto* pasa a pagarse siempre, y nada te avisa. Si copiaste el ejemplo viejo, tus rules están en contexto ahora mismo.
+>
+> Verificación: `/context` → bloque **Memory files**, o el hook `InstructionsLoaded` (§7), que registra exactamente qué archivos de instrucciones se cargaron y cuándo.
+
+**Detalles del matching de `paths:`** (verificado 2026-09-02):
+- Los patrones se evalúan **cuando Claude lee un archivo que matchea**, no en cada tool call.
+- Brace expansion sirve (`"src/**/*.{ts,tsx}"`), pero cada grupo multiplica: la lista completa de `paths` comparte un presupuesto de **1.000 patrones expandidos y 4 MiB**. Un patrón que lo exceda se usa **sin expandir**, y sus llaves literales no matchean nada.
+- `[` empieza una expresión de corchetes. Un `[` que no se puede leer como tal (`photos [2024/**`) es inválido: **no matchea nada** y los demás patrones de la regla siguen andando. Para un `[` literal, escaparlo: `photos \[2024/**`.
+- Los `.md` se descubren **recursivamente**, así que `rules/frontend/`, `rules/backend/` funcionan.
+- `.claude/rules/` soporta **symlinks** (archivo o directorio); los circulares se detectan. Sirve para compartir un set de reglas entre proyectos: `ln -s ~/company-standards/security.md .claude/rules/security.md`.
+- **`~/.claude/rules/` existe** y aplica a todos tus proyectos. Se carga **antes** que las del proyecto, así que las del proyecto tienen prioridad.
+- Una regla **sin** `paths:` se carga al arranque con la misma prioridad que `.claude/CLAUDE.md`.
+
 **Ejemplo práctico — `rules/api.md`**
 
 ```markdown
 ---
-glob: src/api/**
+paths:
+  - "src/api/**/*.ts"
 ---
 # Reglas — src/api/
 
@@ -2958,7 +3023,8 @@ glob: src/api/**
 
 ```markdown
 ---
-glob: "**/*.test.ts"
+paths:
+  - "**/*.test.ts"
 ---
 # Reglas — archivos de test
 

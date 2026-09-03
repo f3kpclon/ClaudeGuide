@@ -905,6 +905,15 @@ Además de testear el proyecto, Claude Code puede ejecutarse **dentro de CI** pa
     prompt: "instrucción"
 ```
 
+**Los dos modos — y el que te muerde:** la action decide el modo por sí sola según haya o no `prompt`.
+
+| Modo | Cuándo | **Dónde sale el output** |
+|---|---|---|
+| **Interactivo** | Sin `prompt` — espera la frase trigger (`@claude` por default) | Comentario en el issue/PR que lo disparó |
+| **Automation** | Con `prompt` — corre sin esperar mención | **En el log del workflow**, no en el PR |
+
+> ⚠️ **Corrección 2026-09-02:** el workflow de review que traía esta guía pasaba `prompt`, o sea modo automation — y por lo tanto **su review terminaba en el log del run, no en el PR**. Un review que nadie lee es un review que no existe. Para que Claude comente en el PR hacen falta dos cosas: que el prompt se lo pida y que tenga una tool que pueda postear.
+
 **Trigger via comentario `@claude`:**
 
 Alguien escribe `@claude fix this` en un PR o issue → la action lo toma como instrucción y responde.
@@ -926,42 +935,66 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      id-token: write        # ← REQUERIDO por la auth default de la action (faltaba antes)
+      actions: read          # ← deja que Claude lea los resultados de CI del PR
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with: {fetch-depth: 1}
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-**Review automático en cada PR:**
+> **`id-token: write` no es opcional** — es lo que necesita la autenticación por GitHub App que la action usa por default (y también el intercambio de federación, si vas por ese camino). Los ejemplos de esta guía anteriores a 2026-09 no lo tenían.
+
+**Review automático en cada PR — la forma que sí publica:**
 
 ```yaml
 # .github/workflows/claude-review.yml
 name: claude-review
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, ready_for_review, reopened]
 
 jobs:
   review:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
+      issues: read
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
-        with: {fetch-depth: 0}
+      - uses: actions/checkout@v6
+        with: {fetch-depth: 1}
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: "Review the changes in this PR. List critical bugs only — no style suggestions."
+          plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
+          plugins: "code-review@claude-code-plugins"
+          prompt: "/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
+          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment"'
 ```
 
-**Modelo en CI:** la action usa el modelo configurado en el proyecto. Para reviews, forzar haiku en `.claude/settings.json`:
+Las dos líneas que hacen que el review llegue al PR:
+- **`--comment`** — sin esto Claude no postea nada y los hallazgos quedan en el log.
+- **`claude_args` con `--allowedTools`** — hay que dejarlo **aunque la skill ya declare esa tool en su `allowed-tools`**: la action solo arranca el MCP server que postea comentarios inline si `--allowedTools` lo nombra ahí. Es una duplicación que parece redundante y no lo es.
 
-```json
-{ "model": "claude-haiku-4-5" }
+Con `--comment`, Claude saltea PRs en draft, cerrados, los que juzga que no necesitan review y los que ya tienen un comentario suyo.
+
+> Si no querés mantener un workflow, existe **Code Review** como producto aparte: review automático en cada PR sin escribir YAML.
+
+**`plugin_marketplaces` + `plugins` corren una skill de plugin en CI.** Es la vía oficial para reusar en CI el plugin que ya distribuís (§11) en vez de duplicar el prompt en el YAML. `plugins` toma `plugin-name@marketplace-name`, donde el marketplace es el nombre de su **manifest**, no la URL del repo.
+
+**Modelo en CI:** la vía documentada es `claude_args`, no settings.json:
+
+```yaml
+claude_args: |
+  --model claude-haiku-4-5
+  --max-turns 5
 ```
+
+Sin `--model` usa el default de la cuenta — impredecible por PR si ese default cambia.
 
 **Costo por trigger:**
 
@@ -972,6 +1005,42 @@ jobs:
 | Push a main | ~20-50 | — | Duplica el review del PR — generalmente innecesario |
 
 Nunca opus en CI — no hay one-shot irreversible que lo justifique.
+
+### La palanca de costo que faltaba: OAuth en vez de API key
+
+Hay **dos** credenciales posibles, y no cuestan lo mismo:
+
+| Secret | Input del workflow | Cómo se factura |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | `anthropic_api_key` | Tokens de API, pay-as-you-go |
+| `CLAUDE_CODE_OAUTH_TOKEN` | `claude_code_oauth_token` | **Contra tu suscripción** (Pro/Max/Team/Enterprise) |
+
+El token se genera local con `claude setup-token`. Para un repo personal con suscripción activa, es la diferencia entre pagar cada review dos veces y no pagarlo aparte. **Para un secret compartido a nivel organización, usá API key**: el OAuth token está atado a la suscripción de quien corrió el comando.
+
+Tercera opción sin secret de larga vida: **workload identity federation** — la action intercambia el token OIDC del workflow por acceso a la API vía un service account de Console (`anthropic_federation_rule_id`, `anthropic_organization_id`, y opcionalmente `anthropic_service_account_id` / `anthropic_workspace_id`). Requiere igual `id-token: write`.
+
+### Quién puede disparar un run (y por qué el tuyo no dispara)
+
+La action corre **dos chequeos sobre el actor** antes de arrancar, y el run falla si cualquiera rechaza:
+
+1. **Write access** — en eventos de issue y PR, el usuario que dispara necesita permiso de escritura en el repo. Para permitir a alguien sin write: `allowed_non_write_users` **más** pasar tu propio `github_token`. Los eventos sin autor humano (como `schedule`) se saltean este chequeo.
+2. **Actor humano** — se rechaza cualquier bot salvo que esté en `allowed_bots`. Esto evita loops de bots. **Ojo con los runs programados:** GitHub se los atribuye a un usuario del repo, normalmente el último que tocó el `cron` del workflow; si ese usuario es un bot, hay que listarlo.
+
+### Setup rápido y migración desde `@beta`
+
+`/install-github-app` desde Claude Code hace todo: instala la GitHub App, guarda el secret y abre un PR con los workflows. Necesita `gh` autenticado y admin en el repo.
+
+Si todavía tenés `anthropics/claude-code-action@beta`:
+1. `@beta` → `@v1`
+2. Borrar el input `mode` — ahora el modo se detecta solo
+3. `direct_prompt` → `prompt`
+4. `max_turns` y `model` se mudan adentro de `claude_args`; `custom_instructions` pasa a ser `--append-system-prompt`
+
+### Tres trampas operativas
+
+- **CI no corre sobre los commits de Claude.** GitHub no dispara workflows con commits hechos con el `GITHUB_TOKEN` default. Si le pasás `github_token: ${{ secrets.GITHUB_TOKEN }}` a la action, **sacalo** para que autentique como la GitHub App.
+- **Workflows programados:** GitHub solo los corre desde la rama default, y en repos públicos **desactiva el schedule tras 60 días sin actividad**. Un cron que "dejó de correr" suele ser esto, no un bug tuyo.
+- **La GitHub App se instala con todo su set de permisos** (Actions, Checks, Contents, Discussions, Issues, Members, Metadata, Pull requests, Repository hooks, Statuses, Workflows) — GitHub no deja aceptar un subconjunto. Si tu organización solo tolera lo mínimo, la salida es una **GitHub App propia** con Contents + Issues + Pull requests; cubre la action pero no Code Review ni el auto-fix web.
 
 ### Anti-overkill CI
 
@@ -996,7 +1065,11 @@ Nunca opus en CI — no hay one-shot irreversible que lo justifique.
 □ tests/fixtures/sample-project.md existe para el smoke test
 □ Si Claude corre en CI: usar anthropics/claude-code-action@v1, no claude --print manual
 □ anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }} — nunca hardcodeado
-□ Review automático en PR: model: claude-haiku-4-5 en .claude/settings.json
+□ permissions incluye id-token: write — lo requiere la auth default de la action
+□ Con suscripción activa: CLAUDE_CODE_OAUTH_TOKEN (claude setup-token) en vez de API key — factura contra la suscripción, no aparte
+□ Modelo vía claude_args: --model claude-haiku-4-5, no vía settings.json
+□ Review que debe verse en el PR: --comment EN EL PROMPT + --allowedTools en claude_args (sin eso queda en el log del run)
+□ No pasar github_token: ${{ secrets.GITHUB_TOKEN }} — si lo pasás, CI no corre sobre los commits de Claude
 □ @claude trigger: workflow escucha issue_comment + pull_request_review_comment
 □ Repo con plugin distribuible: job plugin-validate (claude plugin validate — sin API key)
 □ Tests que dependen de toolchains del runner (swiftc, tsc): gate operativo con warm-up, no which()

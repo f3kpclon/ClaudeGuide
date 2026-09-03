@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.34 · §10 §30 §33 re-verificados (2026-09-02) — §10: **`AskUserQuestion` NUNCA existe en un subagente** (un agente al que le pedís que pregunte ante dudas, adivina); set de tools recortado en background; límites de fan-out (3 de profundidad, 20 concurrentes, warning a 15k tokens de descriptions); `isolation: worktree` **parte de la rama default, no de tu HEAD**; `CLAUDE_CODE_SUBAGENT_MODEL` es el escalón intermedio del default de `model:`; `experimental.cacheTtl: 1h` como palanca de cache por agente. §30 reescrito: los CCR son **Routines** con **tres triggers** (schedule, API `/fire` con bearer token, eventos de GitHub) y una superficie que faltaba entera — **Desktop scheduled tasks**, local, sin sesión abierta, con acceso a archivos (resuelve el caso de learnings per-project); mínimo cloud **1 hora**; el `text` del fire llega marcado como no confiable y el prompt debe optar por usarlo; **verde ≠ funcionó**. §33: `/fork` copia la conversación a otra sesión — el que devuelve resultado es **`/subtask`**; comandos nuevos `/background`, `/effort`, `/usage`, `/tasks`, `/deep-research`. §34: jitter (recurrentes hasta 30 min tarde) y skills con `disable-model-invocation` que no se pueden agendar — 2026-09-02
+**Versión:** v5.35 · §20 §32 re-verificados (2026-09-02) — §32 **corrige un bug propio**: el frontmatter de `.claude/rules/` es **`paths:`**, no `glob:`, y una regla sin `paths:` **se carga en cada sesión** — el ejemplo viejo convertía un archivo hecho para ahorrar contexto en uno que se paga siempre, sin avisar. Suma orden de carga real (concatenación raíz→cwd, no override), CLAUDE.md se saltea pasando **4 MiB**, los comentarios HTML se eliminan antes de inyectar, los imports `@path` **no ahorran tokens**, `claudeMdExcludes` para monorepos, `~/.claude/rules/`, y cómo verificar qué cargó (`/context`, `/memory`, hook `InstructionsLoaded`). §20: el workflow de review de la guía corría en **modo automation**, así que su review terminaba en el log del run y no en el PR — hacen falta `--comment` y `--allowedTools`; faltaba **`id-token: write`**, que la auth default de la action requiere; **`CLAUDE_CODE_OAUTH_TOKEN` factura contra la suscripción** en vez de la API; chequeos de actor (write access + bots), `plugin_marketplaces`/`plugins` para correr una skill de plugin en CI, y migración desde `@beta` — 2026-09-02
 
 ---
 
@@ -3635,6 +3635,53 @@ CLAUDE.local.md
 **En plugins:** no existe — es personal por definición. Si el plugin necesita config por-usuario, usar `settings.local.json`.
 
 <!-- §32-ref -->
+### Orden de carga real — no es "el .local gana", es concatenación
+
+La tabla de arriba dice que `.local.md` "gana en conflicto". Es una simplificación cómoda pero el mecanismo real es otro, y cambia cómo escribís los archivos (verificado 2026-09-02):
+
+**Todos los archivos encontrados se concatenan, ninguno reemplaza a otro.** El orden va de la raíz del filesystem hacia tu working directory, y dentro de cada directorio `CLAUDE.local.md` va **después** de `CLAUDE.md`. Que el `.local` "gane" es solo un efecto de estar último: si dos instrucciones se contradicen, el modelo puede elegir cualquiera. La doc lo dice explícito: *"si dos reglas se contradicen, Claude puede elegir una arbitrariamente"*.
+
+Alcances, de más amplio a más específico:
+
+| Alcance | Ubicación |
+|---|---|
+| Managed policy | macOS `/Library/Application Support/ClaudeCode/CLAUDE.md` · Linux/WSL `/etc/claude-code/CLAUDE.md` · Windows `C:\Program Files\ClaudeCode\CLAUDE.md` |
+| Usuario | `~/.claude/CLAUDE.md` |
+| Proyecto | `./CLAUDE.md` **o** `./.claude/CLAUDE.md` |
+| Local | `./CLAUDE.local.md` |
+
+Los `CLAUDE.md` de **subdirectorios** no se cargan al arranque: entran cuando Claude lee archivos de ese subdirectorio.
+
+**Tres cosas que casi nadie sabe:**
+
+1. **Los comentarios HTML de bloque (`<!-- nota -->`) se eliminan antes de inyectar el archivo.** Notas para humanos a costo cero de contexto — los de adentro de bloques de código sí se conservan, y con la tool Read se ven todos.
+2. **Límite duro: Claude Code saltea un CLAUDE.md de más de 4 MiB** (no lo trunca: lo ignora). El objetivo recomendado sigue siendo **menos de 200 líneas**.
+3. **Los imports `@path/to/file` se expanden y cargan al arranque** — dividir en imports organiza, pero **no ahorra un solo token**. Máximo 4 saltos de profundidad; se ignoran los paths dentro de backticks o bloques de código. Un import de un archivo **fuera** del working directory dispara un diálogo de aprobación la primera vez (defensa contra lo que otro commitea en un repo compartido).
+
+**Para worktrees:** un `CLAUDE.local.md` gitignored existe solo en el worktree donde lo creaste. Para instrucciones personales compartidas entre worktrees, importá desde tu home: `@~/.claude/mis-instrucciones.md`.
+
+**`AGENTS.md`:** Claude Code lee `CLAUDE.md`, no `AGENTS.md`. Si el repo ya usa AGENTS.md para otros agentes, un `CLAUDE.md` con `@AGENTS.md` arriba (y lo específico de Claude abajo) evita duplicar.
+
+**En monorepos**, `claudeMdExcludes` en `.claude/settings.local.json` saltea CLAUDE.md ajenos por glob contra el path absoluto:
+
+```json
+{ "claudeMdExcludes": ["**/monorepo/CLAUDE.md", "/home/user/monorepo/otro-equipo/.claude/rules/**"] }
+```
+
+Los CLAUDE.md de managed policy **no se pueden excluir**.
+
+### Cómo saber qué se cargó realmente
+
+Tres herramientas, en orden de costo:
+
+| Herramienta | Qué te dice |
+|---|---|
+| `/context` → bloque **Memory files** | Qué archivos entraron en ESTA sesión. Si no está ahí, Claude no lo ve |
+| `/memory` | Lista y abre los archivos de memoria de todos los alcances; incluye los que todavía no existen |
+| Hook `InstructionsLoaded` (§7) | Log de exactamente qué se cargó, cuándo y por qué — la vía para debuggear reglas path-scoped y archivos lazy |
+
+**Y el dato que explica el "se olvidó de mi CLAUDE.md":** el CLAUDE.md de la raíz del proyecto **sobrevive a `/compact`** — se relee de disco y se reinyecta. Los CLAUDE.md anidados y las reglas con `paths:` recargan recién cuando Claude vuelve a tocar un archivo que matchea. Si una instrucción desapareció tras compactar, o vivía solo en la conversación, o es una regla path-scoped que todavía no volvió a matchear.
+
 ---
 
 ### 2. output-styles/ — formato de respuesta on tap
@@ -3711,11 +3758,29 @@ Archivos que Claude carga automáticamente cuando trabaja en archivos que hacen 
 - CLAUDE.md ya pasa las 30 líneas (§2) y no todo es siempre relevante
 - Distintos devs trabajan en distintos dominios — rules/ los mantiene aislados
 
+> ### ⚠️ Corrección 2026-09-02 — el campo es `paths:`, NO `glob:`
+>
+> Las versiones anteriores de esta guía escribían `glob: src/api/**` en el frontmatter. **Ese campo no existe.** El campo real es `paths:`, y acepta una lista YAML de globs.
+>
+> Y el modo de fallar es el peor posible: **una regla sin `paths:` se carga incondicionalmente, en cada sesión.** O sea que un `glob:` mal escrito no desactiva la regla ni tira error — la convierte en lo contrario de lo que querías: el archivo que creaste *para ahorrar contexto* pasa a pagarse siempre, y nada te avisa. Si copiaste el ejemplo viejo, tus rules están en contexto ahora mismo.
+>
+> Verificación: `/context` → bloque **Memory files**, o el hook `InstructionsLoaded` (§7), que registra exactamente qué archivos de instrucciones se cargaron y cuándo.
+
+**Detalles del matching de `paths:`** (verificado 2026-09-02):
+- Los patrones se evalúan **cuando Claude lee un archivo que matchea**, no en cada tool call.
+- Brace expansion sirve (`"src/**/*.{ts,tsx}"`), pero cada grupo multiplica: la lista completa de `paths` comparte un presupuesto de **1.000 patrones expandidos y 4 MiB**. Un patrón que lo exceda se usa **sin expandir**, y sus llaves literales no matchean nada.
+- `[` empieza una expresión de corchetes. Un `[` que no se puede leer como tal (`photos [2024/**`) es inválido: **no matchea nada** y los demás patrones de la regla siguen andando. Para un `[` literal, escaparlo: `photos \[2024/**`.
+- Los `.md` se descubren **recursivamente**, así que `rules/frontend/`, `rules/backend/` funcionan.
+- `.claude/rules/` soporta **symlinks** (archivo o directorio); los circulares se detectan. Sirve para compartir un set de reglas entre proyectos: `ln -s ~/company-standards/security.md .claude/rules/security.md`.
+- **`~/.claude/rules/` existe** y aplica a todos tus proyectos. Se carga **antes** que las del proyecto, así que las del proyecto tienen prioridad.
+- Una regla **sin** `paths:` se carga al arranque con la misma prioridad que `.claude/CLAUDE.md`.
+
 **Ejemplo práctico — `rules/api.md`**
 
 ```markdown
 ---
-glob: src/api/**
+paths:
+  - "src/api/**/*.ts"
 ---
 # Reglas — src/api/
 
@@ -3739,7 +3804,8 @@ glob: src/api/**
 
 ```markdown
 ---
-glob: "**/*.test.ts"
+paths:
+  - "**/*.test.ts"
 ---
 # Reglas — archivos de test
 
@@ -6775,6 +6841,15 @@ Además de testear el proyecto, Claude Code puede ejecutarse **dentro de CI** pa
     prompt: "instrucción"
 ```
 
+**Los dos modos — y el que te muerde:** la action decide el modo por sí sola según haya o no `prompt`.
+
+| Modo | Cuándo | **Dónde sale el output** |
+|---|---|---|
+| **Interactivo** | Sin `prompt` — espera la frase trigger (`@claude` por default) | Comentario en el issue/PR que lo disparó |
+| **Automation** | Con `prompt` — corre sin esperar mención | **En el log del workflow**, no en el PR |
+
+> ⚠️ **Corrección 2026-09-02:** el workflow de review que traía esta guía pasaba `prompt`, o sea modo automation — y por lo tanto **su review terminaba en el log del run, no en el PR**. Un review que nadie lee es un review que no existe. Para que Claude comente en el PR hacen falta dos cosas: que el prompt se lo pida y que tenga una tool que pueda postear.
+
 **Trigger via comentario `@claude`:**
 
 Alguien escribe `@claude fix this` en un PR o issue → la action lo toma como instrucción y responde.
@@ -6796,42 +6871,66 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      id-token: write        # ← REQUERIDO por la auth default de la action (faltaba antes)
+      actions: read          # ← deja que Claude lea los resultados de CI del PR
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with: {fetch-depth: 1}
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-**Review automático en cada PR:**
+> **`id-token: write` no es opcional** — es lo que necesita la autenticación por GitHub App que la action usa por default (y también el intercambio de federación, si vas por ese camino). Los ejemplos de esta guía anteriores a 2026-09 no lo tenían.
+
+**Review automático en cada PR — la forma que sí publica:**
 
 ```yaml
 # .github/workflows/claude-review.yml
 name: claude-review
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, ready_for_review, reopened]
 
 jobs:
   review:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
+      issues: read
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
-        with: {fetch-depth: 0}
+      - uses: actions/checkout@v6
+        with: {fetch-depth: 1}
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: "Review the changes in this PR. List critical bugs only — no style suggestions."
+          plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
+          plugins: "code-review@claude-code-plugins"
+          prompt: "/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
+          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment"'
 ```
 
-**Modelo en CI:** la action usa el modelo configurado en el proyecto. Para reviews, forzar haiku en `.claude/settings.json`:
+Las dos líneas que hacen que el review llegue al PR:
+- **`--comment`** — sin esto Claude no postea nada y los hallazgos quedan en el log.
+- **`claude_args` con `--allowedTools`** — hay que dejarlo **aunque la skill ya declare esa tool en su `allowed-tools`**: la action solo arranca el MCP server que postea comentarios inline si `--allowedTools` lo nombra ahí. Es una duplicación que parece redundante y no lo es.
 
-```json
-{ "model": "claude-haiku-4-5" }
+Con `--comment`, Claude saltea PRs en draft, cerrados, los que juzga que no necesitan review y los que ya tienen un comentario suyo.
+
+> Si no querés mantener un workflow, existe **Code Review** como producto aparte: review automático en cada PR sin escribir YAML.
+
+**`plugin_marketplaces` + `plugins` corren una skill de plugin en CI.** Es la vía oficial para reusar en CI el plugin que ya distribuís (§11) en vez de duplicar el prompt en el YAML. `plugins` toma `plugin-name@marketplace-name`, donde el marketplace es el nombre de su **manifest**, no la URL del repo.
+
+**Modelo en CI:** la vía documentada es `claude_args`, no settings.json:
+
+```yaml
+claude_args: |
+  --model claude-haiku-4-5
+  --max-turns 5
 ```
+
+Sin `--model` usa el default de la cuenta — impredecible por PR si ese default cambia.
 
 **Costo por trigger:**
 
@@ -6842,6 +6941,42 @@ jobs:
 | Push a main | ~20-50 | — | Duplica el review del PR — generalmente innecesario |
 
 Nunca opus en CI — no hay one-shot irreversible que lo justifique.
+
+### La palanca de costo que faltaba: OAuth en vez de API key
+
+Hay **dos** credenciales posibles, y no cuestan lo mismo:
+
+| Secret | Input del workflow | Cómo se factura |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | `anthropic_api_key` | Tokens de API, pay-as-you-go |
+| `CLAUDE_CODE_OAUTH_TOKEN` | `claude_code_oauth_token` | **Contra tu suscripción** (Pro/Max/Team/Enterprise) |
+
+El token se genera local con `claude setup-token`. Para un repo personal con suscripción activa, es la diferencia entre pagar cada review dos veces y no pagarlo aparte. **Para un secret compartido a nivel organización, usá API key**: el OAuth token está atado a la suscripción de quien corrió el comando.
+
+Tercera opción sin secret de larga vida: **workload identity federation** — la action intercambia el token OIDC del workflow por acceso a la API vía un service account de Console (`anthropic_federation_rule_id`, `anthropic_organization_id`, y opcionalmente `anthropic_service_account_id` / `anthropic_workspace_id`). Requiere igual `id-token: write`.
+
+### Quién puede disparar un run (y por qué el tuyo no dispara)
+
+La action corre **dos chequeos sobre el actor** antes de arrancar, y el run falla si cualquiera rechaza:
+
+1. **Write access** — en eventos de issue y PR, el usuario que dispara necesita permiso de escritura en el repo. Para permitir a alguien sin write: `allowed_non_write_users` **más** pasar tu propio `github_token`. Los eventos sin autor humano (como `schedule`) se saltean este chequeo.
+2. **Actor humano** — se rechaza cualquier bot salvo que esté en `allowed_bots`. Esto evita loops de bots. **Ojo con los runs programados:** GitHub se los atribuye a un usuario del repo, normalmente el último que tocó el `cron` del workflow; si ese usuario es un bot, hay que listarlo.
+
+### Setup rápido y migración desde `@beta`
+
+`/install-github-app` desde Claude Code hace todo: instala la GitHub App, guarda el secret y abre un PR con los workflows. Necesita `gh` autenticado y admin en el repo.
+
+Si todavía tenés `anthropics/claude-code-action@beta`:
+1. `@beta` → `@v1`
+2. Borrar el input `mode` — ahora el modo se detecta solo
+3. `direct_prompt` → `prompt`
+4. `max_turns` y `model` se mudan adentro de `claude_args`; `custom_instructions` pasa a ser `--append-system-prompt`
+
+### Tres trampas operativas
+
+- **CI no corre sobre los commits de Claude.** GitHub no dispara workflows con commits hechos con el `GITHUB_TOKEN` default. Si le pasás `github_token: ${{ secrets.GITHUB_TOKEN }}` a la action, **sacalo** para que autentique como la GitHub App.
+- **Workflows programados:** GitHub solo los corre desde la rama default, y en repos públicos **desactiva el schedule tras 60 días sin actividad**. Un cron que "dejó de correr" suele ser esto, no un bug tuyo.
+- **La GitHub App se instala con todo su set de permisos** (Actions, Checks, Contents, Discussions, Issues, Members, Metadata, Pull requests, Repository hooks, Statuses, Workflows) — GitHub no deja aceptar un subconjunto. Si tu organización solo tolera lo mínimo, la salida es una **GitHub App propia** con Contents + Issues + Pull requests; cubre la action pero no Code Review ni el auto-fix web.
 
 ### Anti-overkill CI
 
@@ -6866,7 +7001,11 @@ Nunca opus en CI — no hay one-shot irreversible que lo justifique.
 □ tests/fixtures/sample-project.md existe para el smoke test
 □ Si Claude corre en CI: usar anthropics/claude-code-action@v1, no claude --print manual
 □ anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }} — nunca hardcodeado
-□ Review automático en PR: model: claude-haiku-4-5 en .claude/settings.json
+□ permissions incluye id-token: write — lo requiere la auth default de la action
+□ Con suscripción activa: CLAUDE_CODE_OAUTH_TOKEN (claude setup-token) en vez de API key — factura contra la suscripción, no aparte
+□ Modelo vía claude_args: --model claude-haiku-4-5, no vía settings.json
+□ Review que debe verse en el PR: --comment EN EL PROMPT + --allowedTools en claude_args (sin eso queda en el log del run)
+□ No pasar github_token: ${{ secrets.GITHUB_TOKEN }} — si lo pasás, CI no corre sobre los commits de Claude
 □ @claude trigger: workflow escucha issue_comment + pull_request_review_comment
 □ Repo con plugin distribuible: job plugin-validate (claude plugin validate — sin API key)
 □ Tests que dependen de toolchains del runner (swiftc, tsc): gate operativo con warm-up, no which()

@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.34 · §10 §30 §33 re-verified (2026-09-02) — §10: **`AskUserQuestion` is NEVER available in a subagent** (an agent told to ask when unsure will guess instead); narrowed background tool set; fan-out limits (depth 3, 20 concurrent, warning past 15k tokens of descriptions); `isolation: worktree` **branches from the default branch, not your HEAD**; `CLAUDE_CODE_SUBAGENT_MODEL` is the middle step in `model:` resolution; `experimental.cacheTtl: 1h` as a per-agent cache lever. §30 rewritten: CCRs are **Routines** with **three triggers** (schedule, API `/fire` with a bearer token, GitHub events), plus a whole surface that was missing — **Desktop scheduled tasks**, local, no open session, with local file access (which solves the per-project learnings case); cloud minimum is **1 hour**; fire `text` arrives labeled untrusted and the prompt must opt in to using it; **green does not mean it worked**. §33: `/fork` copies the conversation to another session — the one that returns a result is **`/subtask`**; new commands `/background`, `/effort`, `/usage`, `/tasks`, `/deep-research`. §34: jitter (recurring tasks fire up to 30 min late) and skills with `disable-model-invocation` that cannot be scheduled
+**Author:** Félix Sotelo · **Version:** v5.35 · §20 §32 re-verified (2026-09-02) — §32 **fixes a bug of its own**: the `.claude/rules/` frontmatter field is **`paths:`**, not `glob:`, and a rule without `paths:` **loads every session** — the old example turned a file meant to save context into one that is always paid for, silently. Adds the real load order (concatenation root→cwd, not override), CLAUDE.md is skipped past **4 MiB**, HTML comments are stripped before injection, `@path` imports **save no tokens**, `claudeMdExcludes` for monorepos, `~/.claude/rules/`, and how to verify what loaded (`/context`, `/memory`, the `InstructionsLoaded` hook). §20: the guide review workflow ran in **automation mode**, so its review landed in the run log rather than the PR — `--comment` and `--allowedTools` are both required; **`id-token: write`** was missing and the action's default auth requires it; **`CLAUDE_CODE_OAUTH_TOKEN` bills against your subscription** instead of the API; actor checks (write access + bots), `plugin_marketplaces`/`plugins` to run a plugin skill in CI, and the `@beta` migration
 
 ---
 
@@ -48,6 +48,20 @@
 ## What's New
 
 <!-- changelog-insert -->
+
+### v5.35 — CI and the rest of `.claude/` (2026-09-02)
+
+| Area | Change |
+|---|---|
+| **§32** | The `.claude/rules/` frontmatter field is **`paths:`**, not `glob:` — and a rule without `paths:` **loads unconditionally, every session**. The previous example silently turned a context-saving file into one that always costs |
+| **§32** | CLAUDE.md files are **concatenated**, root-down, not overridden — `.local` "winning" is just an effect of loading last. HTML comments are stripped before injection (free maintainer notes); a file over **4 MiB is skipped entirely**; `@path` imports organize but **save no tokens** |
+| **§32** | Verifying what actually loaded: `/context` → Memory files, `/memory`, and the `InstructionsLoaded` hook. Root CLAUDE.md survives `/compact`; path-scoped rules only reload when a matching file is read |
+| **§20** | The guide's review workflow passed `prompt`, which is **automation mode** — its review went to the workflow run log, not the PR. Posting to the PR needs `--comment` **and** `--allowedTools` in `claude_args`, even when the skill's own frontmatter already names the tool |
+| **§20** | `id-token: write` is **required** by the action's default GitHub App authentication and was missing from the guide's workflows |
+| **§20** | `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) bills CI runs **against your subscription** instead of the API — but an org-wide secret should stay an API key, since the OAuth token is tied to one person |
+| **§20** | Actor checks that silently reject runs: write access on issue/PR events, and bot actors unless listed in `allowed_bots` — which catches scheduled runs attributed to a bot |
+
+---
 
 ### v5.33 – v5.34 — plugins, multi-agent, scheduling and native commands (2026-09-02)
 
