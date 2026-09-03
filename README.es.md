@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.32 · §7 hooks + §6 skills re-verificados contra docs oficiales (2026-09-02) — **33 eventos** (entraron `DirectoryAdded` y `PreModelSwitch`/`PostModelSwitch`: el primero permite bloquear una escalada de modelo con exit 2, la palanca lowcost que faltaba). **`continueOnBlock`**: sin ese flag un `PreToolUse`/`PostToolUse` denegado **mata el turno** en vez de devolverle el error a Claude — cambió en la v2.1.210. **`if` solo vale en 5 eventos de tool; en el resto impide que el hook corra, sin avisar.** Quinto handler `agent` (experimental) y prompt hooks corriendo en Haiku = Advisor Pattern nativo. Hooks se declaran en **7 lugares**, incluidos frontmatter de skill (persiste toda la sesión) y de subagente. §6: `background: true` es el nuevo default de `context: fork` (v2.1.218) — set de tools angosto y **`/rewind` no deshace sus ediciones**; **`skillOverrides` NO afecta skills de plugin** (trampa contra el consejo del propio hub); precedencia personal > proyecto; commands fusionados con skills — 2026-09-02
+**Versión:** v5.33 · §11 plugins re-verificado (2026-09-02) — **solo `name` es requerido** en plugin.json (la guía marcaba 4 campos como REQUIRED); los campos de path del manifest **reemplazan** el directorio default en vez de sumarse (`skills` es la única excepción) — declarar `agents:` apaga el escaneo de `agents/` sin avisar. Tercera variable **`${CLAUDE_PLUGIN_DATA}`** (`~/.claude/plugins/data/{id}/`, sobrevive updates): cierra el learning de `scripts/` — ROOT viaja, DATA se genera, PROJECT_DIR es del proyecto. Nuevo componente `workflows/`; `bin/` marcado "not for distributed plugins". Hooks sobre MCP del plugin necesitan `mcp__plugin_<plugin>_<server>__<tool>`. Campos nuevos del manifest: `userConfig`, `dependencies`, `channels`, `defaultEnabled`. Trampas de LSP (solo stdio, gana el primer server por extensión) y monitors (interactive-CLI, sin sandbox). Hook de pre-commit arreglado: inserta bajo marcador explícito y ya no appendea al final cuando falla — 2026-09-02
 
 ---
 
@@ -3136,7 +3136,10 @@ Atrapa las tres clases de error que fallan **en silencio** en runtime: manifest 
 
 ### Componentes soportados — whitelist cerrada
 
-`skills/` · `commands/` · `agents/` · `hooks/` · `.mcp.json` · `output-styles/` · `lspServers` (`.lsp.json`) · `themes` (experimental) · `monitors` · `bin/` (ejecutables agregados al PATH de Bash mientras el plugin está activo — agregado 2026-07-04, faltaba en versiones anteriores) · `settings.json` (defaults del plugin). Nada más:
+`skills/` · `commands/` · `agents/` · `workflows/` · `hooks/` · `.mcp.json` · `output-styles/` · `lspServers` (`.lsp.json`) · `themes` (experimental) · `monitors` · `bin/` · `settings.json` (solo las claves `agent` y `subagentStatusLine`). Nada más:
+
+- **`workflows/` existe desde 2026-09** — scripts de workflow, reemplaza el default si lo declarás en el manifest.
+- **`bin/` tiene una advertencia oficial nueva: "not for distributed plugins"** (verificado 2026-09-02). Sirve para desarrollo local, pero no confíes en él para un plugin que va a instalar otra gente.
 
 - **`rules/` NO es componente de plugin** — `.claude/rules/*.md` con glob es feature de proyecto local. En un plugin, las reglas universales van en la skill hub o inline en los agentes.
   > Validado en producción (design-ios): la sección `## Reglas universales Swift` vive inline en el hub (`disable-model-invocation: false`, siempre en contexto) — nunca en un archivo `rules/` que el plugin no puede cargar.
@@ -3171,14 +3174,38 @@ Raíz del repo. El desktop app lo lee en **Browse plugins → Add marketplace** 
 
 ```json
 {
-  "name": "<nombre-del-plugin>",         // REQUIRED — kebab-case, único en el marketplace
-  "version": "1.0.0",                   // REQUIRED — semver
-  "description": "<Qué hace en una línea.>", // REQUIRED
-  "author": {"name": "<Tu Nombre>"},    // REQUIRED
-  "repository": "https://github.com/<usuario>/<repo>", // RECOMMENDED
-  "license": "MIT"                      // OPTIONAL
+  "name": "<nombre-del-plugin>",         // el ÚNICO campo realmente requerido — kebab-case
+  "version": "1.0.0",                   // recomendado — semver
+  "description": "<Qué hace en una línea.>", // recomendado
+  "author": {"name": "<Tu Nombre>"},    // recomendado
+  "repository": "https://github.com/<usuario>/<repo>",
+  "license": "MIT"
 }
 ```
+
+**Corrección 2026-09-02:** la versión anterior de esta guía marcaba `version`, `description` y `author` como REQUIRED. No lo son — **si hay manifest, el único campo requerido es `name`**; el resto es opcional y los componentes se descubren igual por convención de directorios. Es más: el manifest entero es opcional (sin él, el plugin toma el nombre del directorio). Pero conviene igual: **una instalación desde marketplace sin manifest termina con un string de versión como nombre**, que es exactamente lo que no querés que vea el equipo.
+
+#### Campos del manifest que esta guía no cubría
+
+| Campo | Para qué |
+|---|---|
+| `defaultEnabled` | `false` = el plugin se instala apagado (default `true`) |
+| `userConfig` | Valores que Claude Code **le pregunta al usuario al activar** el plugin — la vía oficial para configuración por-instalación en vez de hardcodear |
+| `dependencies` | Otros plugins requeridos, con constraint semver opcional |
+| `channels` | Canales de mensajes atados a servidores MCP del plugin |
+| `displayName` · `keywords` · `homepage` · `metadata` · `$schema` | Presentación y descubrimiento; `metadata` es libre y Claude Code lo ignora |
+
+#### ⚠️ Los campos de path REEMPLAZAN el directorio default (menos `skills`)
+
+El manifest acepta campos que apuntan a directorios propios (`agents`, `commands`, `workflows`, `outputStyles`, `experimental.themes`, `experimental.monitors`). **Todos ellos reemplazan el default en vez de sumarse** — declarar `"agents": "custom-agents/"` hace que `agents/` **deje de escanearse**, sin error ni aviso. La única excepción es `skills`, que sí se suma al `skills/` default.
+
+| Campo | Comportamiento |
+|---|---|
+| `skills` | **Suma** al `skills/` default |
+| `commands` · `agents` · `workflows` · `outputStyles` · `themes` · `monitors` | **Reemplazan** el directorio default |
+| `hooks` · `mcpServers` · `lspServers` | **Mergean** desde todas las fuentes |
+
+Si tus agentes "desaparecieron" después de tocar el manifest, esta tabla es la respuesta.
 
 ### Instalación — Desktop app (Claude Code)
 
@@ -3326,6 +3353,27 @@ Eventos al top level (como en algunos ejemplos viejos) → el archivo se rechaza
 ```
 `$CLAUDE_PROJECT_DIR` se reserva para los archivos que SÍ viven en el proyecto destino (learnings, design-paths.json, flags).
 
+**Existe una tercera variable, y es la que faltaba: `${CLAUDE_PLUGIN_DATA}`.**
+Resuelve a `~/.claude/plugins/data/{id}/` (el `{id}` es el identificador del plugin con los caracteres especiales pasados a `-`: `formatter@mi-marketplace` → `formatter-mi-marketplace`). **Sobrevive a los updates del plugin** — que es exactamente lo que `PLUGIN_ROOT` no hace. Ahí van: virtualenvs, `node_modules`, dependencias instaladas, código generado y caches. Escribir cualquiera de esas cosas dentro de `PLUGIN_ROOT` es garantía de perderlas en el próximo `sync`.
+
+Las tres, juntas y sin ambigüedad:
+
+| Variable | Apunta a | Qué guardás ahí |
+|---|---|---|
+| `${CLAUDE_PLUGIN_ROOT}` | La instalación del plugin | Lo que **viaja** con el plugin: scripts, templates, config versionada. Read-only en la práctica |
+| `${CLAUDE_PLUGIN_DATA}` | `~/.claude/plugins/data/{id}/` | Lo que el plugin **genera o instala** y debe sobrevivir updates |
+| `${CLAUDE_PROJECT_DIR}` | El repo del consumidor | Lo que es **del proyecto**: learnings, flags, config per-project |
+
+> Esto cierra el learning del 2026-07-19 sobre `scripts/`: la pregunta no era solo "¿está en la whitelist?" sino "¿esto viaja, se genera, o es del proyecto?". Cada una de las tres tiene su variable, y usar la equivocada falla en silencio de una forma distinta.
+
+Las tres se sustituyen en el contenido de skills y agentes, en los comandos de hooks y monitors, en servidores MCP (`command`, `args`, `env` para stdio; `url`, `headers`, `headersHelper` para http/sse/ws) y en LSP (`command`, `args`, `env`, `workspaceFolder`). Siempre entre comillas dobles.
+
+**Hooks sobre tools MCP del propio plugin necesitan el nombre con scope completo:**
+```json
+{"matcher": "mcp__plugin_<nombre-plugin>_<nombre-server>__<tool>"}
+```
+Un `mcp__<server>__<tool>` a secas —el formato que sirve para un MCP de usuario— no matchea cuando el server viene bundleado en un plugin.
+
 **Frontmatter YAML: dos puntos sin comillas mata la skill en silencio.**
 `description: Use for slots: A, B` → YAML no parsea → la skill carga con metadata vacía (sin nombre, sin slash command, sin triggers). Quotear cualquier description con `:` — `claude plugin validate` lo detecta.
 
@@ -3333,7 +3381,7 @@ Eventos al top level (como en algunos ejemplos viejos) → el archivo se rechaza
 Nadie puede cargarla — ni usuario ni modelo. Las skills de referencia (templates, convenciones) que un flujo del modelo debe cargar necesitan `disable-model-invocation: false` (el costo es solo la description en contexto).
 
 **Agentes de plugin: `hooks`, `mcpServers` y `permissionMode` en el frontmatter se ignoran en silencio.**
-Verificado 2026-07-04 contra la doc oficial de sub-agents: por seguridad, estos 3 campos NO se aplican cuando el agente se carga desde un plugin — ni error ni warning, el agente simplemente corre sin ellos. Si el autor del plugin escribió `hooks:` esperando scoping por-agente, no pasa nada — mismo patrón de fallo silencioso que `rules/` en plugins (arriba en esta sección). Fix: si el consumidor necesita esos campos, debe copiar el archivo del agente a `.claude/agents/` o `~/.claude/agents/` locales — ahí sí se respetan.
+Re-verificado 2026-09-02 — sigue vigente, y ahora importa más: §7 documenta que un subagente **puede** declarar hooks en su frontmatter. Esa capacidad **no llega a los agentes de plugin**. Por seguridad, estos 3 campos NO se aplican cuando el agente se carga desde un plugin — ni error ni warning, el agente simplemente corre sin ellos. Si el autor del plugin escribió `hooks:` esperando scoping por-agente, no pasa nada — mismo patrón de fallo silencioso que `rules/` en plugins (arriba en esta sección). Fix: si el consumidor necesita esos campos, debe copiar el archivo del agente a `.claude/agents/` o `~/.claude/agents/` locales — ahí sí se respetan.
 
 **Los subagentes con `tools:` restringido NO pueden cargar skills.**
 La tool `Skill` existe en subagentes sin restricción de tools (verificado 2026-07-02), pero los agentes de plugin bien diseñados restringen `tools:` al mínimo — y ahí `Skill` no está. Un agente restringido que dice "Cargar skill X" es una instrucción imposible. Patrón correcto: el hilo principal (la skill de creación) carga la template y o bien escribe los archivos él mismo, o pasa el contenido en el prompt de invocación del agente. El agente lleva su patrón esencial inline como fallback.
@@ -3364,6 +3412,17 @@ LEARNINGS_DIR.glob("learnings-*.md")
 _proj = hashlib.md5(str(Path.cwd()).encode()).hexdigest()[:8]
 _PLAN_FLAG = Path.home() / ".claude" / f"design-plan-approved-{_proj}.flag"
 ```
+
+**Un agente de plugin sin `name:` se autonombra `plugin-name:agent-name`.**
+El frontmatter de un agente de plugin acepta `name`, `description`, `model`, `effort`, `maxTurns`, `tools`, `disallowedTools`, `skills`, `memory`, `background` e `isolation` (único valor soportado: `"worktree"`). Los 3 campos prohibidos son los de arriba.
+
+**LSP: tres cosas que no se anuncian.**
+Solo el transport `stdio` se usa de verdad (Claude Code configura `socket` pero no lo usa). El binario del language server **lo instala el usuario** — el plugin solo configura la conexión, así que un `.lsp.json` correcto con el binario ausente no hace nada. Y si dos servidores declaran la misma extensión, **arranca solo el primero registrado**; el resto nunca corre.
+
+**Monitors: interactive-CLI únicamente, y sin sandbox.**
+Campos requeridos `name`, `command`, `description` (opcional `when`). Corre como proceso en background y sus líneas de stdout llegan como notificaciones. Se **saltea entero** en hosts sin tool Monitor — o sea que un plugin que dependa de un monitor para algo importante no funciona en la mitad de los entornos.
+
+**`/reload-plugins` preserva las conexiones MCP vivas** si la config no cambió — recargar mid-session no reinicia servidores por gusto.
 
 **Los CCR no pueden curar learnings per-project.**
 Un cloud agent clona el repo desde GitHub — no tiene acceso a `.claude/learnings/` local del dev. Si los learnings son per-project, el curador debe correr localmente (hook de SessionStart con aviso por fecha) o invocarse manualmente.

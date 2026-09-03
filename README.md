@@ -1,15 +1,16 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.32 · §7 hooks + §6 skills re-verified against official docs (2026-09-02) — **33 events** (`DirectoryAdded` and `PreModelSwitch`/`PostModelSwitch` are new: the latter lets you block a model escalation with exit 2, the lowcost lever that was missing). **`continueOnBlock`**: without that flag a denied `PreToolUse`/`PostToolUse` **kills the turn** instead of returning the error to Claude — changed in v2.1.210. **`if` is valid on only 5 tool events; anywhere else it stops the hook from running, silently.** Fifth handler type `agent` (experimental), and prompt hooks run on Haiku = the Advisor Pattern, native. Hooks can be declared in **7 places**, including skill frontmatter (persists for the whole session) and subagent frontmatter. §6: `background: true` is the new default for `context: fork` (v2.1.218) — narrower tool set and **`/rewind` does not undo its edits**; **`skillOverrides` does NOT affect plugin skills** (a trap against the guide's own hub advice); personal > project precedence; commands merged into skills
+**Author:** Félix Sotelo · **Version:** v5.33 · §11 plugins re-verified (2026-09-02) — **only `name` is required** in plugin.json (the guide marked 4 fields as REQUIRED); the manifest's path fields **replace** the default directory instead of extending it (`skills` is the only exception) — declaring `agents:` silently stops `agents/` from being scanned. A third variable, **`${CLAUDE_PLUGIN_DATA}`** (`~/.claude/plugins/data/{id}/`, survives updates), closes the `scripts/` learning: ROOT travels, DATA is generated, PROJECT_DIR belongs to the project. New `workflows/` component; `bin/` is now flagged "not for distributed plugins". Hooks on a plugin's own MCP tools need `mcp__plugin_<plugin>_<server>__<tool>`. New manifest fields: `userConfig`, `dependencies`, `channels`, `defaultEnabled`. LSP traps (stdio only, first server per extension wins) and monitors (interactive-CLI, unsandboxed). Pre-commit hook fixed: inserts under an explicit marker and no longer appends at the end when it fails
 
 ---
 
 > A battle-tested guide to building multi-agent systems in Claude Code without burning your budget.
 > Skills, hooks, agents, plugins, learnings, scope, and the complete global context layer — all validated against official documentation.
 
-> **Language:** The full guide is in Spanish: [`guia-agentes-plugins-claude-code.md`](guia-agentes-plugins-claude-code.md).
-> Translate on demand with Claude or DeepL as needed.
+> **Language:** The full guide is in Spanish, split across five files:
+> [`guia-00-indice.md`](guia-00-indice.md) (index) · [`guia-01-fundamentos.md`](guia-01-fundamentos.md) · [`guia-02-construccion.md`](guia-02-construccion.md) · [`guia-03-calidad.md`](guia-03-calidad.md) · [`guia-04-avanzado.md`](guia-04-avanzado.md).
+> [`README.es.md`](README.es.md) is the five concatenated into one page.
 
 ---
 
@@ -27,7 +28,7 @@
 |---|---|
 | Create an agent | §5 — Agents |
 | Create a skill | §6 — Skills (types, lifecycle, `context:fork`) |
-| Create a hook | §7 — Hooks (10 events, 5 permission modes, secret guard, complexity routing) |
+| Create a hook | §7 — Hooks (33 events, 5 handler types, 5 permission modes, secret guard) |
 | Build a distributable plugin | §11 — Plugin |
 | Design multi-agent architecture | §10 — Multi-agent |
 | Choose the right model | §25 — Model selection + `effort` |
@@ -44,7 +45,28 @@
 
 ---
 
-## What's New in v5.15
+## What's New
+
+<!-- changelog-insert -->
+
+### v5.31 – v5.32 — re-verification against the live docs (2026-09-02)
+
+| Area | Change |
+|---|---|
+| **§3 §25 §31** | Sonnet 5's introductory $2/$10 **became the standard price** — the September 1, 2026 increase to $3/$15 was cancelled. Opus:Sonnet is **2.5×**, and the ratio no longer expires |
+| **§25** | **Opus 5** (`claude-opus-5`) replaces Opus 4.8 as the current Opus and is the account default on Max/Team Premium/Enterprise/API; Fable 5.1 tops the lineup. Claude Code aliases (`best`, `fable`, `opusplan`, `opus[1m]`) documented |
+| **§25** | **Fast mode IS an API parameter** — `speed: "fast"` + beta `fast-mode-2026-02-01`. The previous edition claimed it wasn't. Opus 5/4.8 only; Opus 4.7 errors; **Opus 4.6 silently runs at standard speed** |
+| **§25** | `xhigh` does not exist on Opus 4.6 or Sonnet 4.6 — there the step up is `max` |
+| **§3** | Claude 4.7+ (Opus 5 and Sonnet 5 included) use a **new tokenizer: ~30% more tokens** for the same text. Haiku 4.5 and Sonnet 4.6 don't — so haiku's real advantage is ~2.6×, not 2× |
+| **§7** | 33 hook events (`DirectoryAdded`, `PreModelSwitch`, `PostModelSwitch` are new). **`continueOnBlock`**: without it a denied `PreToolUse`/`PostToolUse` kills the turn instead of returning the error to Claude — changed in v2.1.210 |
+| **§7** | **`if` is valid on only 5 tool events**; anywhere else it silently stops the hook from running. Fifth handler type `agent`. Hooks can be declared in 7 places, including skill and subagent frontmatter |
+| **§6** | **`background: true` is the new default for `context: fork`** (v2.1.218) — narrower tool set, and `/rewind` does not undo its edits. **`skillOverrides` does not affect plugin skills.** Personal skills override project ones |
+
+---
+
+### v5.15
+
+> **Superseded:** the pricing and fast-mode rows below were correct when written and are not any more — see the v5.31–v5.32 entry above. Kept as history.
 
 > *Full audit of the guide against the live API and a real agent session. Cost ratios were stale (Opus 4.5+ dropped its price: it's now ~1.7× Sonnet per token, not 5×), fast mode is Opus-only, 1M context is standard pricing, and two claims about subagents no longer hold. Plus the templates the guide always assumed but never showed: both lead designs, a full multi-agent project tree, and a copy-ready minimal plugin. A new `tools/audit_guia.py` script now guards the guide's own plumbing (marker placement, quick sizes, KEYWORD_MAP sync, version sync).*
 
