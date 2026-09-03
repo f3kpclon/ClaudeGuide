@@ -196,7 +196,7 @@ El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando o
 <!-- §13 -->
 ## 13. Checklist de calidad
 
-> Automatizable: skill global `/audit-guia` (proyecto con CLAUDE.md) o `/audit-plugin` (plugin distribuible) corre este checklist contra el repo actual vía Read/Glob/Grep — ver §29.
+> Automatizable — con una salvedad: las skills globales `/audit-guia` (proyecto con CLAUDE.md) y `/audit-plugin` (plugin distribuible) **no corren este checklist**: validan contra las secciones fuente (§5, §6, §7, §11, §25, §32, §35) precisamente porque este §13 es una copia derivada que puede quedar atrás. Si las dos divergen, gana la sección fuente — ver §29.
 
 ```
 CLAUDE.md

@@ -4818,7 +4818,7 @@ Esperado: ~14k
 
 #### `/audit-guia` · `READ-ONLY` · `HAIKU ONLY`
 
-Valida el proyecto actual contra el checklist §13. Revisa CLAUDE.md, agentes, skills, hooks y scope. Lista solo las violaciones — no repite lo que está bien.
+Valida el proyecto actual contra las **secciones fuente** (§5 agentes · §6 skills · §7 hooks · §8 scope · §25 modelo · §32 rules · §34 loops · §35 harness), no contra el checklist §13 — §13 es una copia derivada y puede desincronizarse. Lista solo las violaciones. Su gemela para plugins es `/audit-plugin`, que además corre `claude plugin validate`.
 
 ```
 /audit-guia
@@ -5000,7 +5000,7 @@ Primera entry: feedback de la filosofía de trabajo — el patrón que más frec
 │   ├── nuevo-agente/            # scaffold de agentes (§28) — haiku
 │   ├── nueva-skill/             # scaffold de skills (§28) — haiku
 │   ├── nuevo-hook/              # scaffold de hooks (§28) — haiku
-│   └── audit-guia/              # valida contra §13 (§28) — haiku
+│   └── audit-guia/              # valida contra las secciones fuente (§28) — haiku
 └── hooks/
     ├── guia_context.py          # UserPromptSubmit → inyección automática de §N (§26)
     ├── npm_guard.py             # PreToolUse → supply chain + slopsquatting (§7)
@@ -5629,7 +5629,7 @@ El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando o
 <!-- §13 -->
 ## 13. Checklist de calidad
 
-> Automatizable: skill global `/audit-guia` (proyecto con CLAUDE.md) o `/audit-plugin` (plugin distribuible) corre este checklist contra el repo actual vía Read/Glob/Grep — ver §29.
+> Automatizable — con una salvedad: las skills globales `/audit-guia` (proyecto con CLAUDE.md) y `/audit-plugin` (plugin distribuible) **no corren este checklist**: validan contra las secciones fuente (§5, §6, §7, §11, §25, §32, §35) precisamente porque este §13 es una copia derivada que puede quedar atrás. Si las dos divergen, gana la sección fuente — ver §29.
 
 ```
 CLAUDE.md
