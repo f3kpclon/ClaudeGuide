@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.33 · §11 plugins re-verificado (2026-09-02) — **solo `name` es requerido** en plugin.json (la guía marcaba 4 campos como REQUIRED); los campos de path del manifest **reemplazan** el directorio default en vez de sumarse (`skills` es la única excepción) — declarar `agents:` apaga el escaneo de `agents/` sin avisar. Tercera variable **`${CLAUDE_PLUGIN_DATA}`** (`~/.claude/plugins/data/{id}/`, sobrevive updates): cierra el learning de `scripts/` — ROOT viaja, DATA se genera, PROJECT_DIR es del proyecto. Nuevo componente `workflows/`; `bin/` marcado "not for distributed plugins". Hooks sobre MCP del plugin necesitan `mcp__plugin_<plugin>_<server>__<tool>`. Campos nuevos del manifest: `userConfig`, `dependencies`, `channels`, `defaultEnabled`. Trampas de LSP (solo stdio, gana el primer server por extensión) y monitors (interactive-CLI, sin sandbox). Hook de pre-commit arreglado: inserta bajo marcador explícito y ya no appendea al final cuando falla — 2026-09-02
+**Versión:** v5.34 · §10 §30 §33 re-verificados (2026-09-02) — §10: **`AskUserQuestion` NUNCA existe en un subagente** (un agente al que le pedís que pregunte ante dudas, adivina); set de tools recortado en background; límites de fan-out (3 de profundidad, 20 concurrentes, warning a 15k tokens de descriptions); `isolation: worktree` **parte de la rama default, no de tu HEAD**; `CLAUDE_CODE_SUBAGENT_MODEL` es el escalón intermedio del default de `model:`; `experimental.cacheTtl: 1h` como palanca de cache por agente. §30 reescrito: los CCR son **Routines** con **tres triggers** (schedule, API `/fire` con bearer token, eventos de GitHub) y una superficie que faltaba entera — **Desktop scheduled tasks**, local, sin sesión abierta, con acceso a archivos (resuelve el caso de learnings per-project); mínimo cloud **1 hora**; el `text` del fire llega marcado como no confiable y el prompt debe optar por usarlo; **verde ≠ funcionó**. §33: `/fork` copia la conversación a otra sesión — el que devuelve resultado es **`/subtask`**; comandos nuevos `/background`, `/effort`, `/usage`, `/tasks`, `/deep-research`. §34: jitter (recurrentes hasta 30 min tarde) y skills con `disable-model-invocation` que no se pueden agendar — 2026-09-02
 
 ---
 
@@ -2888,6 +2888,69 @@ Si hay lead → el hub es casi siempre necesario para triage. Sin hub, CLAUDE.md
 la lógica de dispatch completa — si eso supera 30 líneas, hub > CLAUDE.md inline.
 
 <!-- §10-ref -->
+### Los límites físicos del fan-out (verificado 2026-09-02)
+
+Antes de diseñar cualquier arquitectura multi-agente conviene saber contra qué techo estás:
+
+| Límite | Valor | Variable de entorno |
+|---|---|---|
+| Profundidad de anidamiento | **3 capas** | `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` |
+| Subagentes concurrentes | **20** | `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` |
+| Descripciones de agentes custom | Warning pasando **15,000 tokens** combinados (igual cargan) | — |
+
+Ese warning de 15k es la señal de que tu roster creció más de lo que el triage puede manejar: cada description está en contexto en cada sesión (§2).
+
+**Un `tools:` que no resuelve a ninguna tool válida no degrada — falla.** El agente no arranca: *"would be spawned with zero tools"*. Un typo en el nombre de una tool convierte al agente en un error de spawn, no en un agente limitado.
+
+### Foreground vs background — no son el mismo agente
+
+Es la distinción que más rompe diseños multi-agente, porque el mismo archivo de agente se comporta distinto según cómo lo invoques.
+
+| | Foreground | Background |
+|---|---|---|
+| Bloquea el hilo principal | Sí, hasta terminar | No — corre en paralelo |
+| Permisos | Te preguntan en el momento | Aparecen en la sesión principal con el nombre del subagente |
+| Tools | **Todas las heredadas** | **Set recortado** (abajo) |
+| Resultado | Vuelve en el mismo turno | Notificación en un turno posterior |
+
+**El set de un subagente background:** `Read`, `Grep`, `Glob`, `Bash`, `PowerShell`, `Edit`, `Write`, `NotebookEdit`, `WebFetch`, `WebSearch`, `TodoWrite`, `Skill`, `ToolSearch`, `EnterWorktree`, `ExitWorktree`, `Monitor`, `TaskStop`, `SendMessage`. Las tools MCP se mantienen en ambos casos.
+
+**Y esto vale para TODO subagente, foreground incluido — se remueven siempre:** `AskUserQuestion`, `EndConversation`, `EnterPlanMode`, `ExitPlanMode`, `ScheduleWakeup`, `TaskOutput`, `WaitForMcpServers`, `Workflow`, y `Agent` al llegar al límite de profundidad.
+
+> **`AskUserQuestion` nunca está disponible en un subagente.** Un agente al que le escribiste "si hay ambigüedad, preguntale al usuario" **no puede hacerlo** — va a adivinar. Toda decisión que requiera al humano tiene que resolverse *antes* del dispatch (§24), o volver al hilo principal como parte del output del agente. Esta es la razón física del pre-layer de más abajo, no una preferencia de estilo.
+
+Los **teammates** (agent teams) sí conservan además las tools de tasks y cron: `TaskCreate`, `TaskGet`, `TaskList`, `TaskUpdate`, `CronCreate`, `CronDelete`, `CronList`.
+
+### Campos de frontmatter que esta guía no usaba
+
+Además de `name`/`description`/`model`/`tools`/`skills`:
+
+| Campo | Para qué |
+|---|---|
+| `disallowedTools` | Denylist — **se aplica antes** que `tools` |
+| `effort` | Nivel de esfuerzo del agente, independiente de la sesión (→ §25) |
+| `maxTurns` | Corta al agente en N turnos; el output parcial queda marcado como tal |
+| `memory` | `user` \| `project` \| `local` — memoria persistente entre sesiones del agente |
+| `background` | `true` = queda en background aunque Claude lo pida en foreground |
+| `isolation` | `worktree` — único valor soportado |
+| `color` | Color en la UI: `red`, `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan` |
+| `initialPrompt` | Primer turno auto-enviado cuando el agente corre como sesión principal |
+| `experimental.cacheTtl` | `5m` o `1h` — **TTL del prompt cache de ese agente** (→ §3) |
+
+`experimental.cacheTtl: "1h"` es la palanca lowcost menos conocida de todas: un agente que se invoca varias veces con pausas de más de 5 minutos paga cache write 2× una vez en vez de 1.25× cada vez que expira.
+
+### Corrección — el default de `model:` no es exactamente `inherit`
+
+§25 dice que sin `model:` el agente hereda el de la conversación. Es cierto en la práctica, pero el orden real de resolución tiene un escalón intermedio que importa:
+
+1. El parámetro `model` de la invocación, si lo hay
+2. **La variable de entorno `CLAUDE_CODE_SUBAGENT_MODEL`**
+3. El modelo de la conversación principal
+
+O sea que existe una palanca global para bajar de modelo **todos** los subagentes sin tocar un solo archivo de agente — útil para una sesión cara, y peligrosa si alguien la exportó en su shell y se olvidó: los agentes corren en otro modelo del que dice su archivo y nada lo anuncia.
+
+**Además, el agente `Explore` capea el modelo heredado en Opus** (en Claude API): nunca escala a un tier más caro aunque la sesión principal esté en Fable. Si querés Explore todavía más barato, la vía oficial es crear un `Explore` custom con `model: haiku`.
+
 ### Reglas de diseño
 
 **Agentes = contextos aislados** — lo que lee un agente no contamina el hilo principal.
@@ -2950,6 +3013,13 @@ Agent({
 })
 ```
 Si el agente no hace cambios → el worktree se limpia solo. Si hace cambios → el path y la rama se devuelven en el resultado para merge manual.
+
+**El worktree NO parte del HEAD del padre — parte de la rama default** (verificado 2026-09-02). Es lo contrario de lo que asume casi todo el mundo: si estás en una rama de feature con 3 commits sin mergear y despachás un agente con `isolation: "worktree"`, ese agente **no ve tus 3 commits**. Para trabajo que continúa lo que tenés en curso, el worktree aislado es la herramienta equivocada.
+
+Dos detalles más del aislamiento:
+- Los comandos **Bash** se verifican para que no redirijan git hacia el checkout principal; si el working directory resuelve al checkout principal en vez del worktree, el comando **falla**. Con **PowerShell** solo se chequea el working directory — el aislamiento es más débil.
+- El alcance es todo el repositorio que contiene el directorio de lanzamiento, más los worktrees enlazados de la misma cadena.
+- Los `cd` de un subagente no persisten entre tool calls ni afectan a la conversación principal.
 
 **Anti-patrón:** worktrees para agentes que deben ir en secuencia (A termina → B empieza). Si no hay paralelismo real, el worktree es overhead sin beneficio — usar flujo estándar.
 
@@ -4834,21 +4904,40 @@ Cada pieza tiene su sección de referencia. Nada se inventó solo — todo se co
 
 ### Las 3 reglas
 
-1. **Cloud agents ≠ hooks locales** — los CCR (Claude Code Routines) tienen acceso al repo GitHub, no a `/Users/`. Si la tarea necesita tu filesystem → hook local. Si puede correr desde un clone fresco → CCR.
-2. **GitHub primero** — sin `/web-setup` el checkout falla silenciosamente. Conectar GitHub es el paso 0 antes de crear cualquier routine.
-3. **Prompt self-contained** — el agente arranca sin contexto, sin tu CLAUDE.md, sin tus plugins. El prompt debe incluir todo lo que necesita saber.
+1. **Cloud agents ≠ hooks locales** — las Routines tienen acceso al repo GitHub, no a `/Users/`. Si la tarea necesita tu filesystem → hook local o **Desktop scheduled task**. Si puede correr desde un clone fresco → Routine.
+2. **GitHub primero, pero `/web-setup` no alcanza para todo** — da acceso de clonado, y con eso basta para triggers de schedule y API. **NO instala la GitHub App ni habilita webhooks**: para triggers por evento de GitHub hay que instalar la app aparte (verificado 2026-09-02).
+3. **Prompt self-contained** — el agente arranca sin contexto, sin tu CLAUDE.md local, sin tus plugins. El prompt debe incluir todo lo que necesita saber. Sí puede usar las skills **commiteadas en el repo clonado**.
 
-### Cuándo usar cloud agents vs alternativas
+### Tres superficies de scheduling, no dos (verificado 2026-09-02)
+
+La versión anterior de esta sección solo contemplaba cloud vs hook local. Falta la del medio, y es justo la que resuelve el caso que la guía daba por imposible:
+
+| | **Cloud (Routines)** | **Desktop scheduled task** | **`/loop`** (§34) |
+|---|---|---|---|
+| Corre en | La nube de Anthropic | Tu máquina | Tu máquina |
+| ¿Máquina prendida? | No | **Sí** | Sí |
+| ¿Sesión abierta? | No | **No** | **Sí** |
+| Sobrevive reinicios | Sí | Sí | Solo con `--resume`, si no expiró |
+| Acceso a archivos locales | **No** — clone fresco | **Sí** | Sí |
+| MCP | Connectors por task | Config local + connectors | Hereda de la sesión |
+| Permisos | **Ninguno — corre autónomo** | Configurable por task | Hereda de la sesión |
+| Intervalo mínimo | **1 hora** | 1 minuto | 1 minuto |
+
+> **La fila que cambia decisiones:** "curar learnings per-project" ya no obliga a un hook local atado a que abras sesión. Un **Desktop scheduled task** corre en tu máquina, ve `.claude/learnings/`, y no necesita que tengas Claude Code abierto. Se crea desde la app de Desktop → Code → Routines → New routine → **Local** (elegir **Cloud** ahí crea una Routine en la nube).
+
+### Cuándo usar cada una
 
 | Caso | Solución correcta |
 |---|---|
-| Tarea periódica sobre el repo (health check, análisis de código) | CCR — `/schedule` |
-| Curar learnings per-project (en `.claude/learnings/`) | Hook local — CCR no tiene acceso al filesystem local |
-| Curar learnings en el repo (si están en git) | CCR — clona el repo y los lee directamente |
+| Tarea periódica sobre el repo (health check, análisis de código) | Routine cloud — `/schedule` |
+| Curar learnings per-project (en `.claude/learnings/`) | **Desktop scheduled task** — corre local, sin sesión abierta |
+| Curar learnings en el repo (si están en git) | Routine cloud — clona el repo y los lee directamente |
 | Acción automática en respuesta a un evento del usuario | Hook local `UserPromptSubmit`/`PostToolUse` |
-| Tarea única programada ("mañana a las 9am") | CCR con `run_once_at` |
-| Acción que necesita acceso al filesystem local | Hook local — los CCR no tienen acceso |
-| Monitor de CI/CD o builds externos | CCR — corre en nube, no bloquea tu sesión |
+| Tarea única programada ("mañana a las 9am") | Routine cloud one-off — `/schedule tomorrow at 9am, ...` |
+| Reaccionar a un PR abierto o a un release | Routine cloud con **trigger de GitHub** |
+| Disparar desde tu CI, alerting o deploy | Routine cloud con **trigger de API** (POST al endpoint `/fire`) |
+| Algo que debe correr cada 5 minutos | **No es Routine** — el mínimo cloud es 1 hora. Desktop task o `/loop` |
+| Polling corto dentro de la sesión | `/loop` — §34 |
 
 ### Modelos recomendados para CCR
 
@@ -4867,9 +4956,71 @@ Necesario una vez antes de crear routines que accedan a repos privados:
 ```
 
 Conecta: GitHub (para checkout del repo), Google Drive, y otros servicios MCP disponibles.
-Sin GitHub conectado → el campo `sources: [{git_repository: {url: ...}}]` del CCR falla al clonar.
+Sin GitHub conectado, la Routine falla al clonar el repo.
 
 <!-- §30-ref -->
+### Los tres triggers (la versión anterior solo conocía uno)
+
+Una Routine es un prompt + repos + connectors guardado en tu cuenta, y **acepta varios triggers a la vez**:
+
+| Trigger | Cómo dispara | Dónde se configura |
+|---|---|---|
+| **Schedule** | Cron recurrente o un one-off en un timestamp | CLI (`/schedule`) o web |
+| **API** | `POST` al endpoint `/fire` de esa routine con bearer token | **Solo web** — el CLI no crea ni revoca tokens |
+| **GitHub** | `pull_request.*` o `release.*`, con filtros | Web, o CLI desde v2.1.225 |
+
+```bash
+curl -X POST https://api.anthropic.com/v1/claude_code/routines/<id>/fire \
+  -H "Authorization: Bearer <token>" \
+  -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
+  -H "anthropic-version: 2023-06-01" \
+  -d '{"text": "Sentry SEN-4521 en prod. Stack trace adjunto."}'
+```
+
+**El `text` del fire NO es una instrucción.** Llega envuelto en un bloque `<routine-fire-payload>` marcado como dato no confiable, con la indicación de no obedecer lo que haya adentro salvo que el prompt guardado lo pida. O sea: **tu prompt tiene que optar explícitamente** — *"Investigá la alerta descrita en el bloque routine-fire-payload"* — o el texto queda como contexto inerte y la routine parece no hacer nada. Es una defensa deliberada: cualquiera con el token puede mandar `text`.
+
+Los filtros de PR (author, title, body, base/head branch, labels, is draft, is merged) usan operadores equals / contains / starts with / is one of / is not one of / **matches regex**. Ojo con el regex: **matchea el valor completo, no una subcadena**. Para "títulos que contengan hotfix" hay que escribir `.*hotfix.*`; `hotfix` a secas solo matchea un título que sea exactamente eso.
+
+### El CLI de routines
+
+```bash
+/schedule                       # crear, conversacional (alias /routines)
+/schedule daily PR review at 9am
+/schedule tomorrow at 9am, resumí los PRs mergeados ayer   # one-off
+/schedule list                  # listar
+/schedule update                # editar (y única vía CLI para poner un cron custom)
+/schedule run                   # disparar ahora
+/schedule why did my nightly review do nothing this morning?   # v2.1.227+
+```
+
+Ese último es la herramienta de diagnóstico real: lista las corridas recientes con su status y lee el log para explicar qué pasó, incluidos errores de tool y denegaciones de permiso.
+
+**Intervalo mínimo: 1 hora.** Los presets del formulario son hourly / daily / weekdays / weekly; para un cron custom hay que pasar por `/schedule update`, y las expresiones más frecuentes que horarias se rechazan. Los one-off se auto-desactivan al disparar y **no cuentan contra el cap diario** de corridas.
+
+### ⚠️ Verde no significa que funcionó
+
+> Un status verde en la lista de corridas quiere decir **que la sesión arrancó y salió sin error de infraestructura**. No dice nada sobre si tu tarea se cumplió. Requests de red bloqueados, tools de connector ausentes y fallos a nivel de tarea aparecen **dentro del transcript**, no en el indicador.
+
+Es exactamente la muerte silenciosa de §35 aplicada a la nube: el dashboard verde es un proxy, el transcript es el juez. Una routine que lleva semanas "corriendo bien" puede llevar semanas sin hacer nada.
+
+### Lo que la Routine puede tocar — y por qué conviene recortarlo
+
+- **Corre autónoma: no hay permission mode ni prompts de aprobación.** Puede correr comandos de shell y usar cualquier tool de los connectors incluidos, escrituras incluidas.
+- **Todos tus connectors se incluyen por default** al crear la routine. Sacá los que no necesite: cada uno es superficie de escritura sin confirmación.
+- Los MCP que agregaste local con `claude mcp add` **no aparecen** — viven en tu máquina, no en tu cuenta claude.ai. Para usarlos: agregarlos como connector, o declararlos en un `.mcp.json` commiteado al repo.
+- **Todo lo que haga aparece como vos**: los commits y PRs llevan tu usuario de GitHub; los mensajes de Slack o tickets de Linear, tus cuentas.
+- Los repos se clonan **desde la rama default** en cada corrida. Claude pushea a ramas con prefijo `claude/`, que siempre se aceptan; un push a otra rama se **rechaza** si está protegida, si otra persona tiene un PR abierto desde ella, o si tiene commits de alguien más.
+- El environment controla red y variables. **Las env vars son visibles para cualquiera que use ese environment** — las claves van como *API credentials*, no como variables. La red default es "Trusted" (allowlist de package registries y dominios comunes); lo de afuera falla con `403` y `x-deny-reason: host_not_allowed`. El tráfico de connectors va por los servidores de Anthropic, así que no necesita allowlist.
+
+### Requisitos y límites
+
+- **Requiere login de claude.ai** (Pro, Max, Team o Enterprise). Con API key de Console, perfil de Anthropic, Bedrock, Google Cloud o Foundry, `/schedule` **no existe** — ni aparece en el menú. Si tenés `ANTHROPIC_API_KEY` o `ANTHROPIC_AUTH_TOKEN` exportados, o `apiKeyHelper` en settings.json, tienen precedencia sobre el login de claude.ai y hay que sacarlos.
+- Un Owner de Team/Enterprise puede apagar Routines para toda la organización.
+- Hay un **cap diario de corridas por cuenta**, además de los límites normales de suscripción. Con usage credits activados se sigue en overage; sin ellos, se rechazan hasta que resetee la ventana.
+- Los eventos de webhook de GitHub tienen caps horarios por routine y por cuenta durante el research preview; los que exceden **se descartan**.
+- Las Routines son **personales**, no se comparten con el equipo.
+- Sigue siendo **research preview**: el endpoint `/fire` va bajo beta header con fecha y las shapes pueden cambiar.
+
 
 ### Estructura de un routine (create body)
 
@@ -4980,17 +5131,31 @@ Un prompt de CCR debe responder estas preguntas sin asumir contexto externo:
 | `/compact [instructions]` | Resume la conversación actual para liberar espacio, sin abandonarla | Contexto largo pero seguís en la misma tarea — podés darle foco: `/compact enfocate en los cambios de auth` |
 | `/resume [session]` (alias `/continue`) | Retoma una sesión anterior por ID o nombre | Volver a un `/branch` o a una sesión pausada |
 | `/branch [name]` | Copia la conversación en este punto y cambia a ella; el original queda intacto | Probar una dirección distinta sin arriesgar el estado actual |
-| `/fork <directive>` | Spawnea un subagente en background que **hereda toda la conversación** y trabaja la directiva mientras vos seguís | Delegar una tarea lateral sin cambiar de contexto vos — el resultado vuelve solo al hilo principal |
+| `/fork` | **Copia la conversación entera a una nueva sesión en background** y vos seguís acá | Que otra sesión siga una dirección distinta desde este punto exacto, sin que vos cambies de contexto |
+| `/subtask <tarea>` | Delega una tarea lateral a un subagente y **el resultado vuelve a esta conversación** | Delegar sin cambiar de contexto — *este* es el "comando como agente" con retorno |
 | `/goal [condition]` | Claude sigue trabajando entre turnos hasta cumplir la condición | Loop autónomo acotado, sin montar `/loop` externo |
 | `/context [all]` | Visualiza uso de contexto por bloque | Diagnóstico antes de decidir `/compact` vs `/clear` |
 | `/batch <instruction>` | Descompone un cambio grande en 5-30 unidades, un subagente por unidad, cada uno en su propio worktree | Cambios cross-codebase demasiado grandes para un agente — ver §10 |
 | `/loop [interval] [prompt]` | Corre un prompt repetidamente, con pacing propio si se omite el intervalo | Polling o tareas recurrentes dentro de la sesión — física completa (modos, `ScheduleWakeup`, `Monitor`, apagado) en **§34** |
 | `/agents` | Gestiona subagentes configurados | Alta/baja de subagentes del proyecto |
-| `/schedule` (alias `/routines`) | Rutinas cloud con cron, fuera de la sesión interactiva | Automatización que no depende de la sesión abierta — ver §30 |
+| `/schedule` (alias `/routines`) | Rutinas cloud con cron, API o eventos de GitHub, fuera de la sesión | Automatización que no depende de la sesión abierta — ver §30 |
+| `/tasks` | Lista el trabajo en background de la sesión, subagentes terminados incluidos | Ver qué quedó corriendo — obligatorio con forks en background (§6) |
+| `/background` (alias `/bg`) | Desprende la sesión actual para que corra como agente en background y libera la terminal | Dejar corriendo algo largo sin ocupar la terminal — los `/loop` se llevan con ella (§34) |
+| `/effort <nivel>` | Cambia el nivel de esfuerzo en caliente | `low`…`max`, más `ultracode` y `auto` — ver §25 |
+| `/usage` (alias `/cost`) | Consumo de tokens de la sesión | El chequeo de §23 antes de seguir optimizando |
+| `/context [all]` ya listado arriba · `/status` | Estado de la sesión, sin encolarse | Diagnóstico rápido |
+| `/deep-research` | Workflow: abanico de búsquedas web, cruza fuentes y sintetiza un reporte citado | Investigación externa — no confundir con `Explore`, que es del codebase |
+| `/teleport` · `/remote-control` | Traer una sesión web a esta terminal · seguir esta sesión desde otro dispositivo | Continuidad entre máquinas |
 
 ### Lo que SÍ se integra con agentes/skills/hooks (documentado)
 
-**`/fork` y `/branch` SON la forma nativa de "comando como agente".** No hace falta inventar nada: `/fork` literalmente spawnea un subagente en background con el checkpoint completo de la conversación heredado — es la respuesta real a "quiero que un agente parta de este punto exacto".
+**`/fork` y `/subtask` son la forma nativa de "comando como agente" — pero no son lo mismo** (corregido 2026-09-02; la versión anterior de esta guía le atribuía a `/fork` el comportamiento de `/subtask`):
+
+- **`/fork`** copia la conversación a una **nueva sesión en background**. El trabajo sigue allá; vos seguís acá. No hay un "resultado" que vuelva solo al hilo — son dos sesiones.
+- **`/subtask`** delega a un subagente y **el resultado vuelve a esta conversación**. Este es el que sirve para "delegá esto y contame".
+- **`/branch`** copia la conversación y **te cambia a ella**; la original queda intacta.
+
+Elegir mal es la diferencia entre esperar un resultado que nunca llega y perder el hilo donde estabas.
 
 **Hook `PreCompact`** — se dispara antes de compactar (matcher `manual` o `auto`), recibe `compaction_trigger` en el input, y **puede bloquear** (`decision: block`) o simplemente correr un script antes de que el contexto se pierda:
 
@@ -5014,9 +5179,12 @@ Patrón real: archivar el estado de un agente largo (checkpoints de delegación,
 
 ### Lo que NO se puede (verificado contra doc oficial)
 
-- Ningún hook, skill o llamada del SDK puede **forzar** `/rewind`, `/clear` o `/compact` — son CLI-only, requieren que un humano los tipee o que Claude decida escribirlos como respuesta.
+- Ningún hook, skill o llamada del SDK puede **forzar** `/rewind`, `/clear` o `/compact` — son CLI-only, requieren que un humano los tipee o que Claude decida escribirlos como respuesta. **Re-verificado 2026-09-02: sigue siendo cierto.**
 - No existe evento de hook para `/rewind`/checkpoint — no hay `PreRewind` ni equivalente.
 - El SDK (`--continue`, `--resume <id>`) continúa procesos, pero no expone `session.rewind()` ni `session.fork()` a nivel de código.
+- Lo único programable alrededor de la compactación sigue siendo indirecto: el hook `PreCompact`/`PostCompact` para actuar **cuando ya se decidió**, y `/autocompact` para configurar la ventana en la que se dispara sola. Ninguno de los dos la dispara a pedido.
+
+> **Interacción con los checkpoints que conviene tener presente (→ §6):** una skill con `context: fork` corriendo en background aplica sus ediciones **fuera de los checkpoints**, así que `/rewind` no las deshace. Ahí el undo es git, no el harness.
 
 **Fuentes:** [Commands](https://code.claude.com/docs/en/commands.md) · [Hooks](https://code.claude.com/docs/en/hooks.md) · [Checkpointing](https://code.claude.com/docs/en/checkpointing.md) · [Sub-agents](https://code.claude.com/docs/en/sub-agents.md)
 
@@ -5053,6 +5221,27 @@ Esto es el §3 del protocolo ("cazar el fallo silencioso") aplicado a vos mismo:
 > ⚠️ **El fallo silencioso real (plausible — reportado como bug abierto):** hay casos reportados de `ScheduleWakeup` que persiste tras `Ctrl+C` y de daemons que re-spawnean el loop sin atención, causando gasto de tokens no acotado ([#64744](https://github.com/anthropics/claude-code/issues/64744), [#51304](https://github.com/anthropics/claude-code/issues/51304)). Traducción LowCost: **nunca dejes un `/loop` corriendo en una sesión que vas a abandonar.** Antes de irte, `Esc` o `CronList` → `CronDelete`. El seven-day expiry es la red, no el plan.
 
 <!-- §34-ref -->
+### Jitter — por qué tu tarea de las 9:00 corre 9:17
+
+El scheduler le suma un offset determinístico a cada fire para que no todas las sesiones peguen a la API en el mismo instante de reloj:
+
+- **Recurrentes:** disparan hasta **30 minutos después** de la hora agendada (o hasta la mitad del intervalo, si corre más seguido que cada hora). Un job horario en `:00` puede caer en cualquier punto hasta `:30`.
+- **One-shots** agendados en punto o y media: disparan hasta **90 segundos antes**.
+
+El offset se deriva del ID de la tarea, así que es **el mismo siempre** para esa tarea — no es aleatorio entre corridas. Si el horario exacto importa, elegí un minuto que no sea `:00` ni `:30`: `3 9 * * *` en vez de `0 9 * * *`, y el jitter de one-shot no aplica.
+
+Y dos detalles del cron aceptado: es de **5 campos** (`minuto hora día-del-mes mes día-de-semana`), **sin sintaxis extendida** — nada de `L`, `W`, `?` ni alias como `MON`/`JAN`. Cuando restringís día-del-mes **y** día-de-semana a la vez, matchea si **cualquiera** de los dos coincide (semántica vixie-cron), no ambos.
+
+### Un fire programado no puede invocar cualquier skill
+
+Cuando una tarea agendada dispara con una skill como prompt (`/loop 20m /review-pr 1234`), solo corren las skills que **Claude puede invocar por su cuenta**. Lo demás llega como texto plano y no ejecuta nada:
+
+- Comandos built-in como `/permissions`, `/model` o `/clear`
+- Skills con **`disable-model-invocation: true`** — incluida la bundled `/verify`
+- Skills apagadas por `skillOverrides` o por una deny rule `Skill(...)`
+- Prompts de MCP (`/mcp__github__list_prs`)
+
+> Es el mismo deadlock que §11 documenta para los gates de plugin, en otra superficie: si protegiste una skill con `disable-model-invocation: true` para forzar que la tipee un humano, **esa skill no se puede agendar**. El loop va a "correr" todos los días sin ejecutar nada, y el síntoma es silencio.
 ### `ScheduleWakeup` — cómo se auto-pausa el modo dinámico
 
 En modo dinámico el modelo agenda su propia próxima corrida con `ScheduleWakeup`, pasándose el mismo prompt del loop. Detalles verificados (doc oficial + este harness):

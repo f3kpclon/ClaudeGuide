@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.33 · §11 plugins re-verified (2026-09-02) — **only `name` is required** in plugin.json (the guide marked 4 fields as REQUIRED); the manifest's path fields **replace** the default directory instead of extending it (`skills` is the only exception) — declaring `agents:` silently stops `agents/` from being scanned. A third variable, **`${CLAUDE_PLUGIN_DATA}`** (`~/.claude/plugins/data/{id}/`, survives updates), closes the `scripts/` learning: ROOT travels, DATA is generated, PROJECT_DIR belongs to the project. New `workflows/` component; `bin/` is now flagged "not for distributed plugins". Hooks on a plugin's own MCP tools need `mcp__plugin_<plugin>_<server>__<tool>`. New manifest fields: `userConfig`, `dependencies`, `channels`, `defaultEnabled`. LSP traps (stdio only, first server per extension wins) and monitors (interactive-CLI, unsandboxed). Pre-commit hook fixed: inserts under an explicit marker and no longer appends at the end when it fails
+**Author:** Félix Sotelo · **Version:** v5.34 · §10 §30 §33 re-verified (2026-09-02) — §10: **`AskUserQuestion` is NEVER available in a subagent** (an agent told to ask when unsure will guess instead); narrowed background tool set; fan-out limits (depth 3, 20 concurrent, warning past 15k tokens of descriptions); `isolation: worktree` **branches from the default branch, not your HEAD**; `CLAUDE_CODE_SUBAGENT_MODEL` is the middle step in `model:` resolution; `experimental.cacheTtl: 1h` as a per-agent cache lever. §30 rewritten: CCRs are **Routines** with **three triggers** (schedule, API `/fire` with a bearer token, GitHub events), plus a whole surface that was missing — **Desktop scheduled tasks**, local, no open session, with local file access (which solves the per-project learnings case); cloud minimum is **1 hour**; fire `text` arrives labeled untrusted and the prompt must opt in to using it; **green does not mean it worked**. §33: `/fork` copies the conversation to another session — the one that returns a result is **`/subtask`**; new commands `/background`, `/effort`, `/usage`, `/tasks`, `/deep-research`. §34: jitter (recurring tasks fire up to 30 min late) and skills with `disable-model-invocation` that cannot be scheduled
 
 ---
 
@@ -48,6 +48,23 @@
 ## What's New
 
 <!-- changelog-insert -->
+
+### v5.33 – v5.34 — plugins, multi-agent, scheduling and native commands (2026-09-02)
+
+| Area | Change |
+|---|---|
+| **§10** | **`AskUserQuestion` is never available in a subagent** — an agent told to "ask the user when unsure" will guess instead. Every human decision has to be resolved before dispatch or returned as output |
+| **§10** | `isolation: worktree` branches from the **default branch, not the parent's HEAD** — a dispatched agent does not see your unmerged commits. Fan-out limits: depth 3, 20 concurrent, warning past 15k tokens of agent descriptions |
+| **§10** | `model:` resolution has a middle step the guide missed: `CLAUDE_CODE_SUBAGENT_MODEL`. A stale export silently runs every subagent on a different model than its file says |
+| **§11** | `plugin.json` requires only `name`. Manifest path fields **replace** the default directory instead of extending it (`skills` is the sole exception) — declaring `agents:` silently stops `agents/` from being scanned |
+| **§11** | `${CLAUDE_PLUGIN_DATA}` (`~/.claude/plugins/data/{id}/`) survives updates — the right home for venvs, caches and generated code. New `workflows/` component; `bin/` flagged "not for distributed plugins" |
+| **§30** | CCRs are **Routines**, with three triggers (schedule, API `/fire`, GitHub events) — the guide knew only one. Cloud minimum interval is **1 hour**. Fire `text` arrives wrapped as untrusted data; the prompt must opt in to acting on it |
+| **§30** | A whole surface was missing: **Desktop scheduled tasks** run locally, without an open session, with local file access — which solves the per-project learnings case the guide had marked impossible |
+| **§30** | **A green run status only means the session started and exited without an infrastructure error.** It says nothing about whether the task succeeded — that lives in the transcript |
+| **§33** | `/fork` copies the conversation into another background session; the command that returns a result to this conversation is **`/subtask`**. The previous edition attributed `/subtask`'s behavior to `/fork` |
+| **§34** | Jitter: recurring tasks fire up to 30 min late, one-shots at `:00`/`:30` up to 90s early — pick a minute that is neither. A scheduled fire cannot invoke a skill marked `disable-model-invocation: true` |
+
+---
 
 ### v5.31 – v5.32 — re-verification against the live docs (2026-09-02)
 
