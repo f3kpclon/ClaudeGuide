@@ -1415,7 +1415,7 @@ Por defecto, el modelo puede invocar cualquier skill según su `description`. Pa
 | Valor | Claude la ve | Usuario puede `/nombre` | Analogía |
 |---|---|---|---|
 | `"on"` (default) | Nombre + descripción | Sí | Recetario en la repisa con etiqueta y resumen — Claude sabe cuándo abrirlo |
-| `"name-only"` | Solo el nombre | Sí | Recetario con solo el título — Claude sabe que existe pero no cuándo usarlo |
+| `"name-only"` | Solo el nombre | Sí | Recetario con solo el título — Claude sabe que existe pero no cuándo usarlo. **Es además la palanca para liberar presupuesto del listado** cuando tenés muchas skills (§2) |
 | `"user-invocable-only"` | Nada | Sí | Recetario en el cajón — el cocinero (usuario) lo busca, el modelo no lo ve |
 | `"off"` | Nada | No | Recetario en el sótano — nadie lo ve, cero tokens |
 

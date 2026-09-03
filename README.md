@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.37 · §21 observability re-verified (2026-09-02) — the section was entirely home-grown methodology and never mentioned the native surface: **`/hooks`** (is it registered?), **`/context`** (did it load?), **`/tasks`** (what is still running?), `/usage`, `/doctor`, and the `InstructionsLoaded` hook. For hooks, **`claude --debug-file <path>` + `tail -f`** beats bare `--debug`: it shows which hooks matched, with exit code, stdout and stderr. **OTel nuanced**: the `console` exporter needs no infrastructure, and its cost/token metrics carry `query_source` (main/subagent/auxiliary), `agent.name`, `skill.name`, `model`, `speed` and `effort` — exactly the breakdown §2/§3/§25 estimate by hand; events carry `prompt.id` to correlate everything one prompt triggered. New **catalogue of 12 harness silent deaths** with a detection method for each, distilled from this round of passes. §21 now has a quick/ref split
+**Author:** Félix Sotelo · **Version:** v5.38 · §2 per-file limits re-verified against the official docs (2026-09-02) — the table now separates **what the harness enforces from what this guide recommends**: official CLAUDE.md guidance is <200 lines (with a hard skip past 4 MiB), official SKILL.md is <500; the <30 and <200 here are a lowcost stance, not a platform limit. **The hidden skill-listing budget**: Claude Code loads every skill's name and description under a budget that scales at 1% of the context window, and on overflow it **drops descriptions starting with the skills you invoke least* — a skill without its description stops being auto-invoked, with no error. Levers: `skillListingBudgetFraction`, `SLASH_COMMAND_TOOL_CHAR_BUDGET`, and `name-only` in `skillOverrides`. Fixed the description-cap setting name: it is **`skillListingMaxDescChars`**, not `maxSkillDescriptionChars` (§2 and §13)
 
 ---
 
@@ -48,6 +48,18 @@
 ## What's New
 
 <!-- changelog-insert -->
+
+### v5.38 — per-file limits (2026-09-02)
+
+| Area | Change |
+|---|---|
+| **§2** | The limits table now separates **platform limits from this guide's stance**. Official CLAUDE.md guidance is under 200 lines, with a hard skip past 4 MiB; official SKILL.md guidance is under 500 lines. The `<30` and `<200` here are deliberate lowcost choices, not platform ceilings — worth knowing which is which before treating one as a rule |
+| **§2** | **The skill-listing budget, which degrades silently.** Claude Code loads every skill's name plus its description under a character budget that scales at 1% of the model's context window. On overflow it drops descriptions, starting with the skills you invoke least. A skill whose description got dropped stops matching — Claude knows it exists but not when to use it, and nothing reports this |
+| **§2** | Levers for that budget: `skillListingBudgetFraction` (or `SLASH_COMMAND_TOOL_CHAR_BUDGET` for a fixed count), `name-only` in `skillOverrides` to free room, and trimming `description` + `when_to_use` at the source |
+| **§2 §13** | The setting that configures the 1,536-character description cap is **`skillListingMaxDescChars`**. The guide named it `maxSkillDescriptionChars`, which does not exist |
+| **§2** | Added the system-imposed limits the table was missing: `.claude/loop.md` truncates silently at 25,000 bytes, and `MEMORY.md` loads only its first 200 lines or 25 KB |
+
+---
 
 ### v5.37 — observability (2026-09-02)
 

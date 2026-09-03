@@ -238,7 +238,7 @@ Skills
 □ Referencias que solo el usuario pide: disable-model-invocation: true
 □ Referencias que un flujo del modelo debe cargar (templates, convenciones): disable-model-invocation: false — con user-invocable: false + disable-model-invocation: true la skill es INALCANZABLE
 □ Frontmatter con ":" dentro de description → quotear (YAML roto = metadata vacía en silencio)
-□ description < 1,536 chars (combined description + when_to_use; configurable con maxSkillDescriptionChars)
+□ description < 1,536 chars (combined description + when_to_use; configurable con skillListingMaxDescChars)
 □ Sin contenido duplicado
 □ Skill con trabajo pesado (> 3 archivos / logs largos) → context: fork con agent: Explore
 □ SKILL.md > 200 líneas → dividir en SKILL.md + reference.md (el directorio como soporte)

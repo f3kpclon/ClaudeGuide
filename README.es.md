@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.37 · §21 observabilidad re-verificado (2026-09-02) — la sección era 100% metodología propia y no mencionaba la superficie nativa: **`/hooks`** (¿está registrado?), **`/context`** (¿cargó?), **`/tasks`** (¿quedó corriendo?), `/usage`, `/doctor`, y el hook `InstructionsLoaded`. Para hooks, **`claude --debug-file <path>` + `tail -f`** en vez de `--debug` a secas: muestra qué hooks matchearon con exit code, stdout y stderr. **OTel matizado**: el exporter `console` no necesita infraestructura y sus métricas de costo/tokens vienen etiquetadas por `query_source` (main/subagent/auxiliary), `agent.name`, `skill.name`, `model`, `speed` y `effort` — o sea el desglose que §2/§3/§25 estiman a mano; los eventos llevan `prompt.id` para correlacionar todo lo que disparó un prompt. Nuevo **catálogo de 12 muertes silenciosas del harness** con su método de detección, destilado de las 6 pasadas de esta ronda. §21 pasó a split quick/ref — 2026-09-02
+**Versión:** v5.38 · §2 límites por archivo re-verificados contra la doc oficial (2026-09-02) — la tabla ahora distingue **lo que impone el harness de lo que recomienda esta guía**: CLAUDE.md oficial son <200 líneas (y hard skip pasando 4 MiB), SKILL.md oficial son <500; los <30 y <200 de acá son postura lowcost, no límite de plataforma. **Presupuesto oculto del listado de skills**: Claude Code carga nombre+description de todas las skills con un presupuesto que escala al 1% de la ventana, y al desbordarse **tira descripciones empezando por las que menos usás** — una skill sin description deja de auto-invocarse, sin error. Palancas: `skillListingBudgetFraction`, `SLASH_COMMAND_TOOL_CHAR_BUDGET`, y `name-only` en `skillOverrides`. Corregido el nombre del setting del cap de description: es **`skillListingMaxDescChars`**, no `maxSkillDescriptionChars` (§2 y §13) — 2026-09-02
 
 ---
 
@@ -326,9 +326,7 @@ Capa 1 — SIEMPRE en contexto (costo fijo por sesión)
   Agent descriptions  → presentes en el system prompt
   Skill metadata      → 30-50 tokens por skill registrada
                         (user-invocable-only reduce esto a cero para el modelo)
-                        Nota: las cifras en tokens de esta sección son del tokenizer
-                        viejo. En Sonnet 5 / Opus 5 / Fable multiplicá por ~1.3 (→ §3).
-                        Los límites en LÍNEAS de abajo no cambian.
+                        Cifras del tokenizer viejo: ×1.3 en Sonnet 5/Opus 5/Fable (§3).
 
 Capa 2 — BAJO DEMANDA (costo variable)
   Gotchas inline      → en el system prompt del agente, cero Read calls
@@ -360,16 +358,23 @@ El archivo de learnings sigue existiendo para que el postmortem lo actualice. Lo
 
 ### Límites por archivo
 
-| Archivo | Límite | Por qué |
+Dos cosas distintas, y solo una es negociable. **Física** = el harness trunca o saltea, no hay vuelta. **Nuestro límite** = presupuesto lowcost, siempre muy por debajo de lo que el sistema tolera. Verificado 2026-09-02.
+
+| Archivo | Nuestro límite | Física del sistema |
 |---|---|---|
-| `CLAUDE.md` | < 30 líneas | Se re-inyecta en cada tool call |
-| Hub skill (proyecto con CLAUDE.md) | < 40 líneas | Siempre en contexto — solo triage |
-| Hub skill (plugin sin CLAUDE.md) | < 60 líneas | El hub es el único dispatch — puede llevar un poco más de contexto |
-| Skills de referencia | < 200 líneas | Se cargan bajo demanda |
-| Docs de referencia | < 100 líneas | Se leen completos |
-| Learnings por dominio | < 150 líneas | Se cargan solo cuando aplica |
-| Scope por dominio | < 50 líneas | Deben ser densos y directos |
-| `description` | < 1,536 chars | Límite real del sistema (`maxSkillDescriptionChars` configurable) |
+| `CLAUDE.md` | **< 30 líneas** — se re-inyecta en cada tool call | se saltea **entero** > 4 MiB |
+| Hub skill (con CLAUDE.md / plugin) | < 40 / < 60 líneas | — |
+| Skills de referencia | **< 200 líneas** — una vez cargada queda en contexto **todos los turnos** | — |
+| Docs de referencia · Learnings · Scope | < 100 / < 150 / < 50 líneas | — |
+| `description` + `when_to_use` | caso principal primero | **1.536 chars, trunca** (`skillListingMaxDescChars`) |
+| `.claude/loop.md` | — | **25.000 bytes, trunca en silencio** (§34) |
+| `MEMORY.md` | — | **200 líneas o 25 KB**, el resto no carga (§32) |
+
+> **Sobre las cifras oficiales (< 200 para CLAUDE.md, < 500 para SKILL.md): no son tu presupuesto.** Son el techo de tolerancia para un usuario con una sesión y sin agentes. Nuestro modelo de costo es otro: CLAUDE.md se paga en **cada tool call de cada agente**, y una skill cargada se paga en **cada turno hasta el final de la sesión**. A 200 líneas, un CLAUDE.md cuesta ~1.400t × cada llamada — el mismo archivo que en 30 líneas cuesta ~200t. Usá el oficial para saber cuándo el sistema te va a romper, nunca como meta.
+
+**El presupuesto que nadie ve.** El listado de skills (nombre + description de todas) tiene un presupuesto de caracteres que escala al **1% de la ventana**. Al desbordarse **tira descripciones, empezando por las que menos invocás** — y una skill sin description **deja de auto-invocarse**: Claude sabe que existe, no cuándo usarla. Sin error. Es lo primero a mirar cuando una skill poco usada "dejó de andar".
+
+Palancas: `skillListingBudgetFraction` (o `SLASH_COMMAND_TOOL_CHAR_BUDGET`) para subirlo · `"name-only"` en `skillOverrides` para liberar espacio · recortar en origen.
 
 ### Principios DRY
 
@@ -2199,7 +2204,7 @@ Por defecto, el modelo puede invocar cualquier skill según su `description`. Pa
 | Valor | Claude la ve | Usuario puede `/nombre` | Analogía |
 |---|---|---|---|
 | `"on"` (default) | Nombre + descripción | Sí | Recetario en la repisa con etiqueta y resumen — Claude sabe cuándo abrirlo |
-| `"name-only"` | Solo el nombre | Sí | Recetario con solo el título — Claude sabe que existe pero no cuándo usarlo |
+| `"name-only"` | Solo el nombre | Sí | Recetario con solo el título — Claude sabe que existe pero no cuándo usarlo. **Es además la palanca para liberar presupuesto del listado** cuando tenés muchas skills (§2) |
 | `"user-invocable-only"` | Nada | Sí | Recetario en el cajón — el cocinero (usuario) lo busca, el modelo no lo ve |
 | `"off"` | Nada | No | Recetario en el sótano — nadie lo ve, cero tokens |
 
@@ -5671,7 +5676,7 @@ Skills
 □ Referencias que solo el usuario pide: disable-model-invocation: true
 □ Referencias que un flujo del modelo debe cargar (templates, convenciones): disable-model-invocation: false — con user-invocable: false + disable-model-invocation: true la skill es INALCANZABLE
 □ Frontmatter con ":" dentro de description → quotear (YAML roto = metadata vacía en silencio)
-□ description < 1,536 chars (combined description + when_to_use; configurable con maxSkillDescriptionChars)
+□ description < 1,536 chars (combined description + when_to_use; configurable con skillListingMaxDescChars)
 □ Sin contenido duplicado
 □ Skill con trabajo pesado (> 3 archivos / logs largos) → context: fork con agent: Explore
 □ SKILL.md > 200 líneas → dividir en SKILL.md + reference.md (el directorio como soporte)
