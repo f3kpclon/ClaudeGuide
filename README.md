@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.36 · §26 re-verified (2026-09-02) — **the published code block had been out of sync with the installed hook for two months**: it still read `GUIA = Path(".../guia-agentes-plugins-claude-code.md")`, the single file that stopped existing in the v5.16 split, so anyone copying the recipe built a hook pointing at a file that is not there. The audit only compared KEYWORD_MAP and CAP_CHARS — **new check 10** compares the whole block. Injection physics verified: only `UserPromptSubmit`/`UserPromptExpansion`/`SessionStart`/`PostModelSwitch` turn plain stdout into context; the **timeout is 30 s**, not 10 min; `UserPromptSubmit` **supports no matcher**; `additionalContext` outside `hookSpecificOutput` is **silently ignored**; and an `echo` from your `.zshrc` prepended to stdout can break a JSON-returning hook with nothing reported on exit 0. `SessionStart` has a fifth source, `fork` (§7 and §33 corrected)
+**Author:** Félix Sotelo · **Version:** v5.37 · §21 observability re-verified (2026-09-02) — the section was entirely home-grown methodology and never mentioned the native surface: **`/hooks`** (is it registered?), **`/context`** (did it load?), **`/tasks`** (what is still running?), `/usage`, `/doctor`, and the `InstructionsLoaded` hook. For hooks, **`claude --debug-file <path>` + `tail -f`** beats bare `--debug`: it shows which hooks matched, with exit code, stdout and stderr. **OTel nuanced**: the `console` exporter needs no infrastructure, and its cost/token metrics carry `query_source` (main/subagent/auxiliary), `agent.name`, `skill.name`, `model`, `speed` and `effort` — exactly the breakdown §2/§3/§25 estimate by hand; events carry `prompt.id` to correlate everything one prompt triggered. New **catalogue of 12 harness silent deaths** with a detection method for each, distilled from this round of passes. §21 now has a quick/ref split
 
 ---
 
@@ -48,6 +48,17 @@
 ## What's New
 
 <!-- changelog-insert -->
+
+### v5.37 — observability (2026-09-02)
+
+| Area | Change |
+|---|---|
+| **§21** | The section never mentioned the harness's own instrumentation. Added the "is it alive?" layer: `/hooks` (registered), `/context` → Memory files (loaded), `/tasks` (still running), `/usage`, `/doctor`, and the `InstructionsLoaded` hook |
+| **§21** | For hooks, `claude --debug-file <path>` plus `tail -f` beats bare `--debug`, whose output interleaves with the session. It shows which hooks matched, their exit code, stdout and stderr. `/debug` enables it mid-session |
+| **§21** | OpenTelemetry was dismissed as overkill. True for collectors and dashboards, not for `OTEL_METRICS_EXPORTER=console`, which needs no infrastructure — and its cost/token metrics are tagged by `query_source` (main/subagent/auxiliary), `agent.name`, `skill.name`, `model`, `speed`, `effort`. That is the breakdown §2, §3 and §25 estimate by hand |
+| **§21** | New catalogue of **12 harness silent deaths** with a detection method for each, distilled from this round: `if` on a non-tool event, stdout that stops parsing as JSON, `additionalContext` at the top level, `glob:` instead of `paths:`, a green routine that did nothing, `usage.speed` on Opus 4.6, a cache that never hits, and more |
+
+---
 
 ### v5.36 — the guide's own hook (2026-09-02)
 

@@ -1080,6 +1080,7 @@ Si todavía tenés `anthropics/claude-code-action@beta`:
 
 
 <!-- §21 -->
+<!-- §21-quick -->
 ## 21. Observabilidad y debugging
 
 > En un sistema de agentes, los fallos no lanzan excepciones — producen output incorrecto silenciosamente. La observabilidad no es "¿qué pasó?" sino "¿por qué el agente tomó esta decisión?".
@@ -1092,8 +1093,34 @@ stderr estructurado en hooks
 + learnings como historial de fallos resueltos
 ```
 
-Sin Datadog, sin OpenTelemetry, sin dashboards. Overkill para este tamaño.
+Sin Datadog, sin dashboards, sin colector. Overkill para este tamaño.
 
+### Antes de instrumentar nada: lo que el harness ya te dice
+
+Verificado 2026-09-02. Casi todo lo que esta sección resolvía a mano tiene hoy un comando nativo, y cuesta 0 tokens:
+
+| Pregunta | Comando | Qué responde |
+|---|---|---|
+| ¿Mi hook está **registrado**? | `/hooks` | Todos los hooks configurados, agrupados por evento. Si tu guard no aparece, no existe — no hace falta esperar a que falle un caso real |
+| ¿Mi CLAUDE.md / rules **cargaron**? | `/context` → bloque **Memory files** | Qué archivos de instrucciones entraron en ESTA sesión |
+| ¿Qué recuerda de mí? | `/memory` | Archivos de memoria de todos los alcances |
+| ¿Qué quedó **corriendo**? | `/tasks` | Trabajo en background de la sesión, subagentes terminados incluidos |
+| ¿Cuánto llevo gastado? | `/usage` (alias `/cost`) | Consumo de la sesión — el chequeo de §23 |
+| ¿En qué se me va el contexto? | `/context all` | Desglose por bloque |
+| ¿Mi CLAUDE.md está inflado? | `/doctor` | Propone recortes: corta lo derivable del código, conserva gotchas y convenciones |
+
+**Y para hooks, `--debug` no es la mejor opción.** El output se entrevera con la sesión. La forma buena:
+
+```bash
+claude --debug-file /tmp/claude.log      # y en otra terminal:
+tail -f /tmp/claude.log
+```
+
+Ahí se ve **qué hooks matchearon, su exit code, su stdout y su stderr**. Si ya arrancaste sin el flag, `/debug` a mitad de sesión lo activa y te dice el path del log.
+
+Para instrucciones, existe además el hook **`InstructionsLoaded`** (§7): registra exactamente qué archivos se cargaron, cuándo y por qué — la única vía práctica para debuggear reglas `paths:` y CLAUDE.md anidados que cargan tarde (§32).
+
+<!-- §21-ref -->
 ### Logging en hooks: stderr estructurado
 
 Los hooks imprimen a stderr sin afectar el protocolo JSON de stdout:
@@ -1153,6 +1180,26 @@ echo '{"tool_name":"Write","tool_input":{"file_path":"../../etc/passwd","content
 # JSON con permissionDecision: deny → correcto
 ```
 
+### OpenTelemetry sin infraestructura — `console` no es Datadog
+
+Esta sección descartaba OTel como overkill. Sigue siendo verdad para **dashboards y colectores**. No lo es para el exporter a consola, que no necesita servidor:
+
+```bash
+export CLAUDE_CODE_ENABLE_TELEMETRY=1
+export OTEL_METRICS_EXPORTER=console
+export OTEL_LOGS_EXPORTER=console
+```
+
+Lo que importa acá no es la telemetría en sí — es **qué atributos trae**. `claude_code.cost.usage` y `claude_code.token.usage` vienen etiquetados con:
+
+`model` · `query_source` (**`main` / `subagent` / `auxiliary`**) · `speed` (`fast`/`normal`) · `effort` · `agent.name` · `skill.name` · `plugin.name` · `mcp_server.name` · `mcp_tool.name`
+
+Eso es, literalmente, el desglose que §2, §3 y §25 estiman a mano. **Con esto dejás de estimar y medís**: cuánto costó *ese* agente, *esa* skill, cuánto se fue en subagentes vs el hilo principal, si el `effort: xhigh` de un agente se está pagando. Para una guía cuya tesis entera es eficiencia de tokens, medir el reparto real es la diferencia entre optimizar y adivinar.
+
+Los eventos (`OTEL_LOGS_EXPORTER`) incluyen `claude_code.user_prompt`, `api_request`, `api_error`, `api_refusal`, `tool_result`, `tool_decision`, `permission_mode_changed` y `mcp_server_connection`. **Todos llevan `prompt.id`**, así que se correlaciona todo lo que disparó un solo prompt — que es exactamente la pregunta de la intro de esta sección ("¿por qué el agente tomó esta decisión?").
+
+**Criterio anti-overkill (§14) que sigue vigente:** el exporter `console` para una sesión de diagnóstico puntual, sí. Montar colector, Prometheus y dashboards para un sistema personal, no. Y ojo con `OTEL_LOG_USER_PROMPTS` / `OTEL_LOG_RAW_API_BODIES`: vuelcan prompts y bodies completos — útiles una tarde, nunca prendidos por defecto.
+
 ### Señales de alerta (sin infraestructura)
 
 | Señal | Cómo detectar | Qué indica |
@@ -1162,6 +1209,27 @@ echo '{"tool_name":"Write","tool_input":{"file_path":"../../etc/passwd","content
 | save_learning_safe retorna None | Log a stderr | MONGODB_URI inválida o Atlas caído |
 | BUILD_SPEC sin campo `security:` en proyecto multi-user | Validator lo puede detectar | Architect no aplicó §18 |
 
+### Catálogo de muertes silenciosas del harness — y cómo detectar cada una
+
+La tabla de arriba cubre el proyecto. Esta cubre la plataforma: casos verificados en los que **algo deja de funcionar y se ve idéntico a estar sano**. Cada fila es "cómo sabría que esto está muerto" (§35 #3) con una respuesta concreta.
+
+| Muerte silenciosa | Se ve como | Cómo detectarla |
+|---|---|---|
+| Hook con `if` en un evento que no es de tool | Un guard que nunca dispara | `/hooks` lo lista igual — **hay que correr el caso** y mirar `--debug-file`. Solo vale en los 5 eventos de tool (§7) |
+| Hook JSON cuyo stdout no empieza con `{` (un `echo` del `.zshrc`) | Todo se trata como texto plano; en exit 0 **no se reporta nada** | Solo aparece en el debug log. Fix: envolver los echo del shell en `if [[ $- == *i* ]]` |
+| `additionalContext` al top level en vez de dentro de `hookSpecificOutput` | Se ignora en silencio | El contexto simplemente no llega — comparar con `/context` |
+| Regla de `rules/` con `glob:` en vez de `paths:` | Carga **siempre** en vez de nunca — lo contrario de lo buscado | `/context` → Memory files, o el hook `InstructionsLoaded` (§32) |
+| `skillOverrides` aplicado a una skill de plugin | No hace nada; el hub sigue costando sus tokens | Los overrides de plugin van por `/plugin` (§6) |
+| Agente de plugin con `hooks:`/`mcpServers:`/`permissionMode:` | Corre sin ellos, sin warning | Solo se detecta leyendo la doc — no hay señal en runtime (§11) |
+| Subagente al que le pediste "preguntá si hay dudas" | Adivina en vez de preguntar | `AskUserQuestion` no existe en subagentes (§10). El síntoma es una decisión inventada, no un error |
+| `speed: "fast"` en Opus 4.6 | Corre a velocidad estándar y factura estándar | `response.usage.speed` — dice `"standard"` (§25) |
+| Prompt cache que no está pegando | Todo "funciona", cuesta 10× más | `usage.cache_read_input_tokens` en 0 entre requests repetidos (§3) |
+| Routine cloud que no hace nada | **Status verde** en el dashboard | Verde = la sesión arrancó y salió sin error de infra. Abrir el transcript, o `/schedule why did my routine do nothing` (§30) |
+| `CLAUDE_CODE_SUBAGENT_MODEL` exportado y olvidado | Los agentes corren en otro modelo del que dice su archivo | El atributo `model` de `claude_code.token.usage`, o `/status` (§10) |
+| Skill con `disable-model-invocation: true` usada como prompt agendado | El loop "corre" todos los días sin ejecutar nada | Llega como texto plano, no ejecuta (§34) |
+
+El patrón que comparten: **ninguna produce un error**. Por eso la pregunta útil no es "¿anda?" sino "¿qué vería si estuviera muerto?" — y si la respuesta es "lo mismo que ahora", ese es el hallazgo.
+
 ### Checklist §21
 
 ```
@@ -1169,7 +1237,12 @@ echo '{"tool_name":"Write","tool_input":{"file_path":"../../etc/passwd","content
 □ cli.py chequea .last-session.json al arrancar y advierte si existe
 □ Reproducción de hooks documentada: echo JSON | python hook.py
 □ stop.py ya detecta learnings > 150 líneas — no agregar otro mecanismo
-□ Sin Datadog, sin OpenTelemetry — overkill para este tamaño
+□ Antes de instrumentar: /hooks (registrado), /context (cargado), /tasks (corriendo), /usage (gastado)
+□ Debug de hooks con claude --debug-file <path> + tail -f, no con --debug a secas
+□ OTel: exporter console para diagnóstico puntual (0 infraestructura) — sin colector ni dashboards
+□ Atribución de costo real por agent.name / skill.name / query_source antes de optimizar a ojo (§2, §3)
+□ OTEL_LOG_USER_PROMPTS y OTEL_LOG_RAW_API_BODIES nunca prendidos por defecto — vuelcan todo
+□ Por cada automatización nueva: escribir qué se vería si estuviera muerta. Si es "lo mismo", falta la señal
 □ Atlas failures degradan silenciosamente vía save_learning_safe — correcto
 ```
 
