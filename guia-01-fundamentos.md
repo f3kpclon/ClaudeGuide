@@ -202,6 +202,9 @@ Capa 1 — SIEMPRE en contexto (costo fijo por sesión)
   Agent descriptions  → presentes en el system prompt
   Skill metadata      → 30-50 tokens por skill registrada
                         (user-invocable-only reduce esto a cero para el modelo)
+                        Nota: las cifras en tokens de esta sección son del tokenizer
+                        viejo. En Sonnet 5 / Opus 5 / Fable multiplicá por ~1.3 (→ §3).
+                        Los límites en LÍNEAS de abajo no cambian.
 
 Capa 2 — BAJO DEMANDA (costo variable)
   Gotchas inline      → en el system prompt del agente, cero Read calls
