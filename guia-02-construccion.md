@@ -461,7 +461,7 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 | Evento | Matcher | Cuándo dispara | Uso típico |
 |---|---|---|---|
 | `StopFailure` | Tipo de error | Cuando Claude para por error | Reaccionar a `rate_limit`, `overloaded`, `authentication_failed` |
-| `SessionStart` | `startup\|resume\|clear\|compact` | Al iniciar o retomar sesión | Inyectar contexto inicial, `watchPaths`, `reloadSkills` |
+| `SessionStart` | `startup\|resume\|clear\|compact\|fork` | Al iniciar o retomar sesión | Inyectar contexto inicial, `watchPaths`, `reloadSkills` |
 | `FileChanged` | Nombre de archivo | Archivo vigilado cambia en disco | Recargar `.env`, disparar validaciones externas |
 
 **`PostToolUse` — caso aparte (corregido 2026-07-04):** NO es puramente observacional como los tres de arriba. No puede deshacer la tool (ya se ejecutó), pero SÍ soporta `"decision": "block"` + `"reason"` — un mecanismo real de tercera vía, distinto de `systemMessage`/`additionalContext`: fuerza que el error se muestre a Claude en el mismo turno para que lo corrija. Es exactamente lo que usa el ejemplo "El compilador como juez" más abajo en esta sección. La versión anterior de esta guía clasificaba PostToolUse junto a los observacionales puros — es una simplificación excesiva, no un error de la doc oficial.
@@ -3339,6 +3339,50 @@ El problema: Claude sabe que la guía existe pero necesita inferir cuándo consu
 `UserPromptSubmit` se ejecuta **antes** de que Claude procese el prompt. El stdout del hook se inyecta como contexto en la sesión.
 
 <!-- §26-ref -->
+### La física de la inyección (re-verificado 2026-09-02)
+
+Todo el diseño de este hook depende de un comportamiento puntual, así que conviene tenerlo escrito y con fecha:
+
+**Solo cuatro eventos convierten stdout plano en contexto:** `UserPromptSubmit`, `UserPromptExpansion`, `SessionStart` y `PostModelSwitch`. En cualquier otro evento, imprimir texto a stdout no inyecta nada. Este hook usa el primero.
+
+**Cuatro restricciones que no son obvias:**
+
+| Restricción | Consecuencia |
+|---|---|
+| **Timeout de 30 s**, no los 10 min del resto | Claude Code lo baja específicamente para `UserPromptSubmit`. Un hook que lee y grepea archivos tiene que mantenerse muy por debajo |
+| **`UserPromptSubmit` no soporta matcher** | Siempre dispara, en cada prompt. El filtrado es responsabilidad del script — el KEYWORD_MAP no es una optimización, es *el* mecanismo |
+| Si preferís JSON, **`additionalContext` va anidado en `hookSpecificOutput`** | Ponerlo al top level del JSON **se ignora en silencio** |
+| El texto llega como **system reminder** | Claude lo lee como texto plano. Un hook de comando **no puede** disparar comandos `/` ni tool calls |
+
+> ### ⚠️ La trampa del stdout que empieza con `{`
+>
+> Si tu stdout arranca con `{`, Claude Code intenta parsearlo como JSON. Si el parseo falla **en exit 0, no se reporta nada en el transcript** — queda solo en el debug log. Y hay un modo de romperlo desde afuera: **cualquier `echo` de tu `~/.zshrc` se antepone al stdout del hook**, con lo que el JSON deja de empezar con `{` y todo pasa a tratarse como texto plano.
+>
+> Este hook es inmune por accidente: emite `[Guía §N]`, que nunca parece JSON. Un hook que devuelva JSON, no. El fix del lado del shell:
+> ```bash
+> # en ~/.zshrc o ~/.bashrc
+> if [[ $- == *i* ]]; then echo "Shell ready"; fi   # solo en shells interactivos
+> ```
+
+**Cómo saber que este hook está vivo** (§35 aplicado a sí mismo): `claude --debug-file /tmp/claude.log` y `tail -f` en otra terminal, o `/debug` a mitad de sesión. Ahí se ve qué hooks matchearon, su exit code, su stdout y su stderr. El test manual sigue siendo el más barato:
+
+```bash
+echo '{"prompt":"hook pretooluse guard"}' | python3 ~/.claude/hooks/guia_context.py
+```
+
+Sin output visible = el hook está muerto y la sesión no te lo va a decir.
+
+> **Nota sobre `SessionStart`:** sus valores de `source` son `startup`, `resume`, `clear`, `compact` y **`fork`** — este último faltaba en las versiones anteriores de esta guía (→ §33).
+
+### ¿Y por qué no `.claude/rules/` con `paths:`?
+
+Pregunta razonable después de §32: las reglas path-scoped también cargan solas y también son gratis hasta que aplican. Pero disparan por **archivo tocado**, no por **intención del prompt**. "¿Qué modelo uso para el reviewer?" no toca ningún archivo — no hay glob que matchee una pregunta. Las dos herramientas son complementarias, no alternativas:
+
+| | `rules/` con `paths:` | Este hook |
+|---|---|---|
+| Dispara por | Archivo que Claude lee | Keywords del prompt |
+| Sirve para | Convenciones del código que estás tocando | Consultas sobre cómo construir |
+| Costo si no aplica | 0 | 0 |
 ### Instalación en 3 pasos
 
 **1. Script** → `~/.claude/hooks/guia_context.py`
@@ -3348,20 +3392,22 @@ El problema: Claude sabe que la guía existe pero necesita inferir cuándo consu
 import json, sys, re
 from pathlib import Path
 
-# ← Ajustar con la ruta donde clonaste este repo
-GUIA = Path("~/ruta/a/guia-agentes-plugins-claude-code.md").expanduser()
+# ← Ajustar: directorio donde clonaste este repo
+GUIA_DIR = Path.home() / "Desktop/ClaudeGuide"
+GUIA_FILES = sorted(GUIA_DIR.glob("guia-0*.md"))  # 00-indice, 01-fundamentos, 02-construccion, 03-calidad, 04-avanzado
 MAX_SECTIONS = 2    # máximo de secciones a inyectar por prompt
 CAP_CHARS = 550       # presupuesto de la CÁPSULA para secciones SIN -quick (prosa): corta, fence-safe.
-QUICK_CEILING = 5500  # secciones con -quick: se inyecta el bloque curado COMPLETO (incluye su código);
-                      # si un -quick excede este techo cae a cápsula. Sin -quick: cápsula + puntero sed.
+QUICK_CEILING = 5500  # salvaguarda: un -quick más grande que esto cae a cápsula (evita inyección gigante).
+                      # Secciones con -quick: se inyecta el bloque curado COMPLETO (incluye su código).
+                      # Sin -quick: cápsula del head + puntero sed (progressive disclosure, §35 #2).
 
-# Orden importa: más específico primero.
-# Se recorren TODOS los entries y se acumulan hasta MAX_SECTIONS matches.
+# Orden importa: más específico primero para evitar falsos positivos.
+# Multi-section: se recorren TODOS los entries y se acumulan hasta MAX_SECTIONS matches.
 KEYWORD_MAP = [
-    # §26 — Hook global (específico — antes de §7)
+    # §26 — Hook global de contexto (específico — antes de §7 genérico)
     (["guia_context", "keyword_map", "inyección automática",
       "hook global", "context hook"],                                    26),
-    # §29 — Contexto global propio (específico — antes de §7)
+    # §29 — Contexto global propio (específico — antes de §7 genérico)
     (["contexto global", "~/.claude", "sistema propio",
       "bootstrap", "capas del contexto", "global context"],             29),
     # §5 — Agentes
@@ -3409,7 +3455,7 @@ KEYWORD_MAP = [
       "--debug", "traza", "session file"],                             21),
     # §24 — Factor humano
     (["factor humano", "invocar", "contexto antes"],                    24),
-    # §25 — Modelo correcto
+    # §25 — Modelo correcto (haiku/sonnet/opus/fable + effort + fast mode)
     (["haiku", "sonnet", "opus", "modelo", "effort",
       "xhigh", "security-auditor", "fable", "fast mode",
       "extended context"],                                              25),
@@ -3435,13 +3481,13 @@ KEYWORD_MAP = [
       "glob-scoped", "settings.local", "archivos que nadie",
       "domain rules", "formato de respuesta", ".local.md",
       "nadie documenta"],                                              32),
+    # §3 — Estimados + prompt caching
+    (["presupuesto", "tokens", "costo", "cache", "caching",
+      "ttl", "estimado", "consumo"],                                    3),
     # §22 — Prompt engineering avanzado
     (["few-shot", "enforce format", "format contract",
       "prompt engineering", "anti-alucinación",
       "system prompt budget", "output contract"],                      22),
-    # §3 — Estimados + caching
-    (["presupuesto", "tokens", "costo", "cache", "caching",
-      "ttl", "estimado", "consumo"],                                    3),
     # §17 — Plan / Templates
     (["invocation template", "/plan skill", "plan skill"],             17),
     # §2 — Límites de tamaño
@@ -3455,7 +3501,7 @@ KEYWORD_MAP = [
       "fan-out", "gate entre fases"],                                  35),
 ]
 
-def detect_sections(prompt: str) -> list:
+def detect_sections(prompt: str) -> list[int]:
     p = prompt.lower()
     seen, results = set(), []
     for keywords, n in KEYWORD_MAP:
@@ -3466,21 +3512,30 @@ def detect_sections(prompt: str) -> list:
                 break
     return results
 
+def find_file_for_section(n: int) -> Path | None:
+    marker = f"<!-- §{n} -->"
+    for path in GUIA_FILES:
+        if marker in path.read_text():
+            return path
+    return None
+
 def _has_body(acc):                          # ≥1 línea sustantiva que NO sea el header (##)
     return any(l.strip() and not l.lstrip().startswith("#") for l in acc)
 
+
 def _capsule(body, budget):
-    """Cápsula fence-safe para secciones SIN -quick: salta el código (nunca emite un ```),
-    colapsa blancos, acota por chars. La primera línea de sustancia entra siempre."""
+    """Cápsula fence-safe para secciones SIN -quick: salta los bloques de código
+    (nunca emite un ```), colapsa blancos, acota por chars. La primera línea de
+    sustancia (el blockquote-resumen) entra siempre, aunque sola exceda el budget."""
     out, used, in_fence = [], 0, False
     for line in body:
-        if re.match(r"\s*```", line):
+        if re.match(r"\s*```", line):        # delimitador de fence → nunca se emite
             in_fence = not in_fence
             continue
-        if in_fence:
+        if in_fence:                          # cuerpo de código → se omite
             continue
         if not line.strip() and (not out or not out[-1].strip()):
-            continue
+            continue                          # colapsa blancos consecutivos (huecos de código)
         if line.strip() in ("---", "***", "___"):
             continue
         if _has_body(out) and used + len(line) + 1 > budget:
@@ -3491,10 +3546,15 @@ def _capsule(body, budget):
         out.pop()
     return "\n".join(out).strip() if _has_body(out) else None
 
+
 def build_injection(n: int, budget: int):
-    """Con -quick: inyecta el bloque quick COMPLETO (curado, con su código; balanceado
-    por construcción — el marcador -ref nunca cae dentro de un fence). Sin -quick: cápsula."""
-    lines = GUIA.read_text().splitlines()
+    """Con -quick: inyecta el bloque quick COMPLETO (curado por el autor, con su código;
+    fences balanceados por construcción — el marcador -ref nunca cae dentro de un fence).
+    Sin -quick: cápsula fence-safe de la cabeza. Devuelve (texto, nombre_archivo) o None."""
+    path = find_file_for_section(n)
+    if not path:
+        return None
+    lines = path.read_text().splitlines()
     for anchor, curated in [(f"<!-- §{n}-quick -->", True), (f"<!-- §{n} -->", False)]:
         try:
             start = next(i for i, l in enumerate(lines) if anchor in l) + 1
@@ -3506,17 +3566,19 @@ def build_injection(n: int, budget: int):
                 break
             body.append(line)
         if curated:
-            while body and not body[0].strip(): body.pop(0)
-            while body and not body[-1].strip(): body.pop()
+            while body and not body[0].strip():
+                body.pop(0)
+            while body and not body[-1].strip():
+                body.pop()
             text = "\n".join(body).strip()
-            if len(text) > QUICK_CEILING:         # -quick anómalo → cae a cápsula
+            if len(text) > QUICK_CEILING:        # quick anómalamente grande → cae a cápsula
                 text = _capsule(body, budget)
             if text and _has_body(body):
-                return text
+                return text, path.name
         else:
             text = _capsule(body, budget)
             if text:
-                return text
+                return text, path.name
     return None
 
 try:
@@ -3536,8 +3598,9 @@ parts = []
 for n in sections:
     inj = build_injection(n, CAP_CHARS)
     if inj:
-        pointer = f"↳ §{n} completa: sed -n '/<!-- §{n} -->/,/<!-- §[0-9][0-9]* -->/p' guia-*.md"
-        parts.append(f"[Guía §{n}]\n{inj}\n{pointer}")
+        body, fname = inj
+        pointer = f"↳ §{n} completa: sed -n '/<!-- §{n} -->/,/<!-- §[0-9][0-9]* -->/p' {fname}"
+        parts.append(f"[Guía §{n}]\n{body}\n{pointer}")
 
 if parts:
     print("\n\n".join(parts))
@@ -4458,7 +4521,7 @@ Elegir mal es la diferencia entre esperar un resultado que nunca llega y perder 
 ```
 Patrón real: archivar el estado de un agente largo (checkpoints de delegación, ver §9) antes de que `/compact` automático los resuma y se pierda detalle.
 
-**Hook `SessionStart`** — matcher `startup|resume|clear|compact` distingue **cómo** arrancó la sesión. Sirve para inyectar contexto distinto según el caso: después de un `/clear` no hace falta re-explicar el proyecto (ya está en CLAUDE.md), pero después de un `/compact` puede convenir reinyectar un gotcha que se resumió de más.
+**Hook `SessionStart`** — matcher `startup|resume|clear|compact|fork` distingue **cómo** arrancó la sesión (el source `fork`, para sesiones nacidas de `/fork`, faltaba en versiones anteriores). Sirve para inyectar contexto distinto según el caso: después de un `/clear` no hace falta re-explicar el proyecto (ya está en CLAUDE.md), pero después de un `/compact` puede convenir reinyectar un gotcha que se resumió de más.
 
 **Skills** — un skill es texto que Claude lee, así que puede *recomendar* terminar con `/compact` o `/fork` como parte del flujo ("una vez migrado esto, corré `/compact` antes de seguir"), pero es Claude quien decide emitirlo — no hay forma de forzarlo desde el frontmatter.
 

@@ -217,6 +217,29 @@ def main() -> int:
     for miss in sorted(expected - embedded):
         errors.append(f"§{miss}: sin entry en la copia embebida del KEYWORD_MAP (§26)")
 
+    # --- check 10: el bloque python de §26 == el hook instalado, ENTERO -----
+    # Los checks 1-2 solo miran KEYWORD_MAP y CAP_CHARS. Eso dejó vivir dos meses
+    # un `GUIA = Path(".../guia-agentes-plugins-claude-code.md")` en §26 — la ruta
+    # del archivo único pre-split (v5.16). El KEYWORD_MAP estaba perfecto y la
+    # receta publicada apuntaba a un archivo inexistente. Comparar todo el bloque.
+    if hook_src:
+        block = re.search(r"````python\n(.*?)\n````", all_text, re.S)
+        if not block:
+            errors.append("§26: no encontré el bloque ````python del hook")
+        else:
+            def _norm(src: str) -> list:
+                # ignora la línea-comentario "← Ajustar" que solo existe en la copia publicada
+                return [ln.rstrip() for ln in src.strip().splitlines()
+                        if "← Ajustar" not in ln]
+            pub_lines, inst_lines = _norm(block.group(1)), _norm(hook_src)
+            if pub_lines != inst_lines:
+                first = next((i for i, (a, b) in enumerate(zip(pub_lines, inst_lines)) if a != b),
+                             min(len(pub_lines), len(inst_lines)))
+                errors.append(
+                    f"§26: el bloque publicado divergió del hook instalado "
+                    f"(publicado {len(pub_lines)} líneas vs instalado {len(inst_lines)}; "
+                    f"primera diferencia en la línea {first + 1}) — resincronizar")
+
     # --- versión hub (guia-00-indice.md) == READMEs -------------------------
     hub_text = HUB.read_text() if HUB.exists() else ""
     ver = re.search(r"\*\*Versión:\*\*\s*(v\d+\.\d+)", hub_text)

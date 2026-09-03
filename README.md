@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.35 · §20 §32 re-verified (2026-09-02) — §32 **fixes a bug of its own**: the `.claude/rules/` frontmatter field is **`paths:`**, not `glob:`, and a rule without `paths:` **loads every session** — the old example turned a file meant to save context into one that is always paid for, silently. Adds the real load order (concatenation root→cwd, not override), CLAUDE.md is skipped past **4 MiB**, HTML comments are stripped before injection, `@path` imports **save no tokens**, `claudeMdExcludes` for monorepos, `~/.claude/rules/`, and how to verify what loaded (`/context`, `/memory`, the `InstructionsLoaded` hook). §20: the guide review workflow ran in **automation mode**, so its review landed in the run log rather than the PR — `--comment` and `--allowedTools` are both required; **`id-token: write`** was missing and the action's default auth requires it; **`CLAUDE_CODE_OAUTH_TOKEN` bills against your subscription** instead of the API; actor checks (write access + bots), `plugin_marketplaces`/`plugins` to run a plugin skill in CI, and the `@beta` migration
+**Author:** Félix Sotelo · **Version:** v5.36 · §26 re-verified (2026-09-02) — **the published code block had been out of sync with the installed hook for two months**: it still read `GUIA = Path(".../guia-agentes-plugins-claude-code.md")`, the single file that stopped existing in the v5.16 split, so anyone copying the recipe built a hook pointing at a file that is not there. The audit only compared KEYWORD_MAP and CAP_CHARS — **new check 10** compares the whole block. Injection physics verified: only `UserPromptSubmit`/`UserPromptExpansion`/`SessionStart`/`PostModelSwitch` turn plain stdout into context; the **timeout is 30 s**, not 10 min; `UserPromptSubmit` **supports no matcher**; `additionalContext` outside `hookSpecificOutput` is **silently ignored**; and an `echo` from your `.zshrc` prepended to stdout can break a JSON-returning hook with nothing reported on exit 0. `SessionStart` has a fifth source, `fork` (§7 and §33 corrected)
 
 ---
 
@@ -48,6 +48,18 @@
 ## What's New
 
 <!-- changelog-insert -->
+
+### v5.36 — the guide's own hook (2026-09-02)
+
+| Area | Change |
+|---|---|
+| **§26** | The published recipe still pointed `GUIA` at `guia-agentes-plugins-claude-code.md` — the single file that stopped existing in the v5.16 split two months earlier. Copying it produced a hook aimed at a missing file, whose only symptom is stderr noise |
+| **tools/** | The audit compared only `KEYWORD_MAP` and `CAP_CHARS`, which is why the stale path survived: the map was perfect and the recipe was broken. **New check 10** diffs the whole published block against the installed hook |
+| **§26** | Only `UserPromptSubmit`, `UserPromptExpansion`, `SessionStart` and `PostModelSwitch` turn plain stdout into context. The `UserPromptSubmit` timeout is **30 s**, not the usual 10 minutes, and the event **supports no matcher** — filtering is the script's job |
+| **§26** | `additionalContext` placed at the top level instead of inside `hookSpecificOutput` is **silently ignored**. And an `echo` in your shell profile prepends to hook stdout, so a JSON-returning hook stops parsing as JSON with nothing reported on exit 0 |
+| **§7 §33** | `SessionStart` has a fifth `source` value: `fork` |
+
+---
 
 ### v5.35 — CI and the rest of `.claude/` (2026-09-02)
 
