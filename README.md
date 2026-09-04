@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.39 · **New §36 — LSP, the compiler's code intelligence** (verified live 2026-09-04). Claude Code ships a native `LSP` tool with 9 semantic operations, but **it fails silently**: a server without a loaded index does not error, it **answers empty** — `findReferences` returned "No references found" for a symbol that minutes later returned 3 references, and at that same moment `incomingCalls` on the same symbol answered correctly. An LSP zero is indistinguishable from a true zero. The section adds the decision table **indexer to locate · grep for text · LSP to decide**, the full `lspServers` schema (including `restartOnCrash`, `maxRestarts` and `diagnostics`, which injects compiler diagnostics into context after every edit), recipes for **Swift 6** (blast radius before `@MainActor`/`Sendable`), **Godot/GDScript** (TCP-only on 6005 vs stdio, and it lies completely with the editor closed) and **Python/TS**, plus `tools/probe_lsp.py` — the positive control that tells "no usages" apart from "no index"
+**Author:** Félix Sotelo · **Version:** v5.40 · **§36 — LSP is optional, and it depends on the language** (verified 2026-09-04). New per-language decision table: Python/TS/Go/Rust index on their own; Swift with SwiftPM works after `swift build`; an **`.xcodeproj` with no `buildServer.json` is degraded** — measured on a real iOS app, `documentSymbol` returned the full file map while `findReferences` on the struct declared in that same file (used across 4 files per grep) returned **0 after 30 seconds**; Godot barely works. Three environments where the tool **does not exist**: cloud sessions (§30), `claude --bare`, and any host without the binary — hence the design rule **LSP reinforces the judge, it is never the only judge**. Also: servers are enabled per plugin with `--scope project|local`, and **a `rule` cannot enable one** (it stays inactive, with no error). And in §5: **`tools:` is a closed allowlist that hides capabilities added later** — installing the language plugin does nothing for an agent whose frontmatter says `tools: Read, Glob, Grep`
 
 ---
 
@@ -48,6 +48,18 @@
 ## What's New
 
 <!-- changelog-insert -->
+
+### v5.40 — LSP, conditional (2026-09-04)
+
+| Area | Change |
+|---|---|
+| **§36** | **LSP is optional, and the language decides.** New table: Python/TypeScript/Go/Rust index on their own; Swift via SwiftPM works after `swift build`; a Swift `.xcodeproj` without `buildServer.json` is **degraded**; GDScript barely works. In the degraded cases you still get `documentSymbol`, `hover` and `goToDefinition` — what you cannot do is believe an empty `findReferences`. |
+| **§36** | **Measured on a real iOS app** (`.xcodeproj`, no `buildServer.json`): `documentSymbol` returned the complete file map, and `findReferences` on the struct declared in that same file — used across 4 files per grep — returned **0 after 30 seconds of retrying**. Same server, same file, opposite trustworthiness. |
+| **§36** | **Three environments where the LSP tool does not exist**: cloud sessions (Claude Code on the web / scheduled cloud agents), `claude --bare`, and any host missing the binary. Design rule that follows: **LSP reinforces the judge, it is never the only judge** — the grep + compiler path stays intact underneath. |
+| **§36** | Servers are enabled **per plugin, with scope**: `claude plugin install <lsp>@claude-plugins-official --scope project` (or `--scope local`). **A `rule` cannot enable the tool** — `.claude/rules/*.md` are instructions, not capability config, so a rule telling Claude to use `findReferences` with no plugin installed is a silent no-op. |
+| **§36** | Reading diagnostics yourself: **Ctrl+O** on the "Found N new diagnostic issues" indicator. Official caveats added: `rust-analyzer` and `pyright` memory use on large projects, and false-positive unresolved imports in monorepos. |
+| **§5** | **`tools:` is a closed allowlist, and it hides capabilities added later.** An agent declaring `tools: Read, Glob, Grep` never gets `LSP`, no matter which language plugin is installed — it does not complain, it just falls back to grep. When you add a capability to a project, review the agents that should be using it. |
+| **§30** | Cloud runs do not start plugin language servers, so an agent that depends on `findReferences` to decide works locally and degrades silently in the cloud. |
 
 ### v5.39 — LSP (2026-09-04)
 

@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.39 · **§36 nueva — LSP, la inteligencia de código del compilador** (verificado en vivo 2026-09-04). Claude Code trae una tool `LSP` nativa con 9 operaciones semánticas, pero **su fallo es silencioso**: un servidor sin índice cargado no falla, **contesta vacío** — `findReferences` devolvió "No references found" sobre un símbolo que minutos después dio 3 referencias, y en ese mismo instante `incomingCalls` sobre el mismo símbolo respondía correcto. Un 0 de LSP es indistinguible de un 0 verdadero. La sección trae la tabla de decisión **indexer para ubicar · grep para texto · LSP para decidir**, el schema completo de `lspServers` (incluidos `restartOnCrash`, `maxRestarts` y `diagnostics`, que inyecta diagnósticos del compilador en contexto por cada edición), recetas para **Swift 6** (blast radius antes de `@MainActor`/`Sendable`), **Godot/GDScript** (TCP-only en 6005 vs stdio, y miente entero con el editor cerrado) y **Python/TS**, más `tools/probe_lsp.py` — el control positivo que distingue "no hay usos" de "no hay índice"
+**Versión:** v5.40 · **§36 — LSP es opcional, y depende del lenguaje** (verificado 2026-09-04). Nueva tabla de decisión por lenguaje: Python/TS/Go/Rust indexan solos; Swift con SwiftPM anda tras `swift build`; un **`.xcodeproj` sin `buildServer.json` queda degradado** — medido en una app iOS real, `documentSymbol` devolvió el mapa completo y `findReferences` sobre el struct declarado ahí mismo (usado en 4 archivos según grep) devolvió **0 tras 30 segundos**; Godot casi no. Tres entornos donde la tool **no existe**: sesiones cloud (§30), `claude --bare`, y sin el binario — de ahí la regla de diseño **LSP como refuerzo del juez, nunca como el juez único**. Además: el servidor se enciende por plugin con `--scope project|local`, y **una `rule` no puede habilitarlo** (queda inactiva, sin error). Y en §5: **`tools:` es una allowlist cerrada que tapa las capacidades que aparecen después** — instalar el plugin del lenguaje no alcanza si el agente dice `tools: Read, Glob, Grep`
 
 ---
 
@@ -832,6 +832,8 @@ Si un comando falla:
 3. Si falla de nuevo → parar y reportar al usuario
 ```
 
+> **`tools:` es una allowlist cerrada: tapa lo que aparezca después.** Una capacidad que habilites más tarde en el proyecto —hoy el caso típico es `LSP` (§36)— no llega a un agente que declara `tools: Read, Glob, Grep`. No se queja: resuelve con grep y listo.
+
 **Ejemplo completo — security-auditor:**
 
 ```markdown
@@ -979,6 +981,7 @@ tools: Agent(worker, researcher)       # allowlist de qué subagentes puede spaw
 tools: Agent                           # puede spawnar cualquier subagente sin restricción
 # Si Agent está ausente de tools → el agente no puede spawnar subagentes en absoluto
 ```
+> **Una allowlist cerrada tapa las tools que aparecen después.** Si el agente declara `tools:` explícito, todo lo que no esté listado no existe para él — incluidas las que se habilitan por plugin. El caso típico hoy es **`LSP`** (§36): instalar el plugin del lenguaje no alcanza si el agente dice `tools: Read, Glob, Grep`. Silencioso por partida doble: el agente no se queja, simplemente resuelve con grep. Al agregar una capacidad nueva al proyecto, revisá los `tools:` de los agentes que deberían usarla.
 
 **`disallowedTools` — denylist (se aplica antes que `tools`):**
 ```yaml
@@ -3547,6 +3550,20 @@ Claude Code trae una tool `LSP` nativa — no es MCP ni plugin de terceros. Nuev
 
 `documentSymbol` sobre un archivo de 400 líneas devuelve ~15 líneas de mapa. Leerlo entero para lo mismo son ~4.000t: es la orientación más barata que existe (§2).
 
+### Es opcional — y depende del lenguaje
+
+LSP no es una mejora universal. Lo que decide si vale la pena es una sola cosa: **si ese servidor puede armar el índice sin trabajo extra tuyo.**
+
+| Lenguaje | Servidor | Estado real |
+|---|---|---|
+| Python · TypeScript · Go · Rust | pyright · typescript-language-server · gopls · rust-analyzer | **Directo** — indexan solos, sin build previo |
+| Swift (SwiftPM) | sourcekit-lsp | **Directo tras `swift build`** — el índice sale del build |
+| Swift (`.xcodeproj`) | sourcekit-lsp | **Degradado** — sin `buildServer.json` las ops de índice devuelven vacío |
+| GDScript (Godot) | el del editor | **Casi no** — TCP-only, necesita puente y el editor abierto |
+| Markdown · config · shell | — | **No aplica** — grep es la herramienta correcta |
+
+En "degradado" y "casi no" el plugin igual te deja `documentSymbol`, `hover` y `goToDefinition` — que no dependen del índice y ya sirven para orientarse. Lo que **no** podés es creerle a un `findReferences` vacío.
+
 ### El fallo silencioso: un LSP sin índice contesta vacío
 
 Verificado en vivo 2026-09-04 con `sourcekit-lsp`. Las **mismas llamadas, misma posición**, minutos de diferencia:
@@ -3609,6 +3626,27 @@ Las tres variables de plugin (`${CLAUDE_PLUGIN_ROOT}` y compañía) se sustituye
 
 `pyright-lsp` · `typescript-lsp` · `rust-analyzer-lsp` · `gopls-lsp` · `clangd-lsp` · `jdtls-lsp` · `kotlin-lsp` · `ruby-lsp` · `php-lsp` · `lua-lsp` · `csharp-lsp` · `swift-lsp`. Cada uno **solo configura la conexión**: el binario va aparte (`pip install pyright`, `npm i -g typescript-language-server typescript`, `rustup component add rust-analyzer`, Xcode o `brew install swift`).
 
+### Dónde se enciende — y dónde no existe
+
+El servidor se registra **por plugin**, y el plugin se instala con alcance:
+
+```bash
+claude plugin install pyright-lsp@claude-plugins-official --scope project  # .claude/settings.json — todo el equipo
+claude plugin install pyright-lsp@claude-plugins-official --scope local    # .claude/settings.local.json — solo vos, solo este repo
+```
+
+> **Una `rule` no puede habilitar LSP.** `.claude/rules/*.md` (§32) son instrucciones, no configuración de capacidades: la tool queda **inactiva** hasta que un plugin registre un servidor para ese lenguaje. Una regla que diga "usá `findReferences`" sin plugin no falla — es un no-op. Las dos piezas son complementarias: el plugin hace que la tool exista, la regla dice cuándo usarla.
+
+**Tres entornos donde la tool no existe**, y hay que diseñar para ellos:
+
+- **Sesiones cloud** (Claude Code on the web, CCR → §30): Claude Code **no arranca los language servers de plugins**. Un flujo que dependa de LSP degrada ahí sin avisar.
+- **`claude --bare`**: modo mínimo, saltea hooks, LSP y plugins.
+- **Cualquier host sin el binario instalado** — el plugin no lo trae.
+
+Por eso la regla de diseño es: **LSP como refuerzo del juez, nunca como el juez único.** El camino grep + compilador tiene que seguir intacto debajo.
+
+Los diagnósticos que el servidor inyecta los podés leer vos con **Ctrl+O** cuando aparece el indicador *"Found N new diagnostic issues in M files"*. Dos avisos oficiales: `rust-analyzer` y `pyright` consumen memoria seria en proyectos grandes (`/plugin disable` si molesta), y en monorepos pueden reportar imports internos como no resueltos — falsos positivos que no afectan la edición.
+
 ### Lo que rompe un servidor en silencio
 
 Claude Code lee el **stdout del servidor como protocolo puro**. Un solo log a stdout lo desconecta, y **eso cuenta como crash** para `restartOnCrash`/`maxRestarts`. Los logs van a **stderr**. Límites: headers ≤ 64 KiB, cuerpo ≤ 32 MiB — pasarse desconecta.
@@ -3624,7 +3662,9 @@ El caso donde LSP se paga solo. `swiftLanguageMode` es **por-target** desde tool
 1. **Blast radius antes de tocar.** Antes de marcar un tipo `Sendable` o un método `@MainActor`/`nonisolated`: `findReferences` sobre el símbolo + `incomingCalls` sobre el método. Es exactamente la pregunta que grep contesta mal — un `func send(` tiene homónimos en cinco módulos, y el símbolo no.
 2. **`goToImplementation` sobre el protocolo** lista los conformances reales que van a heredar la restricción de aislamiento.
 3. **Los errores de data-race llegan solos.** Con `diagnostics: true`, los diagnósticos de strict concurrency entran al contexto por edición, sin ciclo `swift build` — el compilador como revisor continuo.
-4. **Gotcha:** `sourcekit-lsp` depende del índice del build. En un target recién tocado, el primer `findReferences` puede volver vacío. Control positivo antes de creerle.
+4. **Gotcha 1 — el índice llega tarde.** `sourcekit-lsp` depende del índice del build. En un target recién tocado, el primer `findReferences` puede volver vacío. Control positivo antes de creerle.
+5. **Gotcha 2 — un `.xcodeproj` no alcanza.** SwiftPM le da build settings a `sourcekit-lsp` solo; un proyecto Xcode necesita un `buildServer.json` (lo genera `xcode-build-server`). Sin él las ops de índice devuelven vacío **siempre**, no "todavía".
+   > **Medido 2026-09-04** en una app iOS real (`.xcodeproj`, sin `buildServer.json`): `documentSymbol` devolvió el mapa completo del archivo, y `findReferences` sobre el `struct` declarado ahí mismo —usado en 4 archivos según grep— devolvió **0 tras 30 segundos de reintento**. Las dos respuestas, del mismo servidor, sobre el mismo archivo.
 
 ### Receta 2 — Godot / GDScript
 
@@ -3659,9 +3699,11 @@ Orden de trabajo: `search_index` para llegar al archivo → `documentSymbol` par
 |---|---|---|
 | Binario ausente | nada; el plugin "no hace nada" | `/plugin` → Errors: `Executable not found in $PATH` |
 | Índice no cargado | `No references found` | control positivo sobre símbolo con usos conocidos |
+| Xcode sin `buildServer.json` | `No references found` **siempre** | ¿hay `Package.swift`? si no, falta el build server |
 | Log a stdout | el servidor se cae y reinicia en loop | `claude --debug-file` → el error nombra la causa |
 | Colisión de extensión | un servidor nunca corre | aviso en `/plugin` con el plugin ganador |
 | Editor de Godot cerrado | vacío en todas las operaciones | abrir el editor y repetir la misma llamada |
+| Sesión cloud o `--bare` | la tool `LSP` no existe | ahí no se arrancan servers de plugin — por diseño |
 | Extensión sin servidor | `No LSP server available for file type: .xx` | único caso que **sí** falla ruidoso |
 
 ### El verificador
@@ -5315,6 +5357,7 @@ Es exactamente la muerte silenciosa de §35 aplicada a la nube: el dashboard ver
 
 - **Corre autónoma: no hay permission mode ni prompts de aprobación.** Puede correr comandos de shell y usar cualquier tool de los connectors incluidos, escrituras incluidas.
 - **Todos tus connectors se incluyen por default** al crear la routine. Sacá los que no necesite: cada uno es superficie de escritura sin confirmación.
+- **Los language servers de plugins no arrancan en la nube** — la tool `LSP` no existe en una corrida cloud (§36). Un agente que dependa de `findReferences` para decidir funciona local y degrada en silencio acá: dejá el camino grep + compilador intacto debajo.
 - Los MCP que agregaste local con `claude mcp add` **no aparecen** — viven en tu máquina, no en tu cuenta claude.ai. Para usarlos: agregarlos como connector, o declararlos en un `.mcp.json` commiteado al repo.
 - **Todo lo que haga aparece como vos**: los commits y PRs llevan tu usuario de GitHub; los mensajes de Slack o tickets de Linear, tus cuentas.
 - Los repos se clonan **desde la rama default** en cada corrida. Claude pushea a ramas con prefijo `claude/`, que siempre se aceptan; un push a otra rama se **rechaza** si está protegida, si otra persona tiene un PR abierto desde ella, o si tiene commits de alguien más.
