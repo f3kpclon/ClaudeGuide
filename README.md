@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.38 · §2 per-file limits re-verified against the official docs (2026-09-02) — the table now separates **what the harness enforces from what this guide recommends**: official CLAUDE.md guidance is <200 lines (with a hard skip past 4 MiB), official SKILL.md is <500; the <30 and <200 here are a lowcost stance, not a platform limit. **The hidden skill-listing budget**: Claude Code loads every skill's name and description under a budget that scales at 1% of the context window, and on overflow it **drops descriptions starting with the skills you invoke least* — a skill without its description stops being auto-invoked, with no error. Levers: `skillListingBudgetFraction`, `SLASH_COMMAND_TOOL_CHAR_BUDGET`, and `name-only` in `skillOverrides`. Fixed the description-cap setting name: it is **`skillListingMaxDescChars`**, not `maxSkillDescriptionChars` (§2 and §13)
+**Author:** Félix Sotelo · **Version:** v5.39 · **New §36 — LSP, the compiler's code intelligence** (verified live 2026-09-04). Claude Code ships a native `LSP` tool with 9 semantic operations, but **it fails silently**: a server without a loaded index does not error, it **answers empty** — `findReferences` returned "No references found" for a symbol that minutes later returned 3 references, and at that same moment `incomingCalls` on the same symbol answered correctly. An LSP zero is indistinguishable from a true zero. The section adds the decision table **indexer to locate · grep for text · LSP to decide**, the full `lspServers` schema (including `restartOnCrash`, `maxRestarts` and `diagnostics`, which injects compiler diagnostics into context after every edit), recipes for **Swift 6** (blast radius before `@MainActor`/`Sendable`), **Godot/GDScript** (TCP-only on 6005 vs stdio, and it lies completely with the editor closed) and **Python/TS**, plus `tools/probe_lsp.py` — the positive control that tells "no usages" apart from "no index"
 
 ---
 
@@ -48,6 +48,17 @@
 ## What's New
 
 <!-- changelog-insert -->
+
+### v5.39 — LSP (2026-09-04)
+
+| Area | Change |
+|---|---|
+| **§36** | **New section: LSP — the compiler's code intelligence.** Claude Code ships a native `LSP` tool (9 operations: definition, hover, references, document/workspace symbols, implementation, call hierarchy in both directions). The guide only mentioned `lspServers` from the plugin-author angle; §36 covers using it. |
+| **§36** | **The silent failure, reproduced live.** A language server whose index is not loaded does not error — it answers empty. The same `findReferences` call, same position, returned "No references found" and then 3 references minutes later; at the moment it returned nothing, `incomingCalls` on the same symbol answered correctly. **An LSP zero is indistinguishable from a true zero**, so never act on one without a positive control. |
+| **§36** | Three-way decision table: **codebase-indexer to locate · grep for text · LSP to decide**. Both the indexer (stale DB reported as `current`) and LSP (cold index) fail by returning empty, so they share one protocol for negatives. |
+| **§36** | Full `lspServers` schema verified against the official docs and the v2.1.261 binary, including `restartOnCrash`, `maxRestarts`, `shutdownTimeout` (v2.1.205+) and `diagnostics` — which injects compiler diagnostics into context **after every edit**, paid per edit. There is **no `lspServers` key in `settings.json`**: it goes through a plugin. |
+| **§36** | Per-language recipes: **Swift 6** (blast radius via `findReferences`/`incomingCalls` before `@MainActor`/`Sendable`, per-target `swiftLanguageMode`), **Godot/GDScript** (TCP-only on port 6005 against a stdio-only host, and the double silent death when the editor is closed), **Python/TypeScript**. |
+| **`tools/probe_lsp.py`** | New. Speaks LSP over stdio directly: checks every configured server's binary, completes the `initialize` handshake to read its real capabilities, flags extension collisions, and `--refs` runs a real `textDocument/references` with retry — measured 0 references on the first attempt and 2 after 6 seconds of indexing on the same symbol. |
 
 ### v5.38 — per-file limits (2026-09-02)
 

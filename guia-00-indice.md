@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.38 · §2 límites por archivo re-verificados contra la doc oficial (2026-09-02) — la tabla ahora distingue **lo que impone el harness de lo que recomienda esta guía**: CLAUDE.md oficial son <200 líneas (y hard skip pasando 4 MiB), SKILL.md oficial son <500; los <30 y <200 de acá son postura lowcost, no límite de plataforma. **Presupuesto oculto del listado de skills**: Claude Code carga nombre+description de todas las skills con un presupuesto que escala al 1% de la ventana, y al desbordarse **tira descripciones empezando por las que menos usás** — una skill sin description deja de auto-invocarse, sin error. Palancas: `skillListingBudgetFraction`, `SLASH_COMMAND_TOOL_CHAR_BUDGET`, y `name-only` en `skillOverrides`. Corregido el nombre del setting del cap de description: es **`skillListingMaxDescChars`**, no `maxSkillDescriptionChars` (§2 y §13) — 2026-09-02
+**Versión:** v5.39 · **§36 nueva — LSP, la inteligencia de código del compilador** (verificado en vivo 2026-09-04). Claude Code trae una tool `LSP` nativa con 9 operaciones semánticas, pero **su fallo es silencioso**: un servidor sin índice cargado no falla, **contesta vacío** — `findReferences` devolvió "No references found" sobre un símbolo que minutos después dio 3 referencias, y en ese mismo instante `incomingCalls` sobre el mismo símbolo respondía correcto. Un 0 de LSP es indistinguible de un 0 verdadero. La sección trae la tabla de decisión **indexer para ubicar · grep para texto · LSP para decidir**, el schema completo de `lspServers` (incluidos `restartOnCrash`, `maxRestarts` y `diagnostics`, que inyecta diagnósticos del compilador en contexto por cada edición), recetas para **Swift 6** (blast radius antes de `@MainActor`/`Sendable`), **Godot/GDScript** (TCP-only en 6005 vs stdio, y miente entero con el editor cerrado) y **Python/TS**, más `tools/probe_lsp.py` — el control positivo que distingue "no hay usos" de "no hay índice"
 
 ---
 
@@ -45,6 +45,7 @@
 | Integrar /rewind, /fork, /compact con hooks | §33 — comandos nativos y sus límites reales |
 | Correr un prompt en loop / polling / babysitting | §34 — `/loop`, `ScheduleWakeup`, `Monitor`, apagado sin quemar tokens |
 | Orquestar un pipeline con gates entre fases | §35 — patrón harness, comando orquestador vs lead |
+| Saber quién usa un símbolo antes de tocarlo | §36 — LSP: las 9 operaciones, recetas por lenguaje, y por qué un 0 no es un 0 |
 
 ---
 
@@ -76,6 +77,7 @@
 - [§30 — Cloud Agents programados — /schedule y /web-setup](guia-02-construccion.md#30-cloud-agents-programados--schedule-y-web-setup)
 - [§33 — Comandos nativos (rewind, clear, compact, fork) + integración con hooks](guia-02-construccion.md#33-comandos-nativos--rewind-clear-compact-fork-y-su-integración-con-agenteshooks)
 - [§34 — Loops y tareas programadas (/loop, ScheduleWakeup, Monitor)](guia-02-construccion.md#34-loops-y-tareas-programadas--loop-schedulewakeup-monitor)
+- [§36 — LSP: inteligencia de código del compilador](guia-02-construccion.md#36-lsp--inteligencia-de-código-del-compilador)
 
 ### Calidad y eficiencia
 - [§14 — Guía anti-overkill](guia-03-calidad.md#14-guía-anti-overkill)
@@ -102,7 +104,7 @@
 | Archivo | Contenido |
 |---|---|
 | `guia-01-fundamentos.md` | 01 · Fundamentos — §4, §1, §2, §25, §24 |
-| `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §31, §32, §17, §26, §27, §28, §29, §30, §33, §34 |
+| `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §36, §31, §32, §17, §26, §27, §28, §29, §30, §33, §34 |
 | `guia-03-calidad.md` | 03 · Calidad y eficiencia — §14, §12, §13, §23, §3 |
 | `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §35, §15 |
 

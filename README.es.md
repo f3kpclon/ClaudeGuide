@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.38 · §2 límites por archivo re-verificados contra la doc oficial (2026-09-02) — la tabla ahora distingue **lo que impone el harness de lo que recomienda esta guía**: CLAUDE.md oficial son <200 líneas (y hard skip pasando 4 MiB), SKILL.md oficial son <500; los <30 y <200 de acá son postura lowcost, no límite de plataforma. **Presupuesto oculto del listado de skills**: Claude Code carga nombre+description de todas las skills con un presupuesto que escala al 1% de la ventana, y al desbordarse **tira descripciones empezando por las que menos usás** — una skill sin description deja de auto-invocarse, sin error. Palancas: `skillListingBudgetFraction`, `SLASH_COMMAND_TOOL_CHAR_BUDGET`, y `name-only` en `skillOverrides`. Corregido el nombre del setting del cap de description: es **`skillListingMaxDescChars`**, no `maxSkillDescriptionChars` (§2 y §13) — 2026-09-02
+**Versión:** v5.39 · **§36 nueva — LSP, la inteligencia de código del compilador** (verificado en vivo 2026-09-04). Claude Code trae una tool `LSP` nativa con 9 operaciones semánticas, pero **su fallo es silencioso**: un servidor sin índice cargado no falla, **contesta vacío** — `findReferences` devolvió "No references found" sobre un símbolo que minutos después dio 3 referencias, y en ese mismo instante `incomingCalls` sobre el mismo símbolo respondía correcto. Un 0 de LSP es indistinguible de un 0 verdadero. La sección trae la tabla de decisión **indexer para ubicar · grep para texto · LSP para decidir**, el schema completo de `lspServers` (incluidos `restartOnCrash`, `maxRestarts` y `diagnostics`, que inyecta diagnósticos del compilador en contexto por cada edición), recetas para **Swift 6** (blast radius antes de `@MainActor`/`Sendable`), **Godot/GDScript** (TCP-only en 6005 vs stdio, y miente entero con el editor cerrado) y **Python/TS**, más `tools/probe_lsp.py` — el control positivo que distingue "no hay usos" de "no hay índice"
 
 ---
 
@@ -49,6 +49,7 @@
 | Integrar /rewind, /fork, /compact con hooks | §33 — comandos nativos y sus límites reales |
 | Correr un prompt en loop / polling / babysitting | §34 — `/loop`, `ScheduleWakeup`, `Monitor`, apagado sin quemar tokens |
 | Orquestar un pipeline con gates entre fases | §35 — patrón harness, comando orquestador vs lead |
+| Saber quién usa un símbolo antes de tocarlo | §36 — LSP: las 9 operaciones, recetas por lenguaje, y por qué un 0 no es un 0 |
 
 ---
 
@@ -80,6 +81,7 @@
 - [§30 — Cloud Agents programados — /schedule y /web-setup](guia-02-construccion.md#30-cloud-agents-programados--schedule-y-web-setup)
 - [§33 — Comandos nativos (rewind, clear, compact, fork) + integración con hooks](guia-02-construccion.md#33-comandos-nativos--rewind-clear-compact-fork-y-su-integración-con-agenteshooks)
 - [§34 — Loops y tareas programadas (/loop, ScheduleWakeup, Monitor)](guia-02-construccion.md#34-loops-y-tareas-programadas--loop-schedulewakeup-monitor)
+- [§36 — LSP: inteligencia de código del compilador](guia-02-construccion.md#36-lsp--inteligencia-de-código-del-compilador)
 
 ### Calidad y eficiencia
 - [§14 — Guía anti-overkill](guia-03-calidad.md#14-guía-anti-overkill)
@@ -106,7 +108,7 @@
 | Archivo | Contenido |
 |---|---|
 | `guia-01-fundamentos.md` | 01 · Fundamentos — §4, §1, §2, §25, §24 |
-| `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §31, §32, §17, §26, §27, §28, §29, §30, §33, §34 |
+| `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §36, §31, §32, §17, §26, §27, §28, §29, §30, §33, §34 |
 | `guia-03-calidad.md` | 03 · Calidad y eficiencia — §14, §12, §13, §23, §3 |
 | `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §35, §15 |
 
@@ -3214,7 +3216,7 @@ Atrapa las tres clases de error que fallan **en silencio** en runtime: manifest 
 
 ### Componentes soportados — whitelist cerrada
 
-`skills/` · `commands/` · `agents/` · `workflows/` · `hooks/` · `.mcp.json` · `output-styles/` · `lspServers` (`.lsp.json`) · `themes` (experimental) · `monitors` · `bin/` · `settings.json` (solo las claves `agent` y `subagentStatusLine`). Nada más:
+`skills/` · `commands/` · `agents/` · `workflows/` · `hooks/` · `.mcp.json` · `output-styles/` · `lspServers` (`.lsp.json` — usarlo: §36) · `themes` (experimental) · `monitors` · `bin/` · `settings.json` (solo las claves `agent` y `subagentStatusLine`). Nada más:
 
 - **`workflows/` existe desde 2026-09** — scripts de workflow, reemplaza el default si lo declarás en el manifest.
 - **`bin/` tiene una advertencia oficial nueva: "not for distributed plugins"** (verificado 2026-09-02). Sirve para desarrollo local, pero no confíes en él para un plugin que va a instalar otra gente.
@@ -3495,7 +3497,7 @@ _PLAN_FLAG = Path.home() / ".claude" / f"design-plan-approved-{_proj}.flag"
 El frontmatter de un agente de plugin acepta `name`, `description`, `model`, `effort`, `maxTurns`, `tools`, `disallowedTools`, `skills`, `memory`, `background` e `isolation` (único valor soportado: `"worktree"`). Los 3 campos prohibidos son los de arriba.
 
 **LSP: tres cosas que no se anuncian.**
-Solo el transport `stdio` se usa de verdad (Claude Code configura `socket` pero no lo usa). El binario del language server **lo instala el usuario** — el plugin solo configura la conexión, así que un `.lsp.json` correcto con el binario ausente no hace nada. Y si dos servidores declaran la misma extensión, **arranca solo el primero registrado**; el resto nunca corre.
+Solo el transport `stdio` se usa de verdad (Claude Code configura `socket` pero no lo usa). El binario del language server **lo instala el usuario** — el plugin solo configura la conexión, así que un `.lsp.json` correcto con el binario ausente no hace nada. Y si dos servidores declaran la misma extensión, **arranca solo el primero registrado**; el resto nunca corre. Esto es cómo se **declara** un servidor; **cómo se usa** —las 9 operaciones, recetas por lenguaje y el vacío que devuelve cuando no hay índice— está en §36.
 
 **Monitors: interactive-CLI únicamente, y sin sandbox.**
 Campos requeridos `name`, `command`, `description` (opcional `when`). Corre como proceso en background y sus líneas de stdout llegan como notificaciones. Se **saltea entero** en hosts sin tool Monitor — o sea que un plugin que dependa de un monitor para algo importante no funciona en la mitad de los entornos.
@@ -3514,6 +3516,171 @@ Sin instrucción de "no leas componentes existentes", el modelo lee 2-4 archivos
 
 ---
 
+
+<!-- §36 -->
+<!-- §36-quick -->
+## 36. LSP — inteligencia de código del compilador
+
+> Llegaste aquí porque necesitás saber quién usa un símbolo antes de tocarlo, y grep te está mintiendo. `grep` responde sobre **texto**: te devuelve comentarios, strings y la función homónima de otro módulo. LSP responde sobre el **programa**: sale del compilador.
+
+Claude Code trae una tool `LSP` nativa — no es MCP ni plugin de terceros. Nueve operaciones, coordenadas **1-based** (línea y carácter, como los muestra el editor):
+
+| Operación | Responde |
+|---|---|
+| `goToDefinition` · `hover` | dónde se define · tipo y doc |
+| `findReferences` | todos los usos reales del símbolo |
+| `documentSymbol` | mapa de un archivo (clases, funciones, línea de cada una) |
+| `workspaceSymbol` | buscar símbolo en todo el proyecto (pasar `query` — vacío devuelve nada) |
+| `goToImplementation` | implementaciones de una interfaz/protocolo |
+| `prepareCallHierarchy` | ancla el ítem de jerarquía en una posición |
+| `incomingCalls` · `outgoingCalls` | quién me llama · a quién llamo |
+
+### Cuál de las tres, y cuándo
+
+| Pregunta | Herramienta | Por qué |
+|---|---|---|
+| ¿Dónde vive esto? | `codebase-indexer` | prearmado, 1 call, cero lectura de archivos |
+| ¿Qué dice literalmente? | `grep` | versiones, frases, conteos — texto es texto |
+| ¿Quién usa **este símbolo**? | **LSP** | sale del compilador, no de un parser aproximado |
+
+> **Indexer para ubicar, grep para texto, LSP para decidir.** Para un **negativo** —"no tiene usos, lo borro"— ninguno de los tres vale solo.
+
+`documentSymbol` sobre un archivo de 400 líneas devuelve ~15 líneas de mapa. Leerlo entero para lo mismo son ~4.000t: es la orientación más barata que existe (§2).
+
+### El fallo silencioso: un LSP sin índice contesta vacío
+
+Verificado en vivo 2026-09-04 con `sourcekit-lsp`. Las **mismas llamadas, misma posición**, minutos de diferencia:
+
+```
+findReferences demo.swift:8:10 → "No references found. This may occur if the symbol
+                                  has no usages, or if the LSP server has not fully
+                                  indexed the workspace."
+(la misma llamada, más tarde)  → Found 3 references: 8:10, 15:13, 16:13
+```
+
+Peor todavía: en el mismo instante en que `findReferences` decía "no references", `incomingCalls` sobre **ese mismo símbolo** devolvía los 2 llamadores correctos. La misma relación, preguntada en las dos direcciones, dio respuesta completa por un lado y vacío silencioso por el otro.
+
+**Un vacío de LSP es indistinguible de un vacío verdadero.** Antes de creerle a un cero, corré la misma operación sobre un símbolo del que *sabés* que tiene usos — el **control positivo**. Si ése también da cero, el servidor no está listo; no es que no haya usos. `python3 tools/probe_lsp.py` lo automatiza (§36-ref).
+
+### Setup: dos piezas independientes
+
+1. **El binario lo instalás vos** (`pip install pyright`, `npm i -g typescript-language-server`, Xcode para Swift). El plugin no lo trae.
+2. **El plugin configura la conexión** — `lspServers` inline en `plugin.json`, o `.lsp.json` en la raíz del plugin. **No existe clave `lspServers` en `settings.json`**: pasa sí o sí por plugin.
+
+Un `.lsp.json` correcto con el binario ausente **no hace nada y no avisa**: aparece como `Executable not found in $PATH` en la pestaña Errors de `/plugin`, y en ningún otro lugar.
+
+> **Costo:** `diagnostics` (default `true`) inyecta los diagnósticos del servidor en contexto **después de cada edición** — feedback del compilador sin correr build, pero se paga por edit. `"diagnostics": false` conserva la navegación y apaga la inyección.
+
+<!-- §36-ref -->
+### Schema completo de un servidor
+
+Verificado 2026-09-04 contra la doc oficial de plugins y el schema del binario v2.1.261.
+
+| Campo | | Qué hace |
+|---|---|---|
+| `command` | **requerido** | binario del language server; debe estar en PATH |
+| `extensionToLanguage` | **requerido** | mapa extensión → language id, mínimo una entrada |
+| `args` | opcional | argumentos de línea de comando |
+| `transport` | opcional | `stdio` (default) o `socket` — **Claude Code acepta `socket` y corre todo por stdio igual** |
+| `env` | opcional | variables de entorno del proceso |
+| `initializationOptions` | opcional | opciones del `initialize` |
+| `settings` | opcional | se mandan vía `workspace/didChangeConfiguration` |
+| `workspaceFolder` | opcional | raíz de workspace para el servidor |
+| `startupTimeout` | opcional | ms máximos de espera al arranque |
+| `shutdownTimeout` | opcional | ms de cierre ordenado; vencido, se mata el proceso (≥ v2.1.205) |
+| `restartOnCrash` | opcional | default `true`; `false` deja el servidor caído en vez de reiniciarlo (≥ v2.1.205) |
+| `maxRestarts` | opcional | intentos de reinicio antes de rendirse |
+| `diagnostics` | opcional | default `true`; `false` mantiene navegación y corta la inyección por edit |
+
+```json
+{
+  "sourcekit-lsp": {
+    "command": "sourcekit-lsp",
+    "extensionToLanguage": { ".swift": "swift" },
+    "startupTimeout": 120000,
+    "diagnostics": true
+  }
+}
+```
+
+Las tres variables de plugin (`${CLAUDE_PLUGIN_ROOT}` y compañía) se sustituyen en `command`, `args`, `env` y `workspaceFolder`.
+
+### Los plugins oficiales (marketplace de Anthropic)
+
+`pyright-lsp` · `typescript-lsp` · `rust-analyzer-lsp` · `gopls-lsp` · `clangd-lsp` · `jdtls-lsp` · `kotlin-lsp` · `ruby-lsp` · `php-lsp` · `lua-lsp` · `csharp-lsp` · `swift-lsp`. Cada uno **solo configura la conexión**: el binario va aparte (`pip install pyright`, `npm i -g typescript-language-server typescript`, `rustup component add rust-analyzer`, Xcode o `brew install swift`).
+
+### Lo que rompe un servidor en silencio
+
+Claude Code lee el **stdout del servidor como protocolo puro**. Un solo log a stdout lo desconecta, y **eso cuenta como crash** para `restartOnCrash`/`maxRestarts`. Los logs van a **stderr**. Límites: headers ≤ 64 KiB, cuerpo ≤ 32 MiB — pasarse desconecta.
+
+Config inválida (sin `command` o sin `extensionToLanguage`) → el servidor se **saltea**, los demás arrancan igual, y un servidor salteado **no reclama sus extensiones** (otro válido con la misma extensión sí las atiende). `claude --debug` dice por qué se salteó.
+
+Colisión de extensión (§11): arranca **solo el primero registrado**, el resto nunca corre. `/plugin` muestra el aviso nombrando al plugin que ganó.
+
+### Receta 1 — Migración a Swift 6
+
+El caso donde LSP se paga solo. `swiftLanguageMode` es **por-target** desde tools-version 6.0, así que la migración es target por target y la pregunta de cada paso es *¿a quién rompo si marco esto?*
+
+1. **Blast radius antes de tocar.** Antes de marcar un tipo `Sendable` o un método `@MainActor`/`nonisolated`: `findReferences` sobre el símbolo + `incomingCalls` sobre el método. Es exactamente la pregunta que grep contesta mal — un `func send(` tiene homónimos en cinco módulos, y el símbolo no.
+2. **`goToImplementation` sobre el protocolo** lista los conformances reales que van a heredar la restricción de aislamiento.
+3. **Los errores de data-race llegan solos.** Con `diagnostics: true`, los diagnósticos de strict concurrency entran al contexto por edición, sin ciclo `swift build` — el compilador como revisor continuo.
+4. **Gotcha:** `sourcekit-lsp` depende del índice del build. En un target recién tocado, el primer `findReferences` puede volver vacío. Control positivo antes de creerle.
+
+### Receta 2 — Godot / GDScript
+
+El caso donde hay que decir que casi no funciona.
+
+Godot expone su LSP **solo por TCP en `127.0.0.1:6005`**, y Claude Code corre **todo por stdio** (acepta `transport: socket` y lo ignora). Sin un puente TCP↔stdio no hay conexión: hay puentes y plugins de terceros ya armados, pero son dependencia externa — se nombran como opción, no como recomendación.
+
+**Y la muerte silenciosa es doble:** el servidor de Godot **solo escucha con el editor abierto**. Editor cerrado → el puente conecta a la nada → LSP devuelve vacío → indistinguible de "no hay usos". Con el proyecto sin abrir, todo el flujo miente sin un solo error. Si vas a usarlo: el editor abierto es parte del setup, y el control positivo no es opcional.
+
+Mientras tanto, para GDScript la combinación barata sigue siendo `codebase-indexer` para ubicar + grep para texto.
+
+### Receta 3 — Python / TypeScript
+
+`pyright-lsp` + `pip install pyright`; `typescript-lsp` + `npm i -g typescript-language-server typescript`. Ambos indexan solos, sin build previo, así que el vacío por índice frío dura poco.
+
+Nota honesta: en un repo Markdown + un puñado de scripts (como éste) el retorno es marginal — pyright te daría diagnósticos de tipo en `tools/*.py` y poco más. LSP se paga en código de verdad.
+
+### Receta 4 — LSP + codebase-indexer
+
+No compiten: el indexer **ubica** (barato, prearmado, cross-repo), LSP **decide** (caro de arrancar, exacto). La trampa es que **los dos fallan devolviendo vacío**, así que comparten protocolo:
+
+| Síntoma | Herramienta | Qué hacer |
+|---|---|---|
+| 0 resultados donde esperabas ≥1 | `codebase-indexer` | la DB puede reportar `current` estando stale → `index index --force` |
+| 0 resultados donde esperabas ≥1 | LSP | control positivo; si también da 0, el índice no está listo |
+
+Orden de trabajo: `search_index` para llegar al archivo → `documentSymbol` para el mapa → `findReferences`/`incomingCalls` para decidir el cambio.
+
+### Catálogo de muertes silenciosas (→ §21)
+
+| Falla | Qué se ve | Cómo confirmarlo |
+|---|---|---|
+| Binario ausente | nada; el plugin "no hace nada" | `/plugin` → Errors: `Executable not found in $PATH` |
+| Índice no cargado | `No references found` | control positivo sobre símbolo con usos conocidos |
+| Log a stdout | el servidor se cae y reinicia en loop | `claude --debug-file` → el error nombra la causa |
+| Colisión de extensión | un servidor nunca corre | aviso en `/plugin` con el plugin ganador |
+| Editor de Godot cerrado | vacío en todas las operaciones | abrir el editor y repetir la misma llamada |
+| Extensión sin servidor | `No LSP server available for file type: .xx` | único caso que **sí** falla ruidoso |
+
+### El verificador
+
+```bash
+python3 tools/probe_lsp.py                                  # inventario: quién está vivo y qué anuncia
+python3 tools/probe_lsp.py --refs Sources/App/Foo.swift:8:10  # control positivo: referencias reales
+python3 tools/probe_lsp.py --root ../otro-repo --wait 60 --refs Foo.swift:8:10
+```
+
+El inventario cruza los plugins habilitados con sus `lspServers`, chequea que cada binario exista, arranca cada servidor y completa el handshake `initialize` para leer sus **capabilities reales** (no las que promete el README), y avisa de colisiones de extensión. Exit 1 si algún servidor configurado está muerto.
+
+`--refs` es el juez que distingue "no hay usos" de "no hay índice": corre un `textDocument/references` de verdad y **reintenta hasta `--wait` segundos** mientras el índice carga, porque sin reintento un 0 mide la impaciencia, no el código.
+
+> **Medido 2026-09-04**, paquete SwiftPM recién construido: el primer intento devolvió **0 referencias**; el mismo símbolo, con reintento, devolvió **2 a los 6 segundos**. En la misma corrida, un símbolo sin llamadores devolvió 1 (su propia declaración) de inmediato — el negativo verdadero se distingue del vacío por índice frío **solo si esperás**.
+
+> **[2026-09-04] verificado en vivo:** con `swift-lsp` habilitado y `sourcekit-lsp` presente, `documentSymbol`, `hover` y `goToDefinition` respondieron sobre un archivo suelto sin índice; `findReferences`, `workspaceSymbol` y `goToImplementation` devolvieron vacío hasta que el índice del build quedó disponible, y entonces las mismas llamadas devolvieron los resultados correctos. Ninguna de las dos respuestas se distingue de la otra por su forma.
+
+---
 
 <!-- §31 -->
 <!-- §31-quick -->
@@ -4217,6 +4384,10 @@ KEYWORD_MAP = [
     (["learning", "curator", "postmortem"],                              9),
     # §10 — Multi-agente y worktrees
     (["multi-agente", "lead", "arquitectura", "worktree"],              10),
+    # §36 — LSP (específico — antes de §11: "lsp" en un prompt de plugin es §36)
+    (["lsp", "language server", "findreferences", "gotodefinition",
+      "documentsymbol", "call hierarchy", "sourcekit", "pyright",
+      "gdscript", "rust-analyzer", "gopls"],                          36),
     # §11 — Plugin
     (["plugin", "distribuible"],                                        11),
     # §14 — Anti-overkill
