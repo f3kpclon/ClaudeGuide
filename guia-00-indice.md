@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.40 · **§36 — LSP es opcional, y depende del lenguaje** (verificado 2026-09-04). Nueva tabla de decisión por lenguaje: Python/TS/Go/Rust indexan solos; Swift con SwiftPM anda tras `swift build`; un **`.xcodeproj` sin `buildServer.json` queda degradado** — medido en una app iOS real, `documentSymbol` devolvió el mapa completo y `findReferences` sobre el struct declarado ahí mismo (usado en 4 archivos según grep) devolvió **0 tras 30 segundos**; Godot casi no. Tres entornos donde la tool **no existe**: sesiones cloud (§30), `claude --bare`, y sin el binario — de ahí la regla de diseño **LSP como refuerzo del juez, nunca como el juez único**. Además: el servidor se enciende por plugin con `--scope project|local`, y **una `rule` no puede habilitarlo** (queda inactiva, sin error). Y en §5: **`tools:` es una allowlist cerrada que tapa las capacidades que aparecen después** — instalar el plugin del lenguaje no alcanza si el agente dice `tools: Read, Glob, Grep`
+**Versión:** v5.41 · **§37 y §38 nuevas — el patrón Ratchet y el acoplamiento que define el PR boundary** (verificado 2026-09-05). Un cambio que funciona en runtime pero **retrocede en el repo** es invisible al compilador: el ratchet acopla el guard al código en el mismo commit, con invariantes explícitas. Y el límite de un PR lo decide el **acoplamiento de contenido** — citas cruzadas, strings compartidos, asserts que un hook comparte con su skill — no la estructura de archivos ni la complejidad prevista. Además: **ejemplo mínimo en §5 y §6** antes de los templates completos (un agente de 4 campos, una skill de 2) — el piso enseña más que el techo; el template de skill orquestadora bajó a §6-ref porque el bloque inyectado estaba **501 chars sobre el techo de 5500** y nadie lo veía. Y la guía **dejó de nombrar proyectos privados**: 36 menciones reemplazadas por su procedencia (*verificado en producción*), sin perder fechas ni contexto
 
 ---
 
@@ -46,6 +46,8 @@
 | Correr un prompt en loop / polling / babysitting | §34 — `/loop`, `ScheduleWakeup`, `Monitor`, apagado sin quemar tokens |
 | Orquestar un pipeline con gates entre fases | §35 — patrón harness, comando orquestador vs lead |
 | Saber quién usa un símbolo antes de tocarlo | §36 — LSP: las 9 operaciones, recetas por lenguaje, y por qué un 0 no es un 0 |
+| Impedir que un cambio ya hecho se deshaga solo | §37 — el patrón Ratchet: el guard viaja con el código |
+| Decidir qué entra y qué no en un mismo PR | §38 — acoplamientos ocultos, no estructura de archivos |
 
 ---
 
@@ -94,6 +96,8 @@
 - [§21 — Observabilidad y debugging](guia-04-avanzado.md#21-observabilidad-y-debugging)
 - [§22 — Prompt engineering avanzado](guia-04-avanzado.md#22-prompt-engineering-avanzado)
 - [§35 — El patrón Harness — pipelines con gates](guia-04-avanzado.md#35-el-patrón-harness--pipelines-con-gates)
+- [§37 — El patrón Ratchet — prevenir regresiones en cambios silenciosos](guia-04-avanzado.md#37-el-patrón-ratchet--prevenir-regresiones-en-cambios-silenciosos)
+- [§38 — Acoplamientos ocultos — qué define el PR boundary](guia-04-avanzado.md#38-acoplamientos-ocultos--qué-define-el-pr-boundary)
 - [§15 — Glosario](guia-04-avanzado.md#15-glosario)
 
 ---
@@ -106,7 +110,7 @@
 | `guia-01-fundamentos.md` | 01 · Fundamentos — §4, §1, §2, §25, §24 |
 | `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §36, §31, §32, §17, §26, §27, §28, §29, §30, §33, §34 |
 | `guia-03-calidad.md` | 03 · Calidad y eficiencia — §14, §12, §13, §23, §3 |
-| `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §35, §15 |
+| `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §35, §37, §38, §15 |
 
 `grep -rn "<!-- §N -->" guia-*.md` encuentra la sección sin importar en qué archivo vive.
 

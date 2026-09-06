@@ -9,13 +9,13 @@
 
 > Para cuando el sistema de learnings en markdown ya no escala. No construyas esto hasta que el dolor sea real — el sistema de archivos aguanta hasta ~500 entries sin problema.
 >
-> **Validado en producción:** MathVoid (Godot 2D) — 8/8 pruebas ✅ · threshold 0.75 · español informal · 2026-06-01
+> **Validado en producción:** un juego Godot 2D — 8/8 pruebas ✅ · threshold 0.75 · español informal · 2026-06-01
 
 El archivo markdown falla cuando necesitas búsqueda semántica: *"¿tuve este bug antes?"* o *"¿cómo resolví algo similar en este módulo?"*. Grep no entiende significado. Vector search sí.
 
 ### Cuándo hacer el upgrade
 
-El trigger primario es **calidad del recall**, no volumen. MathVoid lo activó con ~50 entries porque grep fallaba con queries informales: "nodo se borra mal" no matcheaba "queue_free() debe usarse en vez de free()" — vector search lo encontró con score 0.78.
+El trigger primario es **calidad del recall**, no volumen. El caso de referencia lo activó con ~50 entries porque grep fallaba con queries informales: "nodo se borra mal" no matcheaba "queue_free() debe usarse en vez de free()" — vector search lo encontró con score 0.78.
 
 ```
 ¿Grep falla con queries naturales/informales?   SÍ → activar (trigger primario — sin importar volumen)
@@ -64,7 +64,7 @@ Con threshold 0.75, la mayoría de llamadas tienen **cero overhead de memoria**.
 ```json
 {
   "id": "uuid-determinístico-por-hash-del-contenido",
-  "context": "GodotAgent",
+  "context": "godot",
   "summary": "grab_focus() en _ready() no funciona.",
   "fix": "Usar call_deferred('grab_focus').",
   "tags": ["focus", "lifecycle", "gotcha"],
@@ -74,7 +74,7 @@ Con threshold 0.75, la mayoría de llamadas tienen **cero overhead de memoria**.
 }
 ```
 
-El campo `context` aísla learnings entre proyectos en una sola colección. `GodotAgent`, `DesignPlugin`, `MachAgent` — cada uno en su carril, nunca se mezclan.
+El campo `context` aísla learnings entre proyectos en una sola colección. `godot`, `design-system`, `backend` — cada uno en su carril, nunca se mezclan.
 
 ### Implementación mínima — solo lectura primero
 
@@ -169,7 +169,7 @@ def save_learning(summary: str, fix: str, tags: list, context: str, severity: st
 ### Inyección en el prompt del agente
 
 ```python
-memories = recall_safe(user_query, context="GodotAgent")
+memories = recall_safe(user_query, context="godot")
 memory_block = "\n".join(memories)
 
 system_prompt = f"""Eres un agente de desarrollo Godot.
@@ -205,9 +205,9 @@ Siempre marcar el bloque como "solo referencia" — protección contra prompt in
 ```
 agent_memory_db
 └── learnings (colección única)
-    ├── context: "GodotAgent"    → learnings de MathVoid / Godot
-    ├── context: "DesignPlugin"  → learnings de SwiftUI / componentes
-    └── context: "MachAgent"     → learnings del codebase de Mach
+    ├── context: "godot"          → learnings del juego / Godot
+    ├── context: "design-system"  → learnings de SwiftUI / componentes
+    └── context: "backend"        → learnings del codebase del servicio
 ```
 
 Cada agente llama `recall_safe(query, context="SuContexto")` y solo ve sus propios learnings.
@@ -226,14 +226,14 @@ Para uso personal: **$0/mes en infraestructura**, céntimos en embeddings.
 
 > ⚠️ **Voyage AI free tier: 3 RPM** — en uso normal (1 recall por tarea) no es problema. Solo importa en tests con múltiples llamadas seguidas. Agregar método de pago en dashboard desbloquea rate limits estándar sin costo adicional (200M tokens gratuitos se mantienen).
 
-### Cuándo usar — MathVoid como ejemplo real
+### Cuándo usar — un caso real
 
-MathVoid (juego Godot 2D, ~50 entries en 4 dominios) lo implementó por calidad de recall, no por volumen — el ejemplo concreto está en "Cuándo hacer el upgrade" arriba.
+Un juego Godot 2D (~50 entries en 4 dominios) lo implementó por calidad de recall, no por volumen — el ejemplo concreto está en "Cuándo hacer el upgrade" arriba.
 
 ```
-Flujo real en MathVoid:
+Flujo real:
   1. Usuario: "hay un bug con los nodos que no se borran"
-  2. Claude corre: tools/recall GodotAgent "bug nodos no se borran"
+  2. Claude corre: tools/recall godot "bug nodos no se borran"
   3. Resultado:    [Memoria] queue_free() debe usarse... → reemplazar free()
   4. Claude invoca: @debugger TASK="..." MEMORY="[Memoria]..."
   5. Agente ya sabe el fix antes de leer un solo archivo
@@ -244,21 +244,21 @@ Flujo real en MathVoid:
 ```
 tools/
 ├── vector_memory.py    → módulo base (recall_safe, save_learning)
-├── recall              → CLI wrapper: tools/recall GodotAgent "query"
-├── save_learning       → CLI wrapper: tools/save_learning GodotAgent "..." "..." "tags" severity
+├── recall              → CLI wrapper: tools/recall godot "query"
+├── save_learning       → CLI wrapper: tools/save_learning godot "..." "..." "tags" severity
 ├── test_vector_memory.py → 8 pruebas de validación (8/8 ✅ validado 2026-06-01)
 └── .venv/              → entorno Python aislado (en .gitignore)
 ```
 
 **Regla en CLAUDE.md para activar el recall automáticamente:**
 ```
-- Antes de invocar agentes no triviales: tools/recall GodotAgent "[tarea]"
+- Antes de invocar agentes no triviales: tools/recall godot "[tarea]"
   incluir resultado en el prompt si hay matches
 ```
 
 **Integración con postmortem** — Paso 5 al final de sesión:
 ```bash
-tools/save_learning GodotAgent "<summary>" "<fix>" "<tag1,tag2>" <severity>
+tools/save_learning godot "<summary>" "<fix>" "<tag1,tag2>" <severity>
 ```
 
 ### Anti-overkill
@@ -285,7 +285,7 @@ tools/save_learning GodotAgent "<summary>" "<fix>" "<tag1,tag2>" <severity>
 <!-- §18-quick -->
 ## 18. Seguridad
 
-> La guía ignoró la seguridad hasta que construimos artifact-factory — un sistema multi-usuario que escribe archivos en proyectos ajenos, acepta input de desconocidos y almacena learnings en una base de datos compartida. Eso cambió todo. Esta sección documenta lo aprendido.
+> La guía ignoró la seguridad hasta que construimos un sistema multi-usuario que escribe archivos en proyectos ajenos, acepta input de desconocidos y almacena learnings en una base de datos compartida. Eso cambió todo. Esta sección documenta lo aprendido.
 >
 > Regla base: seguridad solo en las fronteras del sistema. No validar código interno ni salidas de herramientas confiables. Solo el input del usuario, los archivos que genera el sistema y lo que se persiste en storage.
 
@@ -610,7 +610,7 @@ Layer 3 — Storage
 <!-- §19-quick -->
 ## 19. Testing de agentes
 
-> artifact-factory se construyó sin un solo test automatizado y funcionó — porque el validator haiku actúa como test de integración implícito. Esta sección define cuándo eso deja de ser suficiente y cómo agregar tests sin abandonar el principio low-cost.
+> Ese sistema se construyó sin un solo test automatizado y funcionó — porque el validator haiku actúa como test de integración implícito. Esta sección define cuándo eso deja de ser suficiente y cómo agregar tests sin abandonar el principio low-cost.
 
 ### La pregunta que decide
 
@@ -659,7 +659,7 @@ def test_allows_clean_write():
     assert r is None  # no block
 ```
 
-**El payload del test debe ser el shape REAL del tool — no el que asume el hook.** Un test que construye `{"tool_input": {"path": ..., "new_str": ...}}` porque el hook lee esos campos valida el bug, no el hook: pasa verde con el hook muerto en producción (Edit real manda `file_path`/`new_string`). Caso MathVoid 2026-07-02: dos hooks muertos por semanas, suites verdes, porque tests y hook compartían el mismo shape inventado. Los payloads de test se copian de la doc oficial de hooks — es el mismo principio del juez real: el test que valida contra el contrato de producción > el test que valida contra la implementación.
+**El payload del test debe ser el shape REAL del tool — no el que asume el hook.** Un test que construye `{"tool_input": {"path": ..., "new_str": ...}}` porque el hook lee esos campos valida el bug, no el hook: pasa verde con el hook muerto en producción (Edit real manda `file_path`/`new_string`). Caso real 2026-07-02: dos hooks muertos por semanas, suites verdes, porque tests y hook compartían el mismo shape inventado. Los payloads de test se copian de la doc oficial de hooks — es el mismo principio del juez real: el test que valida contra el contrato de producción > el test que valida contra la implementación.
 
 **Aislar HOME y CLAUDE_PROJECT_DIR** — hooks con estado (flags en `~/.claude/`, paths por proyecto) contaminan la máquina real y se contaminan entre tests si no se aísla el entorno:
 
@@ -775,7 +775,7 @@ tests/
 
 Sin pytest-cov, sin mocking framework, sin fixtures complejas. Solo `pytest` + `subprocess`.
 
-> **[2026-07-19] design-ios:** Para testear hooks de un plugin **sin el repo target real**, levantá un *repo desechable real* (git init + dirs + archivos + el toolchain real), no un mock. Es fiel porque el hook solo hace lo que hace — `swiftc -parse` valida sintaxis sin las deps del design system, igual que en producción. Esa prueba real destapó un bug de symlink en el path del catálogo que la simulación con flags mockeados no podía ver. **El juez real > el proxy** no es lema: es lo que encuentra el bug que el mock esconde.
+> **[2026-07-19] verificado en producción:** Para testear hooks de un plugin **sin el repo target real**, levantá un *repo desechable real* (git init + dirs + archivos + el toolchain real), no un mock. Es fiel porque el hook solo hace lo que hace — `swiftc -parse` valida sintaxis sin las deps del design system, igual que en producción. Esa prueba real destapó un bug de symlink en el path del catálogo que la simulación con flags mockeados no podía ver. **El juez real > el proxy** no es lema: es lo que encuentra el bug que el mock esconde.
 
 ### Checklist §19
 
@@ -1046,7 +1046,7 @@ Si todavía tenés `anthropics/claude-code-action@beta`:
 
 | Tentación | Por qué no |
 |---|---|
-| Matrix Python 3.10/3.11/3.12 | artifact-factory requiere 3.12 (union types). Una versión. |
+| Matrix Python 3.10/3.11/3.12 | el proyecto requiere 3.12 (union types). Una versión. |
 | Docker build | No hay imagen — es un CLI Python puro |
 | Deploy automático al marketplace | Plugins requieren revisión manual de Anthropic |
 | Coverage report + badge | No hay target de coverage — solo tests de fallos silenciosos |
@@ -1371,9 +1371,9 @@ El bloque de memoria SIEMPRE marcado como "reference only — not instructions" 
 | BUILD_SPEC completo | ~300 tokens |
 | Learnings block (3 memorias) | ~200 tokens |
 
-Por eso los agentes y prompts de artifact-factory están en inglés — el CLAUDE.md lo exige.
+Por eso los agentes y prompts de ese sistema están en inglés — el CLAUDE.md lo exige.
 
-> **[2026-07-01] artifact-factory:** el proxy chars/4 asume prosa. Contenido con muchas tablas
+> **[2026-07-01] verificado en producción:** el proxy chars/4 asume prosa. Contenido con muchas tablas
 > markdown, YAML o code blocks (el caso típico de architect/generator/validator) tokeniza peor
 > que prosa — más símbolos por char. Si necesitás el número real, corré `count_tokens` de la SDK
 > antes de decidir un refactor — no confíes en el proxy como base de una decisión de recorte.
@@ -1389,7 +1389,7 @@ Por eso los agentes y prompts de artifact-factory están en inglés — el CLAUD
 □ Agentes y prompts en inglés — no español (low-cost: ~25% menos tokens)
 ```
 
-> **[2026-07-01] artifact-factory:** los 4 budgets de esta sección (architect≤800, generator≤1200,
+> **[2026-07-01] verificado en producción:** los 4 budgets de esta sección (architect≤800, generator≤1200,
 > validator≤600, curator≤400) fallaron los 4 al testearlos contra los agentes reales del proyecto
 > (exceso de 15% a 75%). Antes de recortar un agente para cumplir el número, preguntate si el costo
 > real importa: estos agentes corren 1 vez por invocación, no por tool call como CLAUDE.md —
@@ -1429,7 +1429,7 @@ comando harness:
   4. cierre   → reviewer del conjunto → @commits
 ```
 
-Verificado en DesignPluging (`plugins/design-ios/commands/harness.md`, pasa `claude plugin validate`): orquesta `atoms→molecules→organisms` con `@design-reviewer` como gate entre capas, invocando `@design-lead` para el plan. Confirma de paso que **`commands/` es componente de plugin** (§11) — el comando es la pieza que faltaba entre "tengo 12 agentes" y "corren en orden con gates".
+Verificado en un plugin propio en producción (un `commands/harness.md` que pasa `claude plugin validate`): orquesta `atoms→molecules→organisms` con un agente reviewer como gate entre capas, invocando al agente lead para el plan. Confirma de paso que **`commands/` es componente de plugin** (§11) — el comando es la pieza que faltaba entre "tengo 12 agentes" y "corren en orden con gates".
 
 <!-- §35-ref -->
 ### Las palancas del harness (física verificada — este harness, 2026-07-18)
@@ -1474,7 +1474,7 @@ Dos principios que sostienen el gate (Anthropic, verificado):
 
 ### El trigger es el estado de dependencias, no el tipo de artefacto
 
-> **[2026-07-19] design-ios:** Cablear el harness enseñó que **qué construís no dice si cruza fases — lo dice si los hijos ya existen.** Una molécula con sus átomos ya en el catálogo es 1 fase (skill directo); la misma molécula con átomos faltantes es pipeline. El Paso 0 (el `@lead` grepea el catálogo) decide por-tarea: hijos presentes → sale al skill y NO orquesta (anti-overkill §14); faltantes → pipeline con gates. Nunca hardcodees "organismo → harness siempre".
+> **[2026-07-19] verificado en producción:** Cablear el harness enseñó que **qué construís no dice si cruza fases — lo dice si los hijos ya existen.** Una molécula con sus átomos ya en el catálogo es 1 fase (skill directo); la misma molécula con átomos faltantes es pipeline. El Paso 0 (el `@lead` grepea el catálogo) decide por-tarea: hijos presentes → sale al skill y NO orquesta (anti-overkill §14); faltantes → pipeline con gates. Nunca hardcodees "organismo → harness siempre".
 
 Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
@@ -1483,7 +1483,7 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
 ### No todos los gates se endurecen igual — gate de estado vs gate de fase
 
-> **[2026-07-20] design-ios:** auditar el harness ya cableado reveló que la afirmación "el validador entre fases puede ser un hook" tiene un límite físico. **Un hook ve eventos de tool (`Write`, `Edit`, `SubagentStop`), no "fronteras de fase".** De ahí dos clases de gate con dureza distinta:
+> **[2026-07-20] verificado en producción:** auditar el harness ya cableado reveló que la afirmación "el validador entre fases puede ser un hook" tiene un límite físico. **Un hook ve eventos de tool (`Write`, `Edit`, `SubagentStop`), no "fronteras de fase".** De ahí dos clases de gate con dureza distinta:
 >
 > - **Gate de estado — se endurece a `deny`.** Se ancla a estado persistente (un flag). El gate de plan (regla 0) lee `design-plan-approved` en `PreToolUse` y deniega el `Write` si falta. Imposible de saltar. Física real.
 > - **Gate de fase — NO se endurece; se hace observable.** "Ejecuta el reviewer entre la capa atoms y molecules" no tiene evento que lo dispare: "fase" es un concepto de la prosa del `command`, invisible al hook. Pedirle un `deny` es pedirle lo imposible (§reasoning: física antes de diseño) — el modelo improvisa y el gate se disuelve en silencio. La palanca correcta es **detectar el salto y hacerlo visible**, no bloquearlo: `SubagentStop` marca (mtime) cuándo corrió el reviewer; `Stop` compara contra el último write de la fase y avisa si se escribió después del último review. Convierte un salto silencioso en un nudge — que era el hallazgo, no el bloqueo.
@@ -1492,7 +1492,7 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
 ### Un gate roto se ve idéntico a uno sano — las 3 muertes silenciosas del harness
 
-> **[2026-07-20] design-ios:** aplicar "¿cómo sabría que esto está muerto?" (§reasoning #3) a cada gate del harness destapó tres fallos que no dan señal — el sistema con enforcement roto es visualmente idéntico al sano:
+> **[2026-07-20] verificado en producción:** aplicar "¿cómo sabría que esto está muerto?" (§reasoning #3) a cada gate del harness destapó tres fallos que no dan señal — el sistema con enforcement roto es visualmente idéntico al sano:
 >
 > 1. **El juez que no puede correr y calla.** El gate de sintaxis `swiftc -parse` retorna "OK" cuando no hay toolchain (`which('swiftc') → None`). En CI o una máquina sin Xcode pasa todo, y el dev cree tener red de compilación. Fix: cuando el juez no puede ejecutar, **emitir una señal** ("gate desactivado esta sesión"), nunca degradar a verde mudo.
 > 2. **El pipeline corrompe el input de su propio gate.** El `@lead` decide pipeline-vs-1-capa grepeando un catálogo que el hook actualiza con read-modify-write **sin lock**. El harness permite fases en background → dos escrituras concurrentes se pisan (lost update) y el gate decide sobre datos corruptos. Fix: `flock` + swap atómico (`os.replace`) en todo estado compartido que fases en background escriban.
@@ -1500,7 +1500,7 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 >
 > Regla destilada: **a cada gate del harness preguntarle por separado (a) qué pasa si no puede correr, (b) quién escribe su input y si compite, (c) qué esconde su `except`.** Los tres se ven sanos hasta que fallan caro.
 
-**Fuentes:** [Sub-agents](https://code.claude.com/docs/en/sub-agents.md) · [Building an agent harness with Claude Code — LogRocket](https://blog.logrocket.com/building-an-agent-harness-with-claude-code/) · patrón verificado en `DesignPluging/plugins/design-ios`.
+**Fuentes:** [Sub-agents](https://code.claude.com/docs/en/sub-agents.md) · [Building an agent harness with Claude Code — LogRocket](https://blog.logrocket.com/building-an-agent-harness-with-claude-code/) · patrón verificado en un plugin propio en producción.
 
 <!-- §15 -->
 ## 15. Glosario
@@ -1598,3 +1598,15 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 **Gate** — Validador entre fases de un pipeline (reviewer, hook por `agent_type`, o `claude plugin validate`) que corta la cadena si una fase falla, antes de que el error se propague a la siguiente. Es lo que separa un harness de una cinta transportadora (§35, §31).
 
 ---
+
+<!-- §37 -->
+## 37. El patrón Ratchet — prevenir regresiones en cambios silenciosos
+
+> **[2026-09-05] verificado en producción:** Un cambio que funciona en runtime pero retrocede en el repo (e.g., traducción que vuelve a español) es invisible al compilador — el test debe escanear. El ratchet acopla el guard al código en el mismo commit, con invariantes explícitas (lo que nunca se toca). Para migraciones grandes donde el fallo degrada sin error.
+
+<!-- §38 -->
+## 38. Acoplamientos ocultos — qué define el PR boundary
+
+> **[2026-09-05] verificado en producción:** El acoplamiento define el límite, no la métrica. Cuando una skill cita otra (§ Measurement cycle) o un hook comparte asserts con su skill, deben viajar juntos en el mismo commit. Buscar referencias cruzadas, strings compartidos y contratos implícitos antes de definir el PR boundary — la estructura de archivos es ruido.
+
+> **[2026-09-05] verificado en producción:** Ejemplo: un plan de migración i18n — traducir dos skills de componentes sin la skill de layout rompe las citas cruzadas a `§ Measurement cycle`, forzando los tres al mismo PR. El acoplamiento de contenido decide el boundary, no la complejidad prevista ni el orden inicial del plan — verificar qué se rompe si el contenido se traduce parcialmente.
