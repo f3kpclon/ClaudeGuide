@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.40 · **§36 — LSP is optional, and it depends on the language** (verified 2026-09-04). New per-language decision table: Python/TS/Go/Rust index on their own; Swift with SwiftPM works after `swift build`; an **`.xcodeproj` with no `buildServer.json` is degraded** — measured on a real iOS app, `documentSymbol` returned the full file map while `findReferences` on the struct declared in that same file (used across 4 files per grep) returned **0 after 30 seconds**; Godot barely works. Three environments where the tool **does not exist**: cloud sessions (§30), `claude --bare`, and any host without the binary — hence the design rule **LSP reinforces the judge, it is never the only judge**. Also: servers are enabled per plugin with `--scope project|local`, and **a `rule` cannot enable one** (it stays inactive, with no error). And in §5: **`tools:` is a closed allowlist that hides capabilities added later** — installing the language plugin does nothing for an agent whose frontmatter says `tools: Read, Glob, Grep`
+**Author:** Félix Sotelo · **Version:** v5.41 · **§37 and §38 are new — the Ratchet pattern, and the coupling that decides a PR boundary** (verified 2026-09-05). A change that works at runtime but **regresses in the repo** is invisible to the compiler: the ratchet ships the guard in the same commit as the code, with explicit invariants. And a PR's boundary is decided by **content coupling** — cross-references, shared strings, asserts a hook shares with its skill — not by file structure or by how complex you expect the work to be. Also: a **minimum example opens §5 and §6**, before the full templates (a 4-field agent, a 2-field skill) — the floor teaches more than the ceiling; the orchestrator-skill template moved down to §6-ref because the injected block was **501 chars over the 5500 ceiling** with nothing reporting it. And the guide **no longer names private projects**: 36 mentions replaced by their provenance (*verified in production*), with dates and context intact
 
 ---
 
@@ -48,6 +48,16 @@
 ## What's New
 
 <!-- changelog-insert -->
+
+### v5.41 — ratchet, PR boundaries, and a floor for §5/§6 (2026-09-06)
+
+| Area | Change |
+|---|---|
+| **§37** | **New — the Ratchet pattern.** A change that works at runtime but regresses in the repo (a translation drifting back to the source language, say) is invisible to the compiler: the test has to scan. The ratchet ships the guard in the same commit as the change, with explicit invariants — what must never be touched. For large migrations where failure degrades without erroring. |
+| **§38** | **New — hidden coupling defines the PR boundary.** When a skill cites another, or a hook shares asserts with its skill, they must travel in the same commit. Look for cross-references, shared strings and implicit contracts before drawing the boundary — file structure is noise, and so is how complex you expected the work to be. |
+| **§5** | **A minimum example now opens the section**: four frontmatter fields and two lines of role. Everything the full template adds is optional — added when the agent needs it, not before. |
+| **§6** | **Same for skills**: two fields and the recipe. No `allowed-tools`, no `context:`, no `disable-model-invocation` — the defaults work. The orchestrator-skill template moved to §6-ref, where Patrón 3 already covered it: the injected `-quick` block was **501 chars over the 5500 ceiling**, which silently degrades the injection to a capsule. |
+| **All** | **Private project names removed** — 36 mentions across the four guides. Learning notes now read `[date] verificado en producción:` instead of naming a repo; example `context:` values became domain labels (`godot`, `design-system`, `backend`). Dates and provenance are unchanged: they are what makes a learning worth reading. |
 
 ### v5.40 — LSP, conditional (2026-09-04)
 
