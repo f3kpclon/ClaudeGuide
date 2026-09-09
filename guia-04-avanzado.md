@@ -777,9 +777,39 @@ Sin pytest-cov, sin mocking framework, sin fixtures complejas. Solo `pytest` + `
 
 > **[2026-07-19] verificado en producción:** Para testear hooks de un plugin **sin el repo target real**, levantá un *repo desechable real* (git init + dirs + archivos + el toolchain real), no un mock. Es fiel porque el hook solo hace lo que hace — `swiftc -parse` valida sintaxis sin las deps del design system, igual que en producción. Esa prueba real destapó un bug de symlink en el path del catálogo que la simulación con flags mockeados no podía ver. **El juez real > el proxy** no es lema: es lo que encuentra el bug que el mock esconde.
 
+### Testear el proxy en vez del contrato — 51 tests en verde sobre un gate sin verificar
+
+> **La pregunta no es "¿mi hook imprime el JSON correcto?". Es "¿el harness hace lo que ese JSON pide?".** Son dos afirmaciones distintas y solo la segunda es la que te importa. Un test que valida la primera pasa para siempre, incluso el día en que la segunda deja de ser cierta.
+
+**El caso, analizado 2026-09-09** — plugin `shunt` de [`spotify/portal-ai-plugins`](https://github.com/spotify/portal-ai-plugins). Dos hooks `PreToolUse` cuyo único trabajo es bloquear lecturas de archivos grandes; de ese bloqueo depende el 90% de ahorro que el plugin promete. Trae 51 tests. La forma de todos ellos:
+
+```bash
+result=$(echo "$input" | bash "$hook")
+actual=$(echo "$result" | jq -r '.decision')   # ← lee la salida del propio script
+[ "$actual" = "$expected" ] && PASS
+```
+
+El test le pregunta al bash qué imprimió el bash. **Nunca ejercita a Claude Code.** Y los hooks emiten `{"decision": "block"}`, un campo que la referencia de `PreToolUse` no documenta (§7, patrón shunt hook). Si ese campo legacy deja de funcionar en cualquier versión del host, **los 51 tests siguen en verde, el hook sigue imprimiendo su JSON, y no bloquea nada**: el ahorro desaparece sin una sola señal. Es el fallo silencioso perfecto — no el hook muerto, sino el hook que parece vivo porque su test mide el lado equivocado del contrato.
+
+Peor todavía, y es el detalle que vale copiar como advertencia: **el repo sí tiene los 3 tests correctos** (`evals.json` — "Claude fue bloqueado por el hook, luego invocó el script"). Están escritos, versionados, y **el runner no los ejecuta**: `run.sh` corre `hook-evals`, `bash-hook-evals`, `transport-evals` y `benchmarks`; `evals.json` no aparece. Un test que existe pero nadie corre es documentación de intención, no una señal.
+
+**La regla que sale de esto.** Todo gate necesita **al menos un test que atraviese el harness real**, aunque los otros cincuenta sean unitarios y rápidos:
+
+| Nivel | Qué prueba | Sobrevive a un cambio de contrato del harness |
+|---|---|---|
+| `echo payload \| python3 hook.py` | Que tu lógica decide bien | **No** — sigue en verde con el harness roto |
+| Sesión real (`claude -p`) contra un repo desechable | Que el harness **obedece** | Sí — es el único que se pone en rojo |
+
+Es el mismo principio del gotcha del payload incompleto de §7 (el guard perfecto con el test que no lo ejercita), un nivel más arriba: allá el payload no llegaba al hook, acá el veredicto del hook no llega a nadie.
+
+**Lo que shunt sí hace bien y conviene robar: el test negativo.** Su eval #3 es *"hay un bug en la línea 42, arreglalo"* → **expectativa: NO delegar**. Una optimización sin test negativo se convierte sola en una regla que dispara donde no debe, y eso no se ve en las métricas de ahorro — se ve en la calidad, meses después. Por cada gate que agregues, escribí el caso que **debe pasar de largo**.
+
 ### Checklist §19
 
 ```
+□ Todo gate tiene ≥1 test que atraviesa el harness real — el unitario no detecta un contrato roto
+□ Todo gate tiene ≥1 test negativo — el caso que DEBE pasar de largo
+□ El runner ejecuta todos los archivos de test del repo — un test que nadie corre no es una señal
 □ tests/ existe en la raíz del proyecto
 □ test_security_utils.py cubre: sanitize, secrets, blocked paths, injection
 □ Hooks testeados via subprocess — mismo protocolo que Claude Code usa

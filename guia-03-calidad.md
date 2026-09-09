@@ -385,9 +385,43 @@ El 1k ahorrado vino de eliminar los calls, pero el verdadero valor fue la **late
 4. **Acortar el system prompt del agente** — cada línea menos = ahorro en cada tool call del agente
 5. **Reducir archivos pasados al reviewer** — cada archivo extra = ~700-1,400t en outputs de Read
 
+Las cinco atacan el mismo término y todas tienen piso. La sexta es de otra clase — no reduce el output, lo saca del contexto caro — y por eso va aparte:
+
+6. **Delegar la lectura a un subagente barato** — no baja `Σ(tool_outputs)`, lo mueve; es la única que sigue rindiendo en el techo
+
+### La cuarta salida — mover los bytes en vez de reducirlos
+
+> Todo lo de arriba trata `Σ(tool_outputs)` como una constante de la operación: si necesitás leer el archivo, pagás el archivo. **Eso es cierto para el término, y falso para la factura.** El costo no lo fija solo *cuántos* bytes hace falta leer, sino **dónde y a qué precio se leen**. Reducirlos tiene un piso; moverlos no.
+
+Un archivo leído en el hilo principal se paga dos veces mal: al precio del modelo caro, y **en cada turno posterior de la sesión**, porque queda en contexto. La fórmula de más arriba es por corrida; la factura de una sesión larga es la fórmula multiplicada por los turnos que ese output sobrevive. Es el término que más crece y el único que ninguna de las cinco palancas toca.
+
+**La palanca es el aislamiento de contexto (§2, capa 3).** Un subagente lee los archivos en su propio contexto y devuelve solo su reporte: el corpus nunca entra al hilo padre, ni en ese turno ni en los siguientes. Con `model: haiku` se suma el ahorro de precio al de contexto.
+
+```
+Read-heavy en el hilo principal:  Σ(tool_outputs) × precio_modelo × turnos_restantes
+Delegado a subagente haiku:       Σ(tool_outputs) × precio_haiku  (una vez, aislado)
+                                + reporte × precio_modelo × turnos_restantes
+```
+
+El ahorro escala con dos cosas que el resto de §23 ignora: **el ratio de compresión** (33k de archivo → 1,5k de reporte es 20×) y **cuánto falta de sesión**. En el primer turno de una sesión corta puede no compensar; en el turno 5 de una sesión de 40 es la diferencia entre terminar y compactar.
+
+**Cuándo aplica y cuándo no** — es una palanca con umbral, no una regla general:
+
+| Aplica | No aplica |
+|---|---|
+| Preguntas *sobre* archivos grandes ("¿qué exporta esto?", "¿quién llama a X?") | Editar — un `Edit` necesita el contenido literal arriba; usá `offset`/`limit` |
+| Lecturas cruzadas de 3+ archivos para una sola conclusión | Debugging — el razonamiento tiene que pasar en el modelo caro, sobre el código exacto |
+| Resumir diffs o logs largos | Archivos chicos — el system prompt del subagente supera lo ahorrado |
+| Generar boilerplate predecible desde un archivo de referencia | Decisiones de arquitectura — el juicio se queda arriba |
+
+El umbral concreto se enforcea con un hook, no con disciplina: **§7, patrón shunt hook** (Claude no delega lecturas por iniciativa propia — hay que ponerle la física).
+
+> **Procedencia — 2026-09-09.** El patrón está medido públicamente por Spotify (`shunt`, en `spotify/portal-ai-plugins`): 33.684 → 5.737 tokens en un archivo de 4.014 líneas (82%), 75.990 → 4.148 en un par source+test (94%), media 90% sobre un monorepo Java de 162k líneas. Esos números son de **una lectura**, ruteando a un modelo externo barato; no incluyen el efecto compuesto por turno descrito arriba, que va en la misma dirección. La variante con subagente haiku de esta guía **no está medida** — la aritmética de §7 es aritmética. Medí con `/context` antes de citar un porcentaje propio.
+
 ### Anti-overkill
 
 Cuando un agente está en su techo real, no hay más que optimizar desde el agente — el costo restante es el precio mínimo de la operación. Intentar bajarlo más requiere:
+- **Mover el output a otro contexto** (delegar la lectura a un subagente barato) — la única salida que baja la factura sin tocar el scope; con umbral, ver arriba
 - Cambiar el modelo (haiku → más barato, pero no existe nivel inferior)
 - Reducir el scope de la operación (hacer menos cosas, no hacerlas más eficientemente)
 - Aceptar que ese es el costo y enfocarse en otra cosa
@@ -403,6 +437,8 @@ Cuando un agente está en su techo real, no hay más que optimizar desde el agen
 □ Output format forzado antes de cualquier otra optimización
 □ Encadenar comandos bash con && para reducir N_tool_calls × system_prompt_cost
 □ No seguir optimizando cuando tokens < 2× el techo real estimado
+□ Agente read-heavy en su techo → evaluar delegar la lectura a un subagente haiku antes de aceptar el costo
+□ Lecturas completas de archivos grandes en el hilo principal → enforcear el umbral con hook (§7), no con disciplina
 ```
 
 
