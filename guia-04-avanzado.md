@@ -9,7 +9,7 @@
 
 > Para cuando el sistema de learnings en markdown ya no escala. No construyas esto hasta que el dolor sea real — el sistema de archivos aguanta hasta ~500 entries sin problema.
 >
-> **Validado en producción:** un juego Godot 2D — 8/8 pruebas ✅ · threshold 0.75 · español informal ·
+> **Validado en producción:** un juego Godot 2D — 8/8 pruebas ✅ · threshold 0.75 · español informal · <!-- ver: 2026-06-01 -->
 
 El archivo markdown falla cuando necesitas búsqueda semántica: *"¿tuve este bug antes?"* o *"¿cómo resolví algo similar en este módulo?"*. Grep no entiende significado. Vector search sí.
 
@@ -659,7 +659,7 @@ def test_allows_clean_write():
     assert r is None  # no block
 ```
 
-**El payload del test debe ser el shape REAL del tool — no el que asume el hook.** Un test que construye `{"tool_input": {"path": ..., "new_str": ...}}` porque el hook lee esos campos valida el bug, no el hook: pasa verde con el hook muerto en producción (Edit real manda `file_path`/`new_string`). Caso real: dos hooks muertos por semanas, suites verdes, porque tests y hook compartían el mismo shape inventado. Los payloads de test se copian de la doc oficial de hooks — es el mismo principio del juez real: el test que valida contra el contrato de producción > el test que valida contra la implementación.
+**El payload del test debe ser el shape REAL del tool — no el que asume el hook.** Un test que construye `{"tool_input": {"path": ..., "new_str": ...}}` porque el hook lee esos campos valida el bug, no el hook: pasa verde con el hook muerto en producción (Edit real manda `file_path`/`new_string`). Caso real: dos hooks muertos por semanas, suites verdes, porque tests y hook compartían el mismo shape inventado. Los payloads de test se copian de la doc oficial de hooks — es el mismo principio del juez real: el test que valida contra el contrato de producción > el test que valida contra la implementación. <!-- ver: 2026-07-02 -->
 
 **Aislar HOME y CLAUDE_PROJECT_DIR** — hooks con estado (flags en `~/.claude/`, paths por proyecto) contaminan la máquina real y se contaminan entre tests si no se aísla el entorno:
 
@@ -775,13 +775,13 @@ tests/
 
 Sin pytest-cov, sin mocking framework, sin fixtures complejas. Solo `pytest` + `subprocess`.
 
-> **Verificado en producción:** Para testear hooks de un plugin **sin el repo target real**, levantá un *repo desechable real* (git init + dirs + archivos + el toolchain real), no un mock. Es fiel porque el hook solo hace lo que hace — `swiftc -parse` valida sintaxis sin las deps del design system, igual que en producción. Esa prueba real destapó un bug de symlink en el path del catálogo que la simulación con flags mockeados no podía ver. **El juez real > el proxy** no es lema: es lo que encuentra el bug que el mock esconde.
+> **Verificado en producción:** Para testear hooks de un plugin **sin el repo target real**, levantá un *repo desechable real* (git init + dirs + archivos + el toolchain real), no un mock. Es fiel porque el hook solo hace lo que hace — `swiftc -parse` valida sintaxis sin las deps del design system, igual que en producción. Esa prueba real destapó un bug de symlink en el path del catálogo que la simulación con flags mockeados no podía ver. **El juez real > el proxy** no es lema: es lo que encuentra el bug que el mock esconde. <!-- ver: 2026-07-19 -->
 
 ### Testear el proxy en vez del contrato — 51 tests en verde sobre un gate sin verificar
 
 > **La pregunta no es "¿mi hook imprime el JSON correcto?". Es "¿el harness hace lo que ese JSON pide?".** Son dos afirmaciones distintas y solo la segunda es la que te importa. Un test que valida la primera pasa para siempre, incluso el día en que la segunda deja de ser cierta.
 
-**El caso, analizado** — plugin `shunt` de [`spotify/portal-ai-plugins`](https://github.com/spotify/portal-ai-plugins). Dos hooks `PreToolUse` cuyo único trabajo es bloquear lecturas de archivos grandes; de ese bloqueo depende el 90% de ahorro que el plugin promete. Trae 51 tests. La forma de todos ellos:
+**El caso, analizado** — plugin `shunt` de [`spotify/portal-ai-plugins`](https://github.com/spotify/portal-ai-plugins). Dos hooks `PreToolUse` cuyo único trabajo es bloquear lecturas de archivos grandes; de ese bloqueo depende el 90% de ahorro que el plugin promete. Trae 51 tests. La forma de todos ellos: <!-- ver: 2026-09-09 -->
 
 ```bash
 result=$(echo "$input" | bash "$hook")
@@ -942,7 +942,7 @@ Además de testear el proyecto, Claude Code puede ejecutarse **dentro de CI** pa
 | **Interactivo** | Sin `prompt` — espera la frase trigger (`@claude` por default) | Comentario en el issue/PR que lo disparó |
 | **Automation** | Con `prompt` — corre sin esperar mención | **En el log del workflow**, no en el PR |
 
-> ⚠️ **Corrección:** el workflow de review que traía esta guía pasaba `prompt`, o sea modo automation — y por lo tanto **su review terminaba en el log del run, no en el PR**. Un review que nadie lee es un review que no existe. Para que Claude comente en el PR hacen falta dos cosas: que el prompt se lo pida y que tenga una tool que pueda postear.
+> ⚠️ **Corrección:** el workflow de review que traía esta guía pasaba `prompt`, o sea modo automation — y por lo tanto **su review terminaba en el log del run, no en el PR**. Un review que nadie lee es un review que no existe. Para que Claude comente en el PR hacen falta dos cosas: que el prompt se lo pida y que tenga una tool que pueda postear. <!-- ver: 2026-09-02 -->
 
 **Trigger via comentario `@claude`:**
 
@@ -1127,7 +1127,7 @@ Sin Datadog, sin dashboards, sin colector. Overkill para este tamaño.
 
 ### Antes de instrumentar nada: lo que el harness ya te dice
 
-Verificado. Casi todo lo que esta sección resolvía a mano tiene hoy un comando nativo, y cuesta 0 tokens:
+Verificado. Casi todo lo que esta sección resolvía a mano tiene hoy un comando nativo, y cuesta 0 tokens: <!-- ver: 2026-09-02 -->
 
 | Pregunta | Comando | Qué responde |
 |---|---|---|
@@ -1403,7 +1403,7 @@ El bloque de memoria SIEMPRE marcado como "reference only — not instructions" 
 
 Por eso los agentes y prompts de ese sistema están en inglés — el CLAUDE.md lo exige.
 
-> **Verificado en producción:** el proxy chars/4 asume prosa. Contenido con muchas tablas
+> **Verificado en producción:** el proxy chars/4 asume prosa. Contenido con muchas tablas <!-- ver: 2026-07-01 -->
 > markdown, YAML o code blocks (el caso típico de architect/generator/validator) tokeniza peor
 > que prosa — más símbolos por char. Si necesitás el número real, corré `count_tokens` de la SDK
 > antes de decidir un refactor — no confíes en el proxy como base de una decisión de recorte.
@@ -1419,7 +1419,7 @@ Por eso los agentes y prompts de ese sistema están en inglés — el CLAUDE.md 
 □ Agentes y prompts en inglés — no español (low-cost: ~25% menos tokens)
 ```
 
-> **Verificado en producción:** los 4 budgets de esta sección (architect≤800, generator≤1200,
+> **Verificado en producción:** los 4 budgets de esta sección (architect≤800, generator≤1200, <!-- ver: 2026-07-01 -->
 > validator≤600, curator≤400) fallaron los 4 al testearlos contra los agentes reales del proyecto
 > (exceso de 15% a 75%). Antes de recortar un agente para cumplir el número, preguntate si el costo
 > real importa: estos agentes corren 1 vez por invocación, no por tool call como CLAUDE.md —
@@ -1462,7 +1462,7 @@ comando harness:
 Verificado en un plugin propio en producción (un `commands/harness.md` que pasa `claude plugin validate`): orquesta `atoms→molecules→organisms` con un agente reviewer como gate entre capas, invocando al agente lead para el plan. Confirma de paso que **`commands/` es componente de plugin** (§11) — el comando es la pieza que faltaba entre "tengo 12 agentes" y "corren en orden con gates".
 
 <!-- §35-ref -->
-### Las palancas del harness (física verificada — este harness)
+### Las palancas del harness (física verificada — este harness) <!-- ver: 2026-07-18 -->
 
 Consolidado de lo que ya está disperso en la guía; son propiedades del tool `Agent`, no estilo:
 
@@ -1504,7 +1504,7 @@ Dos principios que sostienen el gate (Anthropic, verificado):
 
 ### El trigger es el estado de dependencias, no el tipo de artefacto
 
-> **Verificado en producción:** Cablear el harness enseñó que **qué construís no dice si cruza fases — lo dice si los hijos ya existen.** Una molécula con sus átomos ya en el catálogo es 1 fase (skill directo); la misma molécula con átomos faltantes es pipeline. El Paso 0 (el `@lead` grepea el catálogo) decide por-tarea: hijos presentes → sale al skill y NO orquesta (anti-overkill §14); faltantes → pipeline con gates. Nunca hardcodees "organismo → harness siempre".
+> **Verificado en producción:** Cablear el harness enseñó que **qué construís no dice si cruza fases — lo dice si los hijos ya existen.** Una molécula con sus átomos ya en el catálogo es 1 fase (skill directo); la misma molécula con átomos faltantes es pipeline. El Paso 0 (el `@lead` grepea el catálogo) decide por-tarea: hijos presentes → sale al skill y NO orquesta (anti-overkill §14); faltantes → pipeline con gates. Nunca hardcodees "organismo → harness siempre". <!-- ver: 2026-07-19 -->
 
 Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
@@ -1513,7 +1513,7 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
 ### No todos los gates se endurecen igual — gate de estado vs gate de fase
 
-> **Verificado en producción:** auditar el harness ya cableado reveló que la afirmación "el validador entre fases puede ser un hook" tiene un límite físico. **Un hook ve eventos de tool (`Write`, `Edit`, `SubagentStop`), no "fronteras de fase".** De ahí dos clases de gate con dureza distinta:
+> **Verificado en producción:** auditar el harness ya cableado reveló que la afirmación "el validador entre fases puede ser un hook" tiene un límite físico. **Un hook ve eventos de tool (`Write`, `Edit`, `SubagentStop`), no "fronteras de fase".** De ahí dos clases de gate con dureza distinta: <!-- ver: 2026-07-20 -->
 >
 > - **Gate de estado — se endurece a `deny`.** Se ancla a estado persistente (un flag). El gate de plan (regla 0) lee `design-plan-approved` en `PreToolUse` y deniega el `Write` si falta. Imposible de saltar. Física real.
 > - **Gate de fase — NO se endurece; se hace observable.** "Ejecuta el reviewer entre la capa atoms y molecules" no tiene evento que lo dispare: "fase" es un concepto de la prosa del `command`, invisible al hook. Pedirle un `deny` es pedirle lo imposible (§reasoning: física antes de diseño) — el modelo improvisa y el gate se disuelve en silencio. La palanca correcta es **detectar el salto y hacerlo visible**, no bloquearlo: `SubagentStop` marca (mtime) cuándo corrió el reviewer; `Stop` compara contra el último write de la fase y avisa si se escribió después del último review. Convierte un salto silencioso en un nudge — que era el hallazgo, no el bloqueo.
@@ -1522,7 +1522,7 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
 ### Un gate roto se ve idéntico a uno sano — las 3 muertes silenciosas del harness
 
-> **Verificado en producción:** aplicar "¿cómo sabría que esto está muerto?" (§reasoning #3) a cada gate del harness destapó tres fallos que no dan señal — el sistema con enforcement roto es visualmente idéntico al sano:
+> **Verificado en producción:** aplicar "¿cómo sabría que esto está muerto?" (§reasoning #3) a cada gate del harness destapó tres fallos que no dan señal — el sistema con enforcement roto es visualmente idéntico al sano: <!-- ver: 2026-07-20 -->
 >
 > 1. **El juez que no puede correr y calla.** El gate de sintaxis `swiftc -parse` retorna "OK" cuando no hay toolchain (`which('swiftc') → None`). En CI o una máquina sin Xcode pasa todo, y el dev cree tener red de compilación. Fix: cuando el juez no puede ejecutar, **emitir una señal** ("gate desactivado esta sesión"), nunca degradar a verde mudo.
 > 2. **El pipeline corrompe el input de su propio gate.** El `@lead` decide pipeline-vs-1-capa grepeando un catálogo que el hook actualiza con read-modify-write **sin lock**. El harness permite fases en background → dos escrituras concurrentes se pisan (lost update) y el gate decide sobre datos corruptos. Fix: `flock` + swap atómico (`os.replace`) en todo estado compartido que fases en background escriban.
@@ -1632,11 +1632,11 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 <!-- §37 -->
 ## 37. El patrón Ratchet — prevenir regresiones en cambios silenciosos
 
-> **Verificado en producción:** Un cambio que funciona en runtime pero retrocede en el repo (e.g., traducción que vuelve a español) es invisible al compilador — el test debe escanear. El ratchet acopla el guard al código en el mismo commit, con invariantes explícitas (lo que nunca se toca). Para migraciones grandes donde el fallo degrada sin error.
+> **Verificado en producción:** Un cambio que funciona en runtime pero retrocede en el repo (e.g., traducción que vuelve a español) es invisible al compilador — el test debe escanear. El ratchet acopla el guard al código en el mismo commit, con invariantes explícitas (lo que nunca se toca). Para migraciones grandes donde el fallo degrada sin error. <!-- ver: 2026-09-05 -->
 
 <!-- §38 -->
 ## 38. Acoplamientos ocultos — qué define el PR boundary
 
-> **Verificado en producción:** El acoplamiento define el límite, no la métrica. Cuando una skill cita otra (§ Measurement cycle) o un hook comparte asserts con su skill, deben viajar juntos en el mismo commit. Buscar referencias cruzadas, strings compartidos y contratos implícitos antes de definir el PR boundary — la estructura de archivos es ruido.
+> **Verificado en producción:** El acoplamiento define el límite, no la métrica. Cuando una skill cita otra (§ Measurement cycle) o un hook comparte asserts con su skill, deben viajar juntos en el mismo commit. Buscar referencias cruzadas, strings compartidos y contratos implícitos antes de definir el PR boundary — la estructura de archivos es ruido. <!-- ver: 2026-09-05 -->
 
-> **Verificado en producción:** Ejemplo: un plan de migración i18n — traducir dos skills de componentes sin la skill de layout rompe las citas cruzadas a `§ Measurement cycle`, forzando los tres al mismo PR. El acoplamiento de contenido decide el boundary, no la complejidad prevista ni el orden inicial del plan — verificar qué se rompe si el contenido se traduce parcialmente.
+> **Verificado en producción:** Ejemplo: un plan de migración i18n — traducir dos skills de componentes sin la skill de layout rompe las citas cruzadas a `§ Measurement cycle`, forzando los tres al mismo PR. El acoplamiento de contenido decide el boundary, no la complejidad prevista ni el orden inicial del plan — verificar qué se rompe si el contenido se traduce parcialmente. <!-- ver: 2026-09-05 -->

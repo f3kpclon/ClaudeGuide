@@ -23,8 +23,11 @@ Checks:
      aplicado a la guía misma):
        - <!-- vence: YYYY-MM-DD --> ya pasada → ERROR (hecho con fecha de expiración
          conocida — ej. pricing introductorio — que nadie recheckeó a tiempo)
-       - "verificado/corregido YYYY-MM-DD" con > STALE_DAYS de antigüedad → WARNING
-         (no bloquea el exit code, solo avisa que puede valer la pena recheckear)
+       - <!-- ver: YYYY-MM-DD --> con > STALE_DAYS de antigüedad → WARNING
+         (no bloquea el exit code, solo avisa que puede valer la pena recheckear).
+         Es un comentario HTML: no renderiza, así la prosa queda sin fechas y el
+         check conserva su señal. Un hecho verificado SIN sello es invisible para
+         este check — al agregar un hecho nuevo, sellarlo.
   9. README.es.md == concat de las 5 guías (vía tools/gen_readme_es.build_es).
      README.es.md es derivado; editar una guía sin regenerar lo deja stale en
      silencio — el check 7 solo compara la versión, no el cuerpo.
@@ -45,7 +48,10 @@ MARKER = re.compile(r"^<!-- §(\d+)(-quick|-ref)? -->$")
 STALE_DAYS = 90
 QUICK_CEILING = 5500  # mirror del hook: un -quick más grande que esto se inyecta como cápsula
 VENCE = re.compile(r"<!--\s*vence:\s*(\d{4}-\d{2}-\d{2})\s*-->")
-VERIFICADO = re.compile(r"(?:[Vv]erificado|[Cc]orregido)(?:\s+\d{4}-\d{2}-\d{2})?[^\n.]{0,60}?(\d{4}-\d{2}-\d{2})")
+# Sello de verificación invisible: <!-- ver: YYYY-MM-DD --> al final de la línea del
+# hecho. Va como comentario HTML porque la prosa de la guía no lleva fechas (v5.42) —
+# si volviera a llevarlas, este regex NO las ve: el sello es el único contrato.
+VERIFICADO = re.compile(r"<!--\s*ver:\s*(\d{4}-\d{2}-\d{2})\s*-->")
 
 errors: list[str] = []
 warnings: list[str] = []
