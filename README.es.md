@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.42 · **El shunt hook, y una cuarta salida del techo de tokens** (analizado 2026-09-09). Un `PreToolUse` tiene un segundo uso legítimo además de la seguridad: **economía**. Un guard sobre `Read` que en vez de prohibir **redirige** saca un archivo de 4.000 líneas del contexto caro antes de que entre — y `Σ(tool_outputs)` de §23, que la sección trataba como irreducible, resulta **movible** más que reducible: un subagente lee en aislamiento y devuelve solo su reporte. Con la trampa que viene adjunta — un plugin público con **51 tests en verde sobre un gate cuyo contrato nadie ejercita** — y una corrección a §11: un `scripts/` fuera de la whitelist **sí** sobrevive a la instalación; la whitelist gobierna qué se registra, no qué se copia. Antes: **§37 y §38 nuevas — el patrón Ratchet y el acoplamiento que define el PR boundary** (verificado 2026-09-05). Un cambio que funciona en runtime pero **retrocede en el repo** es invisible al compilador: el ratchet acopla el guard al código en el mismo commit, con invariantes explícitas. Y el límite de un PR lo decide el **acoplamiento de contenido** — citas cruzadas, strings compartidos, asserts que un hook comparte con su skill — no la estructura de archivos ni la complejidad prevista. Además: **ejemplo mínimo en §5 y §6** antes de los templates completos (un agente de 4 campos, una skill de 2) — el piso enseña más que el techo; el template de skill orquestadora bajó a §6-ref porque el bloque inyectado estaba **501 chars sobre el techo de 5500** y nadie lo veía. Y la guía **dejó de nombrar proyectos privados**: 36 menciones reemplazadas por su procedencia (*verificado en producción*), sin perder fechas ni contexto
+**Versión:** v5.42 · **El shunt hook, y una cuarta salida del techo de tokens.** Un `PreToolUse` tiene un segundo uso legítimo además de la seguridad: **economía**. Un guard sobre `Read` que en vez de prohibir **redirige** saca un archivo de 4.000 líneas del contexto caro antes de que entre — y `Σ(tool_outputs)` de §23, que la sección trataba como irreducible, resulta **movible** más que reducible: un subagente lee en aislamiento y devuelve solo su reporte. Con la trampa que viene adjunta — un plugin público con **51 tests en verde sobre un gate cuyo contrato nadie ejercita** — y una corrección a §11: un `scripts/` fuera de la whitelist **sí** sobrevive a la instalación; la whitelist gobierna qué se registra, no qué se copia. Antes: **§37 y §38 nuevas — el patrón Ratchet y el acoplamiento que define el PR boundary.** Un cambio que funciona en runtime pero **retrocede en el repo** es invisible al compilador: el ratchet acopla el guard al código en el mismo commit, con invariantes explícitas. Y el límite de un PR lo decide el **acoplamiento de contenido** — citas cruzadas, strings compartidos, asserts que un hook comparte con su skill — no la estructura de archivos ni la complejidad prevista. Además: **ejemplo mínimo en §5 y §6** antes de los templates completos (un agente de 4 campos, una skill de 2) — el piso enseña más que el techo; el template de skill orquestadora bajó a §6-ref porque el bloque inyectado estaba **501 chars sobre el techo de 5500** y nadie lo veía. Y la guía **dejó de nombrar proyectos privados**: 36 menciones reemplazadas por su procedencia (*verificado en producción*), sin perder contexto
 
 ---
 
@@ -364,7 +364,7 @@ El archivo de learnings sigue existiendo para que el postmortem lo actualice. Lo
 
 ### Límites por archivo
 
-Dos cosas distintas, y solo una es negociable. **Física** = el harness trunca o saltea, no hay vuelta. **Nuestro límite** = presupuesto lowcost, siempre muy por debajo de lo que el sistema tolera. Verificado 2026-09-02.
+Dos cosas distintas, y solo una es negociable. **Física** = el harness trunca o saltea, no hay vuelta. **Nuestro límite** = presupuesto lowcost, siempre muy por debajo de lo que el sistema tolera. Verificado.
 
 | Archivo | Nuestro límite | Física del sistema |
 |---|---|---|
@@ -473,7 +473,7 @@ Leer `.claude/scope/scope-index.md` antes de cualquier tarea.
 
 ### Antes de Opus — probar `effort` primero
 
-`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar, sin cambiar el precio por token. Subir a Opus multiplica el precio por token **2.5×** (verificado 2026-09-02 contra `platform.claude.com/.../pricing`: Sonnet 5 $2/$10 vs Opus 5 / Opus 4.8 $5/$25).
+`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar, sin cambiar el precio por token. Subir a Opus multiplica el precio por token **2.5×** (verificado contra `platform.claude.com/.../pricing`: Sonnet 5 $2/$10 vs Opus 5 / Opus 4.8 $5/$25).
 
 **El pricing introductorio de Sonnet 5 se volvió permanente** — la suba a $3/$15 agendada para el 01/09/2026 fue cancelada. El ratio Opus:Sonnet es **2.5× y no vence** (el "baja a ~1.7× en septiembre" de versiones anteriores queda anulado).
 
@@ -484,7 +484,7 @@ model: claude-sonnet-5
 # haiku 4.5 NO soporta effort (la API lo rechaza) — effort es palanca de sonnet/opus/fable
 ```
 
-**`xhigh` no está en todos los modelos** (verificado 2026-09-02 contra `/en/build-with-claude/effort`):
+**`xhigh` no está en todos los modelos** (verificado contra `/en/build-with-claude/effort`):
 
 | Nivel | Dónde existe |
 |---|---|
@@ -508,7 +508,7 @@ La pregunta no es "¿es una tarea difícil?" — es:
 
 > **¿El costo de que Sonnet se equivoque supera el costo de Opus?**
 
-Opus 5 cuesta **2.5× más por token** que Sonnet 5 ($5/$25 vs $2/$10 — verificado 2026-09-02; el "~5×" de versiones viejas de esta guía era pricing retirado, y el "~1.7× desde septiembre" nunca llegó a existir: la suba de Sonnet 5 fue cancelada). El threshold para justificar Opus: si un error de Sonnet cuesta más que el ~150% extra de tokens en la tarea → Opus vale la pena. El orden de escalación no cambia — Sonnet + effort primero, porque effort es gratis en precio por token.
+Opus 5 cuesta **2.5× más por token** que Sonnet 5 ($5/$25 vs $2/$10 — verificado; el "~5×" de versiones viejas de esta guía era pricing retirado, y el "~1.7× desde septiembre" nunca llegó a existir: la suba de Sonnet 5 fue cancelada). El threshold para justificar Opus: si un error de Sonnet cuesta más que el ~150% extra de tokens en la tarea → Opus vale la pena. El orden de escalación no cambia — Sonnet + effort primero, porque effort es gratis en precio por token.
 
 **Cuándo Opus tiene justificación real:**
 
@@ -522,7 +522,7 @@ Opus 5 cuesta **2.5× más por token** que Sonnet 5 ($5/$25 vs $2/$10 — verifi
 <!-- §25-ref -->
 #### Las cuatro formas de setear effort en Claude Code
 
-Verificado 2026-09-02 contra `code.claude.com/.../model-config`:
+Verificado contra `code.claude.com/.../model-config`:
 
 ```bash
 /effort high                        # en sesión
@@ -574,7 +574,7 @@ tools: Read, Glob, Grep
 
 **Por qué no `effort: xhigh` en Sonnet:** patrones de seguridad sutiles (IDOR, timing attacks, second-order injection) requieren el nivel de razonamiento de Opus. En auditorías de seguridad, el costo del error justifica el modelo más capaz disponible.
 
-### El lineup actual (verificado 2026-09-02 contra `/en/models/overview`)
+### El lineup actual (verificado contra `/en/models/overview`)
 
 | Modelo | ID | Contexto | Output máx | Precio in/out | effort |
 |---|---|---|---|---|---|
@@ -629,7 +629,7 @@ No es que "la documentación exija poner el nombre completo" — los propios eje
 
 ### Fast Mode — inferencia rápida (Opus 5 y Opus 4.8, research preview)
 
-**Corrección importante (2026-09-02): la versión anterior de esta guía afirmaba que fast mode "NO es un parámetro de la Messages API". Es falso.** La doc oficial `/en/build-with-claude/fast-mode` documenta el parámetro con ejemplos en 8 lenguajes:
+**Corrección importante: la versión anterior de esta guía afirmaba que fast mode "NO es un parámetro de la Messages API". Es falso.** La doc oficial `/en/build-with-claude/fast-mode` documenta el parámetro con ejemplos en 8 lenguajes:
 
 ```bash
 curl https://api.anthropic.com/v1/messages \
@@ -668,7 +668,7 @@ Siempre verificar `response.usage.speed` — es el único modo de distinguir "co
 
 ### Contexto largo — ya no hay "extended premium"
 
-**Re-verificado 2026-09-02:** de Claude 4.6 en adelante (Opus 5, Sonnet 5, Fable 5.1 incluidos) la ventana de 1M tokens viene **a pricing estándar** — *"a 900k-token request is billed at the same per-token rate as a 9k-token request"*. El modelo de "activar extended context a 10×" de versiones anteriores de esta guía quedó obsoleto. Haiku 4.5 mantiene 200K.
+**Re-verificado:** de Claude 4.6 en adelante (Opus 5, Sonnet 5, Fable 5.1 incluidos) la ventana de 1M tokens viene **a pricing estándar** — *"a 900k-token request is billed at the same per-token rate as a 9k-token request"*. El modelo de "activar extended context a 10×" de versiones anteriores de esta guía quedó obsoleto. Haiku 4.5 mantiene 200K.
 
 En Claude Code la ventana grande se fuerza con los aliases `opus[1m]` / `sonnet[1m]`.
 
@@ -903,12 +903,12 @@ RESULTADO: PASS | FAIL
 | `memory` | No | Memoria persistente entre sesiones: `user` (`~/.claude/agent-memory/`) · `project` · `local` |
 | `isolation` | No | `worktree` = corre en un checkout git aislado — los cambios no tocan el hilo principal |
 | `background` | No | `true` = siempre corre en background como tarea — no bloquea el hilo |
-| `hooks` | No | Hooks scoped al ciclo de vida de este agente (misma sintaxis que settings.json). **Ignorado si el agente viene de un plugin** (verificado 2026-07-04) |
+| `hooks` | No | Hooks scoped al ciclo de vida de este agente (misma sintaxis que settings.json). **Ignorado si el agente viene de un plugin** (verificado) |
 | `mcpServers` | No | MCP servers disponibles para este agente — referencia por nombre a uno ya configurado, o definición inline. **Ignorado si el agente viene de un plugin** |
 | `effort` | No | Override de esfuerzo: `low` · `medium` · `high` · `xhigh` · `max` |
 | `color` | No | Color en la UI: `red` · `blue` · `green` · `yellow` · `purple` · `orange` · `pink` · `cyan` |
 
-**Gotcha verificado 2026-07-04 (doc oficial de sub-agents):** `hooks`, `mcpServers` y `permissionMode` se **ignoran en silencio** cuando el agente se carga desde un plugin — sin error, sin warning. Si un agente de plugin necesita alguno de estos tres, la única forma es que el usuario copie el archivo a `.claude/agents/` o `~/.claude/agents/` locales; agregar reglas en `permissions.allow` de `settings.json` es la alternativa para permisos, pero aplica a toda la sesión, no solo a ese subagente.
+**Gotcha verificado (doc oficial de sub-agents):** `hooks`, `mcpServers` y `permissionMode` se **ignoran en silencio** cuando el agente se carga desde un plugin — sin error, sin warning. Si un agente de plugin necesita alguno de estos tres, la única forma es que el usuario copie el archivo a `.claude/agents/` o `~/.claude/agents/` locales; agregar reglas en `permissions.allow` de `settings.json` es la alternativa para permisos, pero aplica a toda la sesión, no solo a ese subagente.
 
 ### Modelo por tipo de agente
 
@@ -1053,7 +1053,7 @@ plugins/mi-plugin/agents/  → plugin, donde se instale
 
 La guía da límites para todo excepto los agentes. Un agente largo se lee completo en cada invocación — igual que CLAUDE.md, solo que en contexto aislado.
 
-> **Procedencia — verificado 2026-09-08.** El *razonamiento* es de la doc oficial (el prompt del subagente se lee entero en cada invocación). Los **números de abajo no lo son**: `code.claude.com/docs/en/sub-agents` no da ninguna recomendación de largo para un archivo de subagente, ni la varía por modelo. Son convención de esta guía, calibrada sobre costo. Citalos como tales — si un test los enforcea, que su docstring diga "convención", no "límite de la plataforma", o el próximo lector va a creer que la plataforma rechaza el archivo.
+> **Procedencia.** El *razonamiento* es de la doc oficial (el prompt del subagente se lee entero en cada invocación). Los **números de abajo no lo son**: `code.claude.com/docs/en/sub-agents` no da ninguna recomendación de largo para un archivo de subagente, ni la varía por modelo. Son convención de esta guía, calibrada sobre costo. Citalos como tales — si un test los enforcea, que su docstring diga "convención", no "límite de la plataforma", o el próximo lector va a creer que la plataforma rechaza el archivo.
 
 | Modelo | Límite del prompt | Por qué |
 |---|---|---|
@@ -1067,7 +1067,7 @@ Si un agente supera su límite → hay contenido que puede ir a un learnings fil
 
 La pregunta no es "¿ayuda un ejemplo?" — siempre ayuda. Es **¿hay otra fuente que ya posee ese código?** Si un orquestador le pasa un template en cada invocación, el bloque inline del agente es una segunda fuente para lo mismo, y **la copia siempre pierde**: nadie la mira cuando edita el template.
 
-No es teórico. Caso real (2026-09-06): el `enum Style` inline de un agente de capa tipaba `textColor: AnyShapeStyle` mientras su template lo tipaba `ThemeColorShapeStyle` — o sea, **el ejemplo del agente contradecía la regla de tipado que el propio agente enunciaba en prosa cuatro líneas más abajo** — y encima omitía un macro que sus propias Rules declaraban obligatorio. Otro agente llevaba un `makeBody` sin `.background` ni `.opacity(isPressed)`. Los dos compilan. Los dos están mal. Ninguno da error.
+No es teórico. Caso real: el `enum Style` inline de un agente de capa tipaba `textColor: AnyShapeStyle` mientras su template lo tipaba `ThemeColorShapeStyle` — o sea, **el ejemplo del agente contradecía la regla de tipado que el propio agente enunciaba en prosa cuatro líneas más abajo** — y encima omitía un macro que sus propias Rules declaraban obligatorio. Otro agente llevaba un `makeBody` sin `.background` ni `.opacity(isPressed)`. Los dos compilan. Los dos están mal. Ninguno da error.
 
 | Tipo de código | Dónde vive | Por qué |
 |---|---|---|
@@ -1094,7 +1094,7 @@ Hipótesis 2: [solo si la 1 no aplica]
 
 Incluir esta sección en **todo agente de diagnóstico, revisión o postmortem** (debugger, reviewer, lead, postmortem). Sin ella, el modelo decide el formato en cada invocación — y siempre elige el más verbose.
 
-**Impacto real medido (2026-05-31):**
+**Impacto real medido:**
 ```
 Sin output format (general-purpose):                                      ~21k tokens
 Con output format forzado — tarea simple  (1 bug,  ≤4 archivos):         ~6-10k tokens†
@@ -1130,11 +1130,11 @@ El orchestrador (o el usuario) invoca agentes con un prompt. Ese prompt se suma 
 
 **Cuánto ahorra:** un prompt de invocación corto vs. largo puede ser la diferencia entre 2k y 12k tokens para haiku — 6x de diferencia en una operación simple.
 
-**Para el reviewer en particular:** pasar SOLO los archivos directamente modificados en la sesión — nunca archivos de contexto o arquitectura. El reviewer tiene Grep/Glob disponibles y los usa para cruzar referencias; cada archivo de contexto extra añade ~3-5 tool uses. 4 archivos → ~8-10 tool uses → ~4-8k tokens. 7 archivos → ~34 tool uses → ~22k tokens (medido, 2026-05-31).
+**Para el reviewer en particular:** pasar SOLO los archivos directamente modificados en la sesión — nunca archivos de contexto o arquitectura. El reviewer tiene Grep/Glob disponibles y los usa para cruzar referencias; cada archivo de contexto extra añade ~3-5 tool uses. 4 archivos → ~8-10 tool uses → ~4-8k tokens. 7 archivos → ~34 tool uses → ~22k tokens (medido).
 
 ### Ciclo de vida del subagente — reanudar, bloquear, relayar
 
-> El prompt mínimo (arriba) abarata *una* invocación. Estas tres reglas abaratan la **orquestación**: dónde se paga el spawn, cuándo bloquear y cómo no perder el resultado. Todas verificadas contra el harness de esta sesión (2026-07-18); son física del tool `Agent`, no estilo.
+> El prompt mínimo (arriba) abarata *una* invocación. Estas tres reglas abaratan la **orquestación**: dónde se paga el spawn, cuándo bloquear y cómo no perder el resultado. Todas verificadas contra el harness de esta sesión; son física del tool `Agent`, no estilo.
 
 | Palanca | Qué hace el harness | Regla LowCost |
 |---|---|---|
@@ -1146,7 +1146,7 @@ El orchestrador (o el usuario) invoca agentes con un prompt. Ese prompt se suma 
 
 ### El `model:` del frontmatter es un default, no un candado
 
-> Verificado contra el schema del tool `Agent` (esta sesión, 2026-07-18): al spawnear, el **`model` de la invocación tiene precedencia sobre el `model:` del frontmatter**. Pinear el modelo en el agente fija su *caso típico*; no impide dispatchearlo más barato o más caro por invocación.
+> Verificado contra el schema del tool `Agent` (esta sesión): al spawnear, el **`model` de la invocación tiene precedencia sobre el `model:` del frontmatter**. Pinear el modelo en el agente fija su *caso típico*; no impide dispatchearlo más barato o más caro por invocación.
 
 La palanca lowcost: **una sola definición de agente, el modelo más barato que la tarea concreta permita**. Un `@reviewer` pineado en sonnet para correctness se puede spawnear en haiku para un check trivial de convenciones, sin duplicar el archivo ni tocar el frontmatter.
 
@@ -1182,7 +1182,7 @@ Agente checklist crece cada vez que se agrega una feature nueva
     → el agente instruye: "si [condición], leer [skill] y correr esos checks también"
 ```
 
-**Validado (2026-07-01):** validator.md creció de 9 a 13 checks al agregar
+**Validado:** validator.md creció de 9 a 13 checks al agregar
 soporte para tests/CI/local-files (§16, §19, §20, §32 de esta guía). Split a `validator.md`
 (6 checks core) + `validator-checks/SKILL.md` (7 checks condicionales, cargados solo si
 TYPE=plugin o hay extras) — bajó el system prompt ~30% sin perder ningún check.
@@ -1276,15 +1276,15 @@ Mantenimiento mensual de learnings. No correr en cada sesión.
 
 Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 
-**`command` SIEMPRE con `$CLAUDE_PROJECT_DIR`** — el hook corre con el cwd actual del shell de la sesión, no con la raíz del proyecto. Un `command: "python3 .claude/hooks/x.py"` relativo funciona hasta que un Bash hace `cd` a otro directorio — desde ahí el hook revienta con "can't open file" y bloquea tool calls legítimas. Verificado en vivo 2026-07-02.
+**`command` SIEMPRE con `$CLAUDE_PROJECT_DIR`** — el hook corre con el cwd actual del shell de la sesión, no con la raíz del proyecto. Un `command: "python3 .claude/hooks/x.py"` relativo funciona hasta que un Bash hace `cd` a otro directorio — desde ahí el hook revienta con "can't open file" y bloquea tool calls legítimas. Verificado en vivo.
 
 **Plugins**: `hooks/hooks.json` usa el MISMO wrapper `{"hooks": {...}}` — eventos al top level se rechazan en silencio y ningún hook se registra. Scripts con `"${CLAUDE_PLUGIN_ROOT}"` (ver §11 Trampas). El matcher de `SubagentStop` para agentes de plugin puede necesitar el nombre con namespace: `(mi-plugin:)?mi-agente`.
 
 ### Eventos — los más usados (no es la lista completa)
 
-33 eventos existen en total (re-verificado 2026-09-02 contra la referencia oficial: eran 30 en julio, entraron `DirectoryAdded`, `PreModelSwitch` y `PostModelSwitch`) — acá solo los de uso lowcost. Nicho (agent teams, MCP, worktrees) → §7-ref. `PreCompact`/`PostCompact` → §33.
+33 eventos existen en total (re-verificado contra la referencia oficial: eran 30 en julio, entraron `DirectoryAdded`, `PreModelSwitch` y `PostModelSwitch`) — acá solo los de uso lowcost. Nicho (agent teams, MCP, worktrees) → §7-ref. `PreCompact`/`PostCompact` → §33.
 
-**Bloqueantes** — corregido 2026-07-04: `Stop`/`SubagentStop` SÍ bloquean (la guía anterior los daba como solo observacionales) — no deniegan una acción, fuerzan que la conversación **continúe** en vez de terminar. Distinto de `PreToolUse`/`UserPromptSubmit`/`PermissionRequest`, que deniegan ANTES de que la acción ocurra:
+**Bloqueantes** — corregido: `Stop`/`SubagentStop` SÍ bloquean (la guía anterior los daba como solo observacionales) — no deniegan una acción, fuerzan que la conversación **continúe** en vez de terminar. Distinto de `PreToolUse`/`UserPromptSubmit`/`PermissionRequest`, que deniegan ANTES de que la acción ocurra:
 
 | Evento | Tipo | Cómo bloquea | Uso típico |
 |---|---|---|---|
@@ -1303,12 +1303,12 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 | `SessionStart` | `startup\|resume\|clear\|compact\|fork` | Al iniciar o retomar sesión | Inyectar contexto inicial, `watchPaths`, `reloadSkills` |
 | `FileChanged` | Nombre de archivo | Archivo vigilado cambia en disco | Recargar `.env`, disparar validaciones externas |
 
-**`PostToolUse` — caso aparte (corregido 2026-07-04):** NO es puramente observacional como los tres de arriba. No puede deshacer la tool (ya se ejecutó), pero SÍ soporta `"decision": "block"` + `"reason"` — un mecanismo real de tercera vía, distinto de `systemMessage`/`additionalContext`: fuerza que el error se muestre a Claude en el mismo turno para que lo corrija. Es exactamente lo que usa el ejemplo "El compilador como juez" más abajo en esta sección. La versión anterior de esta guía clasificaba PostToolUse junto a los observacionales puros — es una simplificación excesiva, no un error de la doc oficial.
+**`PostToolUse` — caso aparte (corregido):** NO es puramente observacional como los tres de arriba. No puede deshacer la tool (ya se ejecutó), pero SÍ soporta `"decision": "block"` + `"reason"` — un mecanismo real de tercera vía, distinto de `systemMessage`/`additionalContext`: fuerza que el error se muestre a Claude en el mismo turno para que lo corrija. Es exactamente lo que usa el ejemplo "El compilador como juez" más abajo en esta sección. La versión anterior de esta guía clasificaba PostToolUse junto a los observacionales puros — es una simplificación excesiva, no un error de la doc oficial.
 
 <!-- §7-ref -->
 ### Eventos de nicho — no cubiertos arriba
 
-Re-verificado 2026-09-02 contra la referencia oficial de hooks — 33 eventos en total, estos son los que esta guía no desarrolla porque son de casos puntuales (agent teams, MCP elicitation, worktrees, config):
+Re-verificado contra la referencia oficial de hooks — 33 eventos en total, estos son los que esta guía no desarrolla porque son de casos puntuales (agent teams, MCP elicitation, worktrees, config):
 
 | Evento | Contexto |
 |---|---|
@@ -1357,7 +1357,7 @@ La guía usa `"type": "command"` (Python/shell) en todos los ejemplos. Existen *
 
 #### `ok: false` no significa lo mismo en cada evento
 
-Este es el detalle que rompe guards en silencio. Verificado 2026-09-02:
+Este es el detalle que rompe guards en silencio. Verificado:
 
 | Evento | Qué pasa con `ok: false` |
 |---|---|
@@ -1368,7 +1368,7 @@ Este es el detalle que rompe guards en silencio. Verificado 2026-09-02:
 
 **`continueOnBlock: true` es el campo que casi nadie pone y casi todos quieren.** En `PreToolUse` y `PostToolUse` cambia "matar el turno con un warning" por "devolverle el `reason` a Claude como error de la tool para que corrija y siga". Sin ese flag, tu validador no es un juez que enseña — es un cortacircuitos.
 
-> ⚠️ **Alcance — acotado 2026-09-08.** Toda la tabla de arriba y este párrafo describen el `ok: false` de un **prompt/agent hook**; así está scopeado en la doc. Para un hook `type: "command"` que devuelve `permissionDecision: "deny"`, la doc dice otra cosa y **no menciona el flag**: *"With `deny`, Claude Code cancels the tool call and feeds `permissionDecisionReason` back to Claude."* Además, `continueOnBlock` **no aparece en las tablas de campos** de la referencia. O sea: no está documentado que un hook `command` lo necesite **ni** que lo ignore. Si tu guard es `command`, verificalo con `claude --debug-file` antes de afirmar cualquiera de las dos cosas — ponerlo no hace daño, pero un checklist que lo exige como violación está inventando.
+> ⚠️ **Alcance — acotado.** Toda la tabla de arriba y este párrafo describen el `ok: false` de un **prompt/agent hook**; así está scopeado en la doc. Para un hook `type: "command"` que devuelve `permissionDecision: "deny"`, la doc dice otra cosa y **no menciona el flag**: *"With `deny`, Claude Code cancels the tool call and feeds `permissionDecisionReason` back to Claude."* Además, `continueOnBlock` **no aparece en las tablas de campos** de la referencia. O sea: no está documentado que un hook `command` lo necesite **ni** que lo ignore. Si tu guard es `command`, verificalo con `claude --debug-file` antes de afirmar cualquiera de las dos cosas — ponerlo no hace daño, pero un checklist que lo exige como violación está inventando.
 
 > **Cambio de comportamiento con fecha:** antes de la **v2.1.210**, un `PreToolUse` denegado devolvía el `reason` a Claude y el turno continuaba — o sea, el comportamiento de `continueOnBlock: true` era el default. Si tenés hooks escritos antes de esa versión, hoy cortan el turno donde antes corregían y siguen. Los agent hooks se comportan siempre como `continueOnBlock: true` y no tienen el campo.
 
@@ -1410,7 +1410,7 @@ No es "siempre regex". El harness elige según los caracteres que uses:
 
 Consecuencia práctica: `Bash` matchea exactamente `Bash`, pero `Bash.` es regex y matchea cualquier tool que empiece con "Bash". La regex se testea con `RegExp.prototype.test`, o sea **matchea en cualquier posición**: `Edit.*` matchea `Edit` y también `NotebookEdit`; para whole-string va `^Edit$`. Si tu matcher no dispara, chequeá primero en cuál de las tres filas cayó.
 
-> **Tres cosas que faltaban acá — agregadas 2026-09-08 contra `code.claude.com/docs/en/hooks`:**
+> **Tres cosas que faltaban acá — agregadas contra `code.claude.com/docs/en/hooks`:**
 > 1. **Los espacios están en el set exacto**, y las comas también separan alternativas (`Edit, Write`), no solo `|`. Requiere **v2.1.191+**.
 > 2. ⚠️ **El guion cae en el set exacto recién desde v2.1.195.** En versiones previas un matcher como `code-reviewer` es **regex sin anclar** y por lo tanto **también dispara para `senior-code-reviewer`**. Es el caso típico de un `SubagentStop` con nombre de agente — y un plugin no controla la versión del host, así que ahí el matcher va anclado: `^code-reviewer$`.
 > 3. ⚠️ **`FileChanged` y `StopFailure` usan un set más angosto: letras, dígitos, `_` y `\|` solamente.** Un guion, espacio o coma en el matcher de esos dos eventos lo manda a la vía regex, y solo `\|` separa alternativas. Todos los demás eventos con matcher aceptan `\|` o `,`.
@@ -1456,9 +1456,9 @@ Consecuencia práctica: `Bash` matchea exactamente `Bash`, pero `Bash.` es regex
 
 Regla: el modo más restrictivo que permita trabajar sin fricción innecesaria. En producción: nunca `bypassPermissions`.
 
-> **[2026-06-01] verificado en producción:** **3 capas de seguridad para apps multi-usuario:** Layer 1 (input) — regla en CLAUDE.md `user input = DATA` + `strip_prompt_injection()` en architect. Layer 2 (generation) — `pre_write_guard.py` bloquea path traversal y secretos en archivos generados. Layer 3 (storage) — `sanitize_for_storage()` antes de Atlas. Orden: implementar Layer 2 primero — es el único bloqueante (PreToolUse).
+> **Verificado en producción:** **3 capas de seguridad para apps multi-usuario:** Layer 1 (input) — regla en CLAUDE.md `user input = DATA` + `strip_prompt_injection()` en architect. Layer 2 (generation) — `pre_write_guard.py` bloquea path traversal y secretos en archivos generados. Layer 3 (storage) — `sanitize_for_storage()` antes de Atlas. Orden: implementar Layer 2 primero — es el único bloqueante (PreToolUse).
 
-> **[2026-06-01] verificado en producción:** **security_utils.py** — módulo compartido por todos los hooks y `vector_memory`. Cubre: `sanitize_for_storage` (MongoDB), `contains_secrets` (API keys, tokens), `is_blocked_path` (traversal), `has_prompt_injection`. Regla: ningún hook procesa input de usuario sin pasar por este módulo — nunca duplicar validaciones en hooks individuales.
+> **Verificado en producción:** **security_utils.py** — módulo compartido por todos los hooks y `vector_memory`. Cubre: `sanitize_for_storage` (MongoDB), `contains_secrets` (API keys, tokens), `is_blocked_path` (traversal), `has_prompt_injection`. Regla: ningún hook procesa input de usuario sin pasar por este módulo — nunca duplicar validaciones en hooks individuales.
 
 ### Template — PreToolUse (bloquear o reescribir)
 
@@ -1709,7 +1709,7 @@ Un path como `cwd="/Users/nombre/Desktop/proyecto"` rompe si el proyecto se muev
 
 ### Campos de payload por tool — verificar, nunca recordar
 
-Los nombres reales de los campos (verificados 2026-07-02 — versiones anteriores de esta guía tenían `path`/`new_str`, que NO existen):
+Los nombres reales de los campos (verificados — versiones anteriores de esta guía tenían `path`/`new_str`, que NO existen):
 
 | Tool | Campos de `tool_input` |
 |---|---|
@@ -1728,7 +1728,7 @@ elif tool == 'MultiEdit':
 
 Un campo equivocado no da error: `inp.get('path', '')` retorna `''`, el filtro de extensión no matchea, `sys.exit(0)` — **el hook queda muerto y se ve idéntico a uno sano**. Caso real: el gate de convenciones GDScript estuvo semanas validando solo Write porque leía `path`/`new_str` en Edit — con tests verdes, porque los tests alimentaban el mismo shape inventado. Regla: los campos del payload se copian de la doc oficial de hooks o de un payload real capturado, nunca de memoria.
 
-**Campos top-level + identidad del subagente (verificado empíricamente 2026-07-18, este harness + code.claude.com/docs/en/hooks):** además de `tool_name`/`tool_input`, un `PreToolUse` trae `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `effort` (es un **objeto**: `{"level":"high"}`, no un string), `hook_event_name`, `tool_use_id`. Y el dato que casi nadie documenta: **`agent_id` + `agent_type` aparecen SOLO cuando la llamada la dispara un subagente** — el agente principal no los trae. `agent_type` = el `name` del frontmatter, **plugin-scoped** (ej. `mi-plugin:debugger`; un built-in llega pelado como `general-purpose`). No es exclusivo de `SubagentStop`: un **`PreToolUse` puede saber qué subagente hizo la llamada**, lo que habilita gates a nivel subagente. Bonus verificado la misma sesión: un hook agregado a `.claude/settings.local.json` **se activó a mitad de sesión sin reload**.
+**Campos top-level + identidad del subagente (verificado empíricamente, este harness + code.claude.com/docs/en/hooks):** además de `tool_name`/`tool_input`, un `PreToolUse` trae `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `effort` (es un **objeto**: `{"level":"high"}`, no un string), `hook_event_name`, `tool_use_id`. Y el dato que casi nadie documenta: **`agent_id` + `agent_type` aparecen SOLO cuando la llamada la dispara un subagente** — el agente principal no los trae. `agent_type` = el `name` del frontmatter, **plugin-scoped** (ej. `mi-plugin:debugger`; un built-in llega pelado como `general-purpose`). No es exclusivo de `SubagentStop`: un **`PreToolUse` puede saber qué subagente hizo la llamada**, lo que habilita gates a nivel subagente. Bonus verificado la misma sesión: un hook agregado a `.claude/settings.local.json` **se activó a mitad de sesión sin reload**.
 
 ### Receta — acotar una tool peligrosa-pero-necesaria a UN solo subagente
 
@@ -1776,7 +1776,7 @@ echo '{"tool_name": "Bash", "tool_input": {"command": "git push origin master"}}
 
 Si el hook no imprime nada → exit 0 silencioso (correcto). Si imprime JSON con `permissionDecision: deny` → bloqueo activo.
 
-> **Gotcha del harness — un payload incompleto convierte el test en mentira (verificado 2026-07-18).** Un guard bien hecho arranca con `if payload.get("tool_name") != "Bash": sys.exit(0)`. Si tu payload de prueba **omite `tool_name`**, el guard sale temprano y **todo comando devuelve ALLOW** — el test que esperaba `deny` "pasa" como allow por la razón equivocada, y los que esperaban allow también pasan, así que la suite queda verde sobre un gate desactivado. Pasó al testear un git-gate: 5 falsos ALLOW, y el guard estaba perfecto; el payload de prueba era el roto. Es el mismo "se ve idéntico a uno sano" de §7, un nivel más arriba: no el hook muerto, sino **el test que no ejercita el hook**. Fix: el payload de prueba replica el shape REAL completo (`tool_name` + `tool_input` + `agent_type` cuando pruebas gates de subagente), y al menos un caso debe verificar que el guard efectivamente **deniega** algo — si nada deniega nunca, sospecha del harness antes que del código (el juez real > el proxy).
+> **Gotcha del harness — un payload incompleto convierte el test en mentira (verificado).** Un guard bien hecho arranca con `if payload.get("tool_name") != "Bash": sys.exit(0)`. Si tu payload de prueba **omite `tool_name`**, el guard sale temprano y **todo comando devuelve ALLOW** — el test que esperaba `deny` "pasa" como allow por la razón equivocada, y los que esperaban allow también pasan, así que la suite queda verde sobre un gate desactivado. Pasó al testear un git-gate: 5 falsos ALLOW, y el guard estaba perfecto; el payload de prueba era el roto. Es el mismo "se ve idéntico a uno sano" de §7, un nivel más arriba: no el hook muerto, sino **el test que no ejercita el hook**. Fix: el payload de prueba replica el shape REAL completo (`tool_name` + `tool_input` + `agent_type` cuando pruebas gates de subagente), y al menos un caso debe verificar que el guard efectivamente **deniega** algo — si nada deniega nunca, sospecha del harness antes que del código (el juez real > el proxy).
 
 ### Diagnóstico de hooks silenciosos
 
@@ -1823,7 +1823,7 @@ Un hook que falla sin error visible es difícil de debuggear. Checklist en orden
 
 > **El código de un hook cuesta CERO tokens.** Es un subproceso: el harness lo ejecuta, su fuente nunca entra en contexto. Lo único que se paga es su **salida**, y solo cuando dispara. Esa asimetría es la que decide dónde vive una regla, y es lo contrario del costo de un agente — cuyo prompt se lee entero en cada invocación.
 
-Medido sobre un plugin real (2026-09-08): **4.879 líneas de Python ≈ ~52.000 tokens de lógica que cuestan 0.** Si esas mismas reglas vivieran como prosa en agentes, se pagarían en cada invocación.
+Medido sobre un plugin real: **4.879 líneas de Python ≈ ~52.000 tokens de lógica que cuestan 0.** Si esas mismas reglas vivieran como prosa en agentes, se pagarían en cada invocación.
 
 | Qué | Cuándo se paga |
 |---|---|
@@ -1840,7 +1840,7 @@ Medido sobre un plugin real (2026-09-08): **4.879 líneas de Python ≈ ~52.000 
 
 El patrón es siempre el mismo: el guard lee un archivo de config, y si falta o el campo está sin setear, sale por `exit 0`. Perfectamente razonable — no hay nada que enforcear todavía. El problema aparece cuando alguien borró la prosa del agente confiando en él, o cuando un README dice *"esto se enforcea dos veces, una estructuralmente"*.
 
-**El chequeo que casi nadie hace: cruzarlo contra lo que bootstrapea `SessionStart`.** Si el bootstrap deja un campo sin valor, entonces el estado **recién instalado** es el del no-op — o sea, el peor caso no es raro: es el default. Caso real (2026-09-08): un `SessionStart` bootstrapeaba `git-conventions.md` con `max_diff_lines` por defecto pero `base_branch` **sin setear**, y el cap de diff del `pre_push_guard` requiere las dos cosas. El README prometía "enforced twice"; en una instalación nueva era una.
+**El chequeo que casi nadie hace: cruzarlo contra lo que bootstrapea `SessionStart`.** Si el bootstrap deja un campo sin valor, entonces el estado **recién instalado** es el del no-op — o sea, el peor caso no es raro: es el default. Caso real: un `SessionStart` bootstrapeaba `git-conventions.md` con `max_diff_lines` por defecto pero `base_branch` **sin setear**, y el cap de diff del `pre_push_guard` requiere las dos cosas. El README prometía "enforced twice"; en una instalación nueva era una.
 
 **El reparto correcto son tres dueños, no dos** — es lo que hace que sacar prosa de un agente sea seguro:
 
@@ -2166,9 +2166,9 @@ Y ese es el ahorro **de un solo turno**. El compuesto es mayor y es el argumento
 - **Archivos chicos** — bajo el umbral, el overhead del subagente (su propio system prompt, su reporte) supera lo ahorrado.
 - **Decisiones de arquitectura** — el juicio se queda arriba.
 
-> **Procedencia — analizado 2026-09-09.** El patrón viene de [`spotify/portal-ai-plugins`](https://github.com/spotify/portal-ai-plugins) (plugin `shunt`), publicado con el reporte "Portal cut my Claude Code token usage by 90%". Sus números medidos sobre un monorepo Java de 162k líneas: 33.684 → 5.737 tokens (82%) en un archivo de 4.014 líneas; 75.990 → 4.148 (94%) en un par source+test. Media de ahorro en lectura: **90%**. Ellos rutean a un modelo externo vía su propia CLI; la versión de esta guía rutea a un subagente haiku y no necesita infra.
+> **Procedencia.** El patrón viene de [`spotify/portal-ai-plugins`](https://github.com/spotify/portal-ai-plugins) (plugin `shunt`), publicado con el reporte "Portal cut my Claude Code token usage by 90%". Sus números medidos sobre un monorepo Java de 162k líneas: 33.684 → 5.737 tokens (82%) en un archivo de 4.014 líneas; 75.990 → 4.148 (94%) en un par source+test. Media de ahorro en lectura: **90%**. Ellos rutean a un modelo externo vía su propia CLI; la versión de esta guía rutea a un subagente haiku y no necesita infra.
 >
-> ⚠️ **Y traen el fallo silencioso de regalo — no lo copies.** Sus dos hooks emiten `{"decision": "block", "reason": ...}`. Verificado contra `code.claude.com/docs/en/hooks` el 2026-09-09: **el campo top-level `decision` no existe en la referencia de `PreToolUse`**; el único mecanismo documentado es `hookSpecificOutput.permissionDecision`. Su rama de paso, `{"decision": "allow"}`, no es válida en ningún formato — funciona por accidente, porque nada reconocido equivale a permitir. Es exactamente lo que el checklist de §13 marca como violación, en un repo de Spotify con 51 tests en verde. Por qué los tests no lo ven: §19, "Testear el proxy en vez del contrato".
+> ⚠️ **Y traen el fallo silencioso de regalo — no lo copies.** Sus dos hooks emiten `{"decision": "block", "reason": ...}`. Verificado contra `code.claude.com/docs/en/hooks`: **el campo top-level `decision` no existe en la referencia de `PreToolUse`**; el único mecanismo documentado es `hookSpecificOutput.permissionDecision`. Su rama de paso, `{"decision": "allow"}`, no es válida en ningún formato — funciona por accidente, porque nada reconocido equivale a permitir. Es exactamente lo que el checklist de §13 marca como violación, en un repo de Spotify con 51 tests en verde. Por qué los tests no lo ven: §19, "Testear el proxy en vez del contrato".
 
 ### Secret detection guard — credenciales en archivos
 
@@ -2286,7 +2286,7 @@ allowed-tools: Read
 | <tarea-1> | @<agente> | <condición> |
 | <tarea-2> | skill `<nombre>` | <condición> |
 ```
-> Límite: < 40 líneas si el proyecto tiene CLAUDE.md · < 60 líneas si es hub de plugin sin CLAUDE.md, ya que ahí también carga reglas universales (§2, §11). Si CLAUDE.md ya tiene el dispatch, ocultarla del menú `/` sin tocar el SKILL.md — **`skillOverrides` va en `.claude/settings.json`, NO en el frontmatter** (corregido 2026-07-04, error fácil: escribirlo en el SKILL.md no falla, simplemente no hace nada): `{"skillOverrides": {"<proyecto>-hub": "user-invocable-only"}}`.
+> Límite: < 40 líneas si el proyecto tiene CLAUDE.md · < 60 líneas si es hub de plugin sin CLAUDE.md, ya que ahí también carga reglas universales (§2, §11). Si CLAUDE.md ya tiene el dispatch, ocultarla del menú `/` sin tocar el SKILL.md — **`skillOverrides` va en `.claude/settings.json`, NO en el frontmatter** (corregido, error fácil: escribirlo en el SKILL.md no falla, simplemente no hace nada): `{"skillOverrides": {"<proyecto>-hub": "user-invocable-only"}}`.
 
 ---
 
@@ -2303,7 +2303,7 @@ allowed-tools: []
 ```
 > Límite: < 200 líneas. Si supera → dividir en `SKILL.md` + `reference.md`.
 
-> **Dos gotchas al pelear con el cap (2026-07-18):** (1) Si lo enforced con un test, el test suele ser `> 200` (falla estricto), así que el techo real es **≤200** y un archivo clavado en 200 tiene **cero margen** — la próxima línea rompe la suite; deja el archivo ~197 para poder editar sin recortar cada vez. (2) **Rewordear un párrafo con wrap NO baja el conteo de líneas** — el archivo tiene newlines literales, no wrap visual; acortar el texto de una línea que ya ocupa 4 líneas físicas la deja en 4. Para bajar UNA línea hay que **fusionar contenido en menos newlines** (unir dos oraciones wrapeadas en una), no solo escribir menos palabras. Perdí varias iteraciones reescribiendo sin que `wc -l` bajara hasta entenderlo.
+> **Dos gotchas al pelear con el cap:** (1) Si lo enforced con un test, el test suele ser `> 200` (falla estricto), así que el techo real es **≤200** y un archivo clavado en 200 tiene **cero margen** — la próxima línea rompe la suite; deja el archivo ~197 para poder editar sin recortar cada vez. (2) **Rewordear un párrafo con wrap NO baja el conteo de líneas** — el archivo tiene newlines literales, no wrap visual; acortar el texto de una línea que ya ocupa 4 líneas físicas la deja en 4. Para bajar UNA línea hay que **fusionar contenido en menos newlines** (unir dos oraciones wrapeadas en una), no solo escribir menos palabras. Perdí varias iteraciones reescribiendo sin que `wc -l` bajara hasta entenderlo.
 
 ---
 
@@ -2432,7 +2432,7 @@ Una skill con `"on"` (default) consume tokens en el system prompt aunque nunca s
 
 Ventaja sobre borrar: el archivo sigue existiendo como referencia histórica, pero no consume tokens.
 
-> **⚠️ `skillOverrides` NO afecta a las skills de un plugin** (verificado 2026-09-02). Esas se manejan con `/plugin`. Es una trampa directa para el consejo del template de hub de arriba: si tu hub vive dentro de un plugin, poner `"mi-plugin-hub": "user-invocable-only"` en settings.json **no hace nada y no avisa** — el hub sigue consumiendo sus ~280 tokens en cada sesión. Para un hub de plugin, la palanca real es el frontmatter (`user-invocable: false` / `disable-model-invocation: true`), que sí viaja con el plugin.
+> **⚠️ `skillOverrides` NO afecta a las skills de un plugin** (verificado). Esas se manejan con `/plugin`. Es una trampa directa para el consejo del template de hub de arriba: si tu hub vive dentro de un plugin, poner `"mi-plugin-hub": "user-invocable-only"` en settings.json **no hace nada y no avisa** — el hub sigue consumiendo sus ~280 tokens en cada sesión. Para un hub de plugin, la palanca real es el frontmatter (`user-invocable: false` / `disable-model-invocation: true`), que sí viaja con el plugin.
 
 **Atajo de UI:** `/skills` escribe el `skillOverrides` por vos — resaltás una skill, `Space` cicla los 4 estados y `Esc` guarda en `.claude/settings.local.json`. En el menú, `user-invocable-only` aparece etiquetado como `user-only`.
 
@@ -2507,7 +2507,7 @@ Auto-compaction reencuaderna las skills más recientes con un budget de **5,000 
 
 > **La skill orquestadora es la que se escribe mal más seguido, y falla en silencio.** **`allowed-tools` en skills NO restringe** — solo pre-aprueba, sacando el prompt de permiso mientras la skill está activa (tabla de frontmatter abajo). Omitir `Write` de ahí no impide escribir: el hilo lo tiene igual. La garantía física (§3) en una skill es **`disallowed-tools`**, y solo dura el turno — un hook `PreToolUse` es el backstop durable.
 >
-> ⚠️ **Corregido 2026-09-08 contra la doc oficial.** Esta sección afirmaba que *"sin `Agent` en `allowed-tools` la delegación es prosa: 'invoco @especialista' produce texto, no una invocación"*. **Es falso, y por la misma razón que la mitad de arriba es cierta.** `code.claude.com/docs/en/skills`, textual: *"It does not restrict which tools are available: every tool remains callable, and your permission settings still govern tools that are not listed."* El hilo tiene `Agent` esté o no declarada; omitirla produce un **prompt de permiso en medio de la orquestación**, no un dispatch fallido. Declarar `Agent` sigue siendo lo correcto — por ergonomía, no porque tape un bug. Si viste a una skill "narrar" la delegación en vez de invocarla, la causa es comportamiento del modelo, no el frontmatter: el fix es redactar el paso como una acción (`Invocá @X con <input>`), no agregar una tool a una lista que no restringe nada.
+> ⚠️ **Corregido contra la doc oficial.** Esta sección afirmaba que *"sin `Agent` en `allowed-tools` la delegación es prosa: 'invoco @especialista' produce texto, no una invocación"*. **Es falso, y por la misma razón que la mitad de arriba es cierta.** `code.claude.com/docs/en/skills`, textual: *"It does not restrict which tools are available: every tool remains callable, and your permission settings still govern tools that are not listed."* El hilo tiene `Agent` esté o no declarada; omitirla produce un **prompt de permiso en medio de la orquestación**, no un dispatch fallido. Declarar `Agent` sigue siendo lo correcto — por ergonomía, no porque tape un bug. Si viste a una skill "narrar" la delegación en vez de invocarla, la causa es comportamiento del modelo, no el frontmatter: el fix es redactar el paso como una acción (`Invocá @X con <input>`), no agregar una tool a una lista que no restringe nada.
 >
 > **El corolario es una clase de bug propia: el agente que espera algo que nadie le pasa.** Si el body de un agente dice "el template/plan llega en tu prompt de invocación" tiene que existir alguien que se lo pase. Si el orquestador lee el template y lo aplica él mismo, el agente nunca se entera: cae a su fallback, produce output plausible y nada lo reporta. Auditalo en las dos direcciones — cada `"llega en tu prompt"` de un agente necesita su `Read <path>` en el orquestador, y viceversa.
 
@@ -2548,7 +2548,7 @@ La pregunta "¿esto está duplicado?" no se responde sola: **una copia puede ser
 > La regla operativa es una sola: **buscarle casa antes de borrar.** Si ninguna capa la tiene,
 > moverla a la reference **primero** y recién ahí sacarla del agente.
 >
-> **Caso real (2026-09-06).** Una skill de convenciones de 150 líneas era invisible para
+> **Caso real.** Una skill de convenciones de 150 líneas era invisible para
 > los 10 agentes del plugin. Parecía que a los 4 constructores les faltaban 5 reglas. El barrido
 > mostró que el reviewer ya las llevaba **todas** inline y el hook enforceaba el subconjunto
 > mecánico: el único defecto era **un agente citando "Case 2"**, una numeración que solo existía en
@@ -2802,7 +2802,7 @@ options:
 
 **Validado:** eliminó 3 iteraciones de preguntas incorrectas en la misma sesión.
 
-> **Anti-pattern "in notes":** opciones con label `"type X in notes"` confunden — el usuario no ve ningún campo llamado "notes". Usar siempre `"Other" field (option 3 below)` para que apunte al campo visible de la UI. Validado en prueba de flujo 2026-06-02.
+> **Anti-pattern "in notes":** opciones con label `"type X in notes"` confunden — el usuario no ve ningún campo llamado "notes". Usar siempre `"Other" field (option 3 below)` para que apunte al campo visible de la UI. Validado en prueba de flujo.
 
 ### Dynamic context injection
 
@@ -2828,7 +2828,7 @@ git status --short
 
 **Gotcha — skill invisible:** si una skill con `disable-model-invocation: true` no aparece en la lista de usuario, diagnosticar en orden: (1) `user-invocable: true` declarado explícitamente — algunos combos de flags la silencian sin error visible; (2) `argument-hint` presente si recibe argumentos; (3) `/reload-plugins` ejecutado post-cambio. La declaración explícita es más confiable que depender del default.
 
-**Gotcha — hooks y el cwd del subagente (verificado 2026-07-19):** dos fallos que se ven idénticos a código sano hasta que corren en un subagente:
+**Gotcha — hooks y el cwd del subagente (verificado):** dos fallos que se ven idénticos a código sano hasta que corren en un subagente:
 - Claves de flags/hashes por **`CLAUDE_PROJECT_DIR`, nunca `Path.cwd()`** — un subagente en background corre con otro cwd; si un hook escribe el flag (PostToolUse) y otro lo lee (SubagentStop) con esquemas distintos, computan hashes distintos → "flag no encontrado" en falso, y el flujo degrada sin ruido.
 - `Path(x).resolve().relative_to(project_dir)` necesita `project_dir` **también** `.resolve()`'d — bajo un symlink (`/var→/private/var` en macOS, worktrees, algunos `/home`) `relative_to` lanza y caés a paths absolutos frágiles.
 - Meta: un comentario que afirmaba "same scheme as X" ocultaba la inconsistencia. Los comentarios mienten — verificá el hash contra el código, no contra el comentario (verificar > recordar).
@@ -3156,7 +3156,7 @@ Un subagente corre de una pasada hasta terminar. Tres imposibles que aparecen un
 
 1. **No puede pausar** a "esperar confirmación del usuario antes del siguiente paso" — termina y devuelve su output; los checkpoints con el usuario son del hilo principal
 2. **No puede delegar** sin la tool `Agent` en su lista — un lead con `tools: Read, Glob, Grep` que dice "delego a @especialista" produce texto, no invocaciones
-3. **Solo puede cargar skills si `Skill` está en su lista de tools** — los subagentes sin `tools:` restringido SÍ la tienen (verificado 2026-07-02); un especialista típico con `tools: Read, Write, Edit, Glob, Grep` NO. Regla lowcost: no contar con ella — pasar la template en el prompt de invocación e inline el patrón esencial como fallback
+3. **Solo puede cargar skills si `Skill` está en su lista de tools** — los subagentes sin `tools:` restringido SÍ la tienen (verificado); un especialista típico con `tools: Read, Write, Edit, Glob, Grep` NO. Regla lowcost: no contar con ella — pasar la template en el prompt de invocación e inline el patrón esencial como fallback
 
 Dos diseños válidos de lead — elegir uno, no mezclar:
 
@@ -3165,7 +3165,7 @@ Dos diseños válidos de lead — elegir uno, no mezclar:
 | **Planner (Advisor §31)** — devuelve el plan de delegación, el hilo principal lo ejecuta | Read, Glob, Grep | ✅ entre cada paso |
 | **Orchestrator real** — spawnea especialistas él mismo | + `Agent(especialistas)` | ❌ corre completo sin parar |
 
-> **[2026-07-02] verificado en producción:** el lead tenía instrucciones de "esperar confirmación antes de continuar" y "delegar a @agente" con `tools: Read, Glob, Grep` — ambas físicamente imposibles. Reescrito como planner de una pasada. Un prompt que pide lo imposible no falla ruidosamente: el modelo improvisa una aproximación y el output se degrada en silencio.
+> **Verificado en producción:** el lead tenía instrucciones de "esperar confirmación antes de continuar" y "delegar a @agente" con `tools: Read, Glob, Grep` — ambas físicamente imposibles. Reescrito como planner de una pasada. Un prompt que pide lo imposible no falla ruidosamente: el modelo improvisa una aproximación y el output se degrada en silencio.
 
 ### La pregunta clave para el lead
 
@@ -3188,7 +3188,7 @@ Si hay lead → el hub es casi siempre necesario para triage. Sin hub, CLAUDE.md
 la lógica de dispatch completa — si eso supera 30 líneas, hub > CLAUDE.md inline.
 
 <!-- §10-ref -->
-### Los límites físicos del fan-out (verificado 2026-09-02)
+### Los límites físicos del fan-out (verificado)
 
 Antes de diseñar cualquier arquitectura multi-agente conviene saber contra qué techo estás:
 
@@ -3314,7 +3314,7 @@ Agent({
 ```
 Si el agente no hace cambios → el worktree se limpia solo. Si hace cambios → el path y la rama se devuelven en el resultado para merge manual.
 
-**El worktree NO parte del HEAD del padre — parte de la rama default** (verificado 2026-09-02). Es lo contrario de lo que asume casi todo el mundo: si estás en una rama de feature con 3 commits sin mergear y despachás un agente con `isolation: "worktree"`, ese agente **no ve tus 3 commits**. Para trabajo que continúa lo que tenés en curso, el worktree aislado es la herramienta equivocada.
+**El worktree NO parte del HEAD del padre — parte de la rama default** (verificado). Es lo contrario de lo que asume casi todo el mundo: si estás en una rama de feature con 3 commits sin mergear y despachás un agente con `isolation: "worktree"`, ese agente **no ve tus 3 commits**. Para trabajo que continúa lo que tenés en curso, el worktree aislado es la herramienta equivocada.
 
 Dos detalles más del aislamiento:
 - Los comandos **Bash** se verifican para que no redirijan git hacia el checkout principal; si el working directory resuelve al checkout principal en vez del worktree, el comando **falla**. Con **PowerShell** solo se chequea el working directory — el aislamiento es más débil.
@@ -3509,18 +3509,18 @@ Atrapa las tres clases de error que fallan **en silencio** en runtime: manifest 
 `skills/` · `commands/` · `agents/` · `workflows/` · `hooks/` · `.mcp.json` · `output-styles/` · `lspServers` (`.lsp.json` — usarlo: §36) · `themes` (experimental) · `monitors` · `bin/` · `settings.json` (solo las claves `agent` y `subagentStatusLine`). Nada más:
 
 - **`workflows/` existe desde 2026-09** — scripts de workflow, reemplaza el default si lo declarás en el manifest.
-- **`bin/` tiene una advertencia oficial nueva: "not for distributed plugins"** (verificado 2026-09-02). Sirve para desarrollo local, pero no confíes en él para un plugin que va a instalar otra gente.
+- **`bin/` tiene una advertencia oficial nueva: "not for distributed plugins"** (verificado). Sirve para desarrollo local, pero no confíes en él para un plugin que va a instalar otra gente.
 
 - **`rules/` NO es componente de plugin** — `.claude/rules/*.md` con glob es feature de proyecto local. En un plugin, las reglas universales van en la skill hub o inline en los agentes.
   > Validado en producción: la sección `## Reglas universales Swift` vive inline en el hub (`disable-model-invocation: false`, siempre en contexto) — nunca en un archivo `rules/` que el plugin no puede cargar.
 - **`output-styles/` de plugin aplica a TODA la conversación principal** mientras el plugin esté activo — no por-agente. Un `swift-only.md` global silencia la prose de toda la sesión. Reglas de output por agente → inline en el agente (son 3-6 líneas).
 - **`plugin.json` no tiene campo `components`** — los componentes se descubren por convención de directorios; el campo se ignora.
 - **Código de soporte importable (módulos, no componentes) → preferí un dir whitelisted antes que un `scripts/` propio.** Un `.py` que un hook importa o corre por subprocess anda en dev desde cualquier carpeta. Ponelo al lado de quien lo usa (ej. `hooks/design_catalog.py`): simplifica el import a sibling y elimina el hack `sys.path.insert`.
-  > ⚠️ **Corregido 2026-09-09 — el porqué anterior era contrafactual.** Esta guía decía que un dir fuera de la whitelist "puede no sobrevivir la instalación". **No es así, y se verifica en 5 segundos:** la instalación copia el directorio del plugin **verbatim**. Comprobado sobre un plugin de terceros ya instalado desde marketplace — `~/.claude/plugins/cache/claude-code-warp/warp/2.1.0/` conserva `scripts/` con 9 ejecutables y también `tests/`, ninguno de los dos en la whitelist. La whitelist gobierna **qué se registra como componente**, no **qué archivos se copian**. Un `scripts/` con helpers viaja igual; lo que no pasa es que el harness lo descubra como componente — que es justo lo que no queremos de un helper. Cómo verificarlo en tu caso: `find ~/.claude/plugins/cache/<marketplace>/<plugin>/<version> -maxdepth 1`.
+  > ⚠️ **Corregido — el porqué anterior era contrafactual.** Esta guía decía que un dir fuera de la whitelist "puede no sobrevivir la instalación". **No es así, y se verifica en 5 segundos:** la instalación copia el directorio del plugin **verbatim**. Comprobado sobre un plugin de terceros ya instalado desde marketplace — `~/.claude/plugins/cache/claude-code-warp/warp/2.1.0/` conserva `scripts/` con 9 ejecutables y también `tests/`, ninguno de los dos en la whitelist. La whitelist gobierna **qué se registra como componente**, no **qué archivos se copian**. Un `scripts/` con helpers viaja igual; lo que no pasa es que el harness lo descubra como componente — que es justo lo que no queremos de un helper. Cómo verificarlo en tu caso: `find ~/.claude/plugins/cache/<marketplace>/<plugin>/<version> -maxdepth 1`.
   > Regla que sí sobrevive a la corrección: la recomendación es de **ergonomía** (import sibling, un solo lugar), no de supervivencia. Un plugin ajeno que usa `scripts/` no está roto — Spotify shippea `shunt` así (§7, patrón shunt hook). No lo reportes como bug.
-  > **[2026-07-19] verificado en producción:** `design_catalog.py` vivía en `scripts/` (importado por `post_write.py`, corrido por `/catalog`). Distinto de `rules/`: NO era dead weight, se ejecutaba de verdad — pero "vivo en dev" ≠ "viaja al install". Movido a `hooks/` (whitelisted): elimina el riesgo de strip no verificable, borra el hack `sys.path.insert(...parent.parent...)` (→ `import` sibling directo) y pasa compliance estricto. Solo `hooks.json` define qué es un hook; un `.py` que no está ahí es helper, no se mis-registra.
+  > **Verificado en producción:** `design_catalog.py` vivía en `scripts/` (importado por `post_write.py`, corrido por `/catalog`). Distinto de `rules/`: NO era dead weight, se ejecutaba de verdad — pero "vivo en dev" ≠ "viaja al install". Movido a `hooks/` (whitelisted): elimina el riesgo de strip no verificable, borra el hack `sys.path.insert(...parent.parent...)` (→ `import` sibling directo) y pasa compliance estricto. Solo `hooks.json` define qué es un hook; un `.py` que no está ahí es helper, no se mis-registra.
 
-> **[2026-06-02] verificado en producción:** `marketplace.json` en la raíz es REQUERIDO para el flujo "Browse plugins" del desktop app — no es un archivo opcional ni de metadata. Eliminarlo rompe la instalación UI para todos los usuarios del equipo. Error: confundirlo con dead weight porque la guía no lo mencionaba.
+> **Verificado en producción:** `marketplace.json` en la raíz es REQUERIDO para el flujo "Browse plugins" del desktop app — no es un archivo opcional ni de metadata. Eliminarlo rompe la instalación UI para todos los usuarios del equipo. Error: confundirlo con dead weight porque la guía no lo mencionaba.
 
 <!-- §11-ref -->
 ### Template — marketplace.json
@@ -3555,7 +3555,7 @@ Raíz del repo. El desktop app lo lee en **Browse plugins → Add marketplace** 
 }
 ```
 
-**Corrección 2026-09-02:** la versión anterior de esta guía marcaba `version`, `description` y `author` como REQUIRED. No lo son — **si hay manifest, el único campo requerido es `name`**; el resto es opcional y los componentes se descubren igual por convención de directorios. Es más: el manifest entero es opcional (sin él, el plugin toma el nombre del directorio). Pero conviene igual: **una instalación desde marketplace sin manifest termina con un string de versión como nombre**, que es exactamente lo que no querés que vea el equipo.
+**Corrección:** la versión anterior de esta guía marcaba `version`, `description` y `author` como REQUIRED. No lo son — **si hay manifest, el único campo requerido es `name`**; el resto es opcional y los componentes se descubren igual por convención de directorios. Es más: el manifest entero es opcional (sin él, el plugin toma el nombre del directorio). Pero conviene igual: **una instalación desde marketplace sin manifest termina con un string de versión como nombre**, que es exactamente lo que no querés que vea el equipo.
 
 #### Campos del manifest que esta guía no cubría
 
@@ -3706,9 +3706,9 @@ Es REQUERIDO para distribución y ningún template lo mostraba:
 □ Probar instalación limpia: claude --plugin-dir en un repo vacío
 ```
 
-**Naming del tag — el separador importa (2026-07-18).** Con un nombre que lleva guiones (`swift-concurrency-migration-plugin`), `nombre-vX.Y.Z` (un guion) es ambiguo — no se sabe dónde corta el nombre. El repo real usa **doble guion `--v`** (`swift-concurrency-migration-plugin--v2.5.0`), que separa nombre/versión sin ambigüedad y permite versionar varios plugins de un mismo marketplace-repo por separado. Elige un separador y mantenlo idéntico entre releases.
+**Naming del tag — el separador importa.** Con un nombre que lleva guiones (`swift-concurrency-migration-plugin`), `nombre-vX.Y.Z` (un guion) es ambiguo — no se sabe dónde corta el nombre. El repo real usa **doble guion `--v`** (`swift-concurrency-migration-plugin--v2.5.0`), que separa nombre/versión sin ambigüedad y permite versionar varios plugins de un mismo marketplace-repo por separado. Elige un separador y mantenlo idéntico entre releases.
 
-**Flujo de release ejecutado (marketplace-repo, verificado 2026-07-18):** bump de `plugin.json` + `CHANGELOG` en una branch `release/vX.Y.Z` → `gh pr create --base main` → merge (`gh pr merge --merge`, la convención del repo eran merge commits, no squash) → `gh release create "<plugin>--vX.Y.Z" --target main --title "vX.Y.Z — <resumen>" --notes ...`. El release se tagea sobre main **después** del merge, no sobre la branch. `gh release create` crea el tag server-side; para verlo local, `git fetch --tags` y confirmar que apunta al merge commit.
+**Flujo de release ejecutado (marketplace-repo, verificado):** bump de `plugin.json` + `CHANGELOG` en una branch `release/vX.Y.Z` → `gh pr create --base main` → merge (`gh pr merge --merge`, la convención del repo eran merge commits, no squash) → `gh release create "<plugin>--vX.Y.Z" --target main --title "vX.Y.Z — <resumen>" --notes ...`. El release se tagea sobre main **después** del merge, no sobre la branch. `gh release create` crea el tag server-side; para verlo local, `git fetch --tags` y confirmar que apunta al merge commit.
 
 ### Trampas de distribución
 
@@ -3736,7 +3736,7 @@ Las tres, juntas y sin ambigüedad:
 | `${CLAUDE_PLUGIN_DATA}` | `~/.claude/plugins/data/{id}/` | Lo que el plugin **genera o instala** y debe sobrevivir updates |
 | `${CLAUDE_PROJECT_DIR}` | El repo del consumidor | Lo que es **del proyecto**: learnings, flags, config per-project |
 
-> Esto cierra el learning del 2026-07-19 sobre `scripts/`: la pregunta no era solo "¿está en la whitelist?" sino "¿esto viaja, se genera, o es del proyecto?". Cada una de las tres tiene su variable, y usar la equivocada falla en silencio de una forma distinta.
+> Esto cierra el learning del sobre `scripts/`: la pregunta no era solo "¿está en la whitelist?" sino "¿esto viaja, se genera, o es del proyecto?". Cada una de las tres tiene su variable, y usar la equivocada falla en silencio de una forma distinta.
 
 Las tres se sustituyen en el contenido de skills y agentes, en los comandos de hooks y monitors, en servidores MCP (`command`, `args`, `env` para stdio; `url`, `headers`, `headersHelper` para http/sse/ws) y en LSP (`command`, `args`, `env`, `workspaceFolder`). Siempre entre comillas dobles.
 
@@ -3753,10 +3753,10 @@ Un `mcp__<server>__<tool>` a secas —el formato que sirve para un MCP de usuari
 Nadie puede cargarla — ni usuario ni modelo. Las skills de referencia (templates, convenciones) que un flujo del modelo debe cargar necesitan `disable-model-invocation: false` (el costo es solo la description en contexto).
 
 **Agentes de plugin: `hooks`, `mcpServers` y `permissionMode` en el frontmatter se ignoran en silencio.**
-Re-verificado 2026-09-02 — sigue vigente, y ahora importa más: §7 documenta que un subagente **puede** declarar hooks en su frontmatter. Esa capacidad **no llega a los agentes de plugin**. Por seguridad, estos 3 campos NO se aplican cuando el agente se carga desde un plugin — ni error ni warning, el agente simplemente corre sin ellos. Si el autor del plugin escribió `hooks:` esperando scoping por-agente, no pasa nada — mismo patrón de fallo silencioso que `rules/` en plugins (arriba en esta sección). Fix: si el consumidor necesita esos campos, debe copiar el archivo del agente a `.claude/agents/` o `~/.claude/agents/` locales — ahí sí se respetan.
+Re-verificado — sigue vigente, y ahora importa más: §7 documenta que un subagente **puede** declarar hooks en su frontmatter. Esa capacidad **no llega a los agentes de plugin**. Por seguridad, estos 3 campos NO se aplican cuando el agente se carga desde un plugin — ni error ni warning, el agente simplemente corre sin ellos. Si el autor del plugin escribió `hooks:` esperando scoping por-agente, no pasa nada — mismo patrón de fallo silencioso que `rules/` en plugins (arriba en esta sección). Fix: si el consumidor necesita esos campos, debe copiar el archivo del agente a `.claude/agents/` o `~/.claude/agents/` locales — ahí sí se respetan.
 
 **Los subagentes con `tools:` restringido NO pueden cargar skills.**
-La tool `Skill` existe en subagentes sin restricción de tools (verificado 2026-07-02), pero los agentes de plugin bien diseñados restringen `tools:` al mínimo — y ahí `Skill` no está. Un agente restringido que dice "Cargar skill X" es una instrucción imposible. Patrón correcto: el hilo principal (la skill de creación) carga la template y o bien escribe los archivos él mismo, o pasa el contenido en el prompt de invocación del agente. El agente lleva su patrón esencial inline como fallback.
+La tool `Skill` existe en subagentes sin restricción de tools (verificado), pero los agentes de plugin bien diseñados restringen `tools:` al mínimo — y ahí `Skill` no está. Un agente restringido que dice "Cargar skill X" es una instrucción imposible. Patrón correcto: el hilo principal (la skill de creación) carga la template y o bien escribe los archivos él mismo, o pasa el contenido en el prompt de invocación del agente. El agente lleva su patrón esencial inline como fallback.
 
 **Skills ejecutadas vía Skill tool NO pasan por UserPromptSubmit.**
 Un gate de flags que se abre solo cuando el usuario tipea `/plugin:plan` entra en deadlock si otra skill ejecuta el plan como paso interno — el hook nunca ve el prompt. Los slash commands de creación también deben abrir el gate:
@@ -3802,9 +3802,9 @@ Un cloud agent clona el repo desde GitHub — no tiene acceso a `.claude/learnin
 **Agentes leen archivos innecesarios sin constraint explícito.**
 Sin instrucción de "no leas componentes existentes", el modelo lee 2-4 archivos de referencia antes de crear uno nuevo — aunque la template ya contenga el patrón. Fix: añadir sección `## Archivos a leer (y nada más)` en cada agente especialista.
 
-> **[2026-06-27] verificado en producción:** `PLUGIN_ROOT = Path(__file__).parent.parent` en hooks apunta al directorio del plugin instalado, no al proyecto destino. Todos los paths que deben ser per-project (learnings, plan flags) necesitan usar `Path.cwd()` como base.
+> **Verificado en producción:** `PLUGIN_ROOT = Path(__file__).parent.parent` en hooks apunta al directorio del plugin instalado, no al proyecto destino. Todos los paths que deben ser per-project (learnings, plan flags) necesitan usar `Path.cwd()` como base.
 
-> **[2026-07-02] auditoría de un plugin en producción (v2.4.0):** los 6 defectos P0 del plugin eran de infraestructura, no de contenido — hooks.json sin wrapper, `$CLAUDE_PROJECT_DIR` en vez de `${CLAUDE_PLUGIN_ROOT}`, YAML sin quotear, valor inválido de `permissionDecision`, campo inexistente en payload de SubagentStop, gate en deadlock. Ninguno era detectable usándolo: los hooks fallan invisibles. Moraleja: **cada pieza de automatización necesita una forma de avisar que murió** — `claude plugin validate` + tests subprocess (§19) son obligatorios, no opcionales. Y verificar los API shapes de hooks/plugins contra docs oficiales, nunca de memoria.
+> **auditoría de un plugin en producción (v2.4.0):** los 6 defectos P0 del plugin eran de infraestructura, no de contenido — hooks.json sin wrapper, `$CLAUDE_PROJECT_DIR` en vez de `${CLAUDE_PLUGIN_ROOT}`, YAML sin quotear, valor inválido de `permissionDecision`, campo inexistente en payload de SubagentStop, gate en deadlock. Ninguno era detectable usándolo: los hooks fallan invisibles. Moraleja: **cada pieza de automatización necesita una forma de avisar que murió** — `claude plugin validate` + tests subprocess (§19) son obligatorios, no opcionales. Y verificar los API shapes de hooks/plugins contra docs oficiales, nunca de memoria.
 
 ---
 
@@ -3855,7 +3855,7 @@ En "degradado" y "casi no" el plugin igual te deja `documentSymbol`, `hover` y `
 
 ### El fallo silencioso: un LSP sin índice contesta vacío
 
-Verificado en vivo 2026-09-04 con `sourcekit-lsp`. Las **mismas llamadas, misma posición**, minutos de diferencia:
+Verificado en vivo con `sourcekit-lsp`. Las **mismas llamadas, misma posición**, minutos de diferencia:
 
 ```
 findReferences demo.swift:8:10 → "No references found. This may occur if the symbol
@@ -3880,7 +3880,7 @@ Un `.lsp.json` correcto con el binario ausente **no hace nada y no avisa**: apar
 <!-- §36-ref -->
 ### Schema completo de un servidor
 
-Verificado 2026-09-04 contra la doc oficial de plugins y el schema del binario v2.1.261.
+Verificado contra la doc oficial de plugins y el schema del binario v2.1.261.
 
 | Campo | | Qué hace |
 |---|---|---|
@@ -3953,7 +3953,7 @@ El caso donde LSP se paga solo. `swiftLanguageMode` es **por-target** desde tool
 3. **Los errores de data-race llegan solos.** Con `diagnostics: true`, los diagnósticos de strict concurrency entran al contexto por edición, sin ciclo `swift build` — el compilador como revisor continuo.
 4. **Gotcha 1 — el índice llega tarde.** `sourcekit-lsp` depende del índice del build. En un target recién tocado, el primer `findReferences` puede volver vacío. Control positivo antes de creerle.
 5. **Gotcha 2 — un `.xcodeproj` no alcanza.** SwiftPM le da build settings a `sourcekit-lsp` solo; un proyecto Xcode necesita un `buildServer.json` (lo genera `xcode-build-server`). Sin él las ops de índice devuelven vacío **siempre**, no "todavía".
-   > **Medido 2026-09-04** en una app iOS real (`.xcodeproj`, sin `buildServer.json`): `documentSymbol` devolvió el mapa completo del archivo, y `findReferences` sobre el `struct` declarado ahí mismo —usado en 4 archivos según grep— devolvió **0 tras 30 segundos de reintento**. Las dos respuestas, del mismo servidor, sobre el mismo archivo.
+   > **Medido** en una app iOS real (`.xcodeproj`, sin `buildServer.json`): `documentSymbol` devolvió el mapa completo del archivo, y `findReferences` sobre el `struct` declarado ahí mismo —usado en 4 archivos según grep— devolvió **0 tras 30 segundos de reintento**. Las dos respuestas, del mismo servidor, sobre el mismo archivo.
 
 ### Receta 2 — Godot / GDScript
 
@@ -4007,9 +4007,9 @@ El inventario cruza los plugins habilitados con sus `lspServers`, chequea que ca
 
 `--refs` es el juez que distingue "no hay usos" de "no hay índice": corre un `textDocument/references` de verdad y **reintenta hasta `--wait` segundos** mientras el índice carga, porque sin reintento un 0 mide la impaciencia, no el código.
 
-> **Medido 2026-09-04**, paquete SwiftPM recién construido: el primer intento devolvió **0 referencias**; el mismo símbolo, con reintento, devolvió **2 a los 6 segundos**. En la misma corrida, un símbolo sin llamadores devolvió 1 (su propia declaración) de inmediato — el negativo verdadero se distingue del vacío por índice frío **solo si esperás**.
+> **Medido**, paquete SwiftPM recién construido: el primer intento devolvió **0 referencias**; el mismo símbolo, con reintento, devolvió **2 a los 6 segundos**. En la misma corrida, un símbolo sin llamadores devolvió 1 (su propia declaración) de inmediato — el negativo verdadero se distingue del vacío por índice frío **solo si esperás**.
 
-> **[2026-09-04] verificado en vivo:** con `swift-lsp` habilitado y `sourcekit-lsp` presente, `documentSymbol`, `hover` y `goToDefinition` respondieron sobre un archivo suelto sin índice; `findReferences`, `workspaceSymbol` y `goToImplementation` devolvieron vacío hasta que el índice del build quedó disponible, y entonces las mismas llamadas devolvieron los resultados correctos. Ninguna de las dos respuestas se distingue de la otra por su forma.
+> **Verificado en vivo:** con `swift-lsp` habilitado y `sourcekit-lsp` presente, `documentSymbol`, `hover` y `goToDefinition` respondieron sobre un archivo suelto sin índice; `findReferences`, `workspaceSymbol` y `goToImplementation` devolvieron vacío hasta que el índice del build quedó disponible, y entonces las mismas llamadas devolvieron los resultados correctos. Ninguna de las dos respuestas se distingue de la otra por su forma.
 
 ---
 
@@ -4071,7 +4071,7 @@ El advisor no itera — emite veredicto. Si hacés más de 1 retry, el problema 
 
 ### Costo comparado
 
-| Estrategia | Costo relativo (por token, verificado 2026-09-02) | Cuándo |
+| Estrategia | Costo relativo (por token, verificado) | Cuándo |
 |---|---|---|
 | Sonnet solo | 1× | Output predecible, stack conocido |
 | Sonnet + haiku advisor | ~1.15× | Output con consecuencias si está mal |
@@ -4143,7 +4143,7 @@ CLAUDE.local.md
 <!-- §32-ref -->
 ### Orden de carga real — no es "el .local gana", es concatenación
 
-La tabla de arriba dice que `.local.md` "gana en conflicto". Es una simplificación cómoda pero el mecanismo real es otro, y cambia cómo escribís los archivos (verificado 2026-09-02):
+La tabla de arriba dice que `.local.md` "gana en conflicto". Es una simplificación cómoda pero el mecanismo real es otro, y cambia cómo escribís los archivos (verificado):
 
 **Todos los archivos encontrados se concatenan, ninguno reemplaza a otro.** El orden va de la raíz del filesystem hacia tu working directory, y dentro de cada directorio `CLAUDE.local.md` va **después** de `CLAUDE.md`. Que el `.local` "gane" es solo un efecto de estar último: si dos instrucciones se contradicen, el modelo puede elegir cualquiera. La doc lo dice explícito: *"si dos reglas se contradicen, Claude puede elegir una arbitrariamente"*.
 
@@ -4264,7 +4264,7 @@ Archivos que Claude carga automáticamente cuando trabaja en archivos que hacen 
 - CLAUDE.md ya pasa las 30 líneas (§2) y no todo es siempre relevante
 - Distintos devs trabajan en distintos dominios — rules/ los mantiene aislados
 
-> ### ⚠️ Corrección 2026-09-02 — el campo es `paths:`, NO `glob:`
+> ### ⚠️ Corrección — el campo es `paths:`, NO `glob:`
 >
 > Las versiones anteriores de esta guía escribían `glob: src/api/**` en el frontmatter. **Ese campo no existe.** El campo real es `paths:`, y acepta una lista YAML de globs.
 >
@@ -4272,7 +4272,7 @@ Archivos que Claude carga automáticamente cuando trabaja en archivos que hacen 
 >
 > Verificación: `/context` → bloque **Memory files**, o el hook `InstructionsLoaded` (§7), que registra exactamente qué archivos de instrucciones se cargaron y cuándo.
 
-**Detalles del matching de `paths:`** (verificado 2026-09-02):
+**Detalles del matching de `paths:`** (verificado):
 - Los patrones se evalúan **cuando Claude lee un archivo que matchea**, no en cada tool call.
 - Brace expansion sirve (`"src/**/*.{ts,tsx}"`), pero cada grupo multiplica: la lista completa de `paths` comparte un presupuesto de **1.000 patrones expandidos y 4 MiB**. Un patrón que lo exceda se usa **sin expandir**, y sus llaves literales no matchean nada.
 - `[` empieza una expresión de corchetes. Un `[` que no se puede leer como tal (`photos [2024/**`) es inválido: **no matchea nada** y los demás patrones de la regla siguen andando. Para un `[` literal, escaparlo: `photos \[2024/**`.
@@ -4321,7 +4321,7 @@ paths:
 - No usar `test.only` — bloquea CI sin error visible
 ```
 
-**En plugins:** ❌ NO es componente de plugin — la whitelist es cerrada (§11: skills · commands · agents · hooks · .mcp.json · output-styles · lspServers · themes · monitors). Verificado 2026-07-03 contra la referencia oficial de plugins: `rules/` solo aparece como feature de `.claude/rules/` del proyecto local, nunca como directorio de plugin. Un `rules/` dentro de un plugin es **dead weight silencioso**: no falla, simplemente nada lo carga — el autor cree que sus reglas se inyectan y el enforcement está muerto (así nacieron `rules/swift.md` y `output-styles/swift-only.md` muertos en un plugin real).
+**En plugins:** ❌ NO es componente de plugin — la whitelist es cerrada (§11: skills · commands · agents · hooks · .mcp.json · output-styles · lspServers · themes · monitors). Verificado contra la referencia oficial de plugins: `rules/` solo aparece como feature de `.claude/rules/` del proyecto local, nunca como directorio de plugin. Un `rules/` dentro de un plugin es **dead weight silencioso**: no falla, simplemente nada lo carga — el autor cree que sus reglas se inyectan y el enforcement está muerto (así nacieron `rules/swift.md` y `output-styles/swift-only.md` muertos en un plugin real).
 
 En un plugin, el equivalente es: reglas universales → skill hub · subset crítico → inline en cada agente · reglas mecanizables → hook PreToolUse.
 
@@ -4568,10 +4568,10 @@ El flag `VALIDADO: sí` le indica al agente que saltee la confirmación y el pos
 |---|---|---|
 | 2 invocaciones separadas (anti-pattern) | ~22k medido | Commit y merge en turnos distintos |
 | Invocación única al final con VALIDADO | ~10-12k | Todo en un solo bloque al cerrar sesión |
-| Invocación única + commit explícito en prompt | ~6-7k✓ | Medido: 7k · 5 tool calls (2026-06-02) — piso real de haiku |
+| Invocación única + commit explícito en prompt | ~6-7k✓ | Medido: 7k · 5 tool calls — piso real de haiku |
 | Solo merge de PR ya abierto | ~6-7k medido | `MERGE: PR #N · VALIDADO: sí` |
 
-**Regla (2026-06-02, medido):** El piso real de haiku es **5 tool calls**. Haiku divide chains largas de `&&` para error handling — no se puede bajar a 3-4 con instrucciones. Lo optimizable son los calls de discovery (git status, git log, git diff) que no aportan nada cuando el commit viene en el prompt. Eliminarlos con sección `## PROHIBIDO` en el agente.
+**Regla (medido):** El piso real de haiku es **5 tool calls**. Haiku divide chains largas de `&&` para error handling — no se puede bajar a 3-4 con instrucciones. Lo optimizable son los calls de discovery (git status, git log, git diff) que no aportan nada cuando el commit viene en el prompt. Eliminarlos con sección `## PROHIBIDO` en el agente.
 
 #### Impacto real
 
@@ -4626,7 +4626,7 @@ El problema: Claude sabe que la guía existe pero necesita inferir cuándo consu
 `UserPromptSubmit` se ejecuta **antes** de que Claude procese el prompt. El stdout del hook se inyecta como contexto en la sesión.
 
 <!-- §26-ref -->
-### La física de la inyección (re-verificado 2026-09-02)
+### La física de la inyección (re-verificado)
 
 Todo el diseño de este hook depende de un comportamiento puntual, así que conviene tenerlo escrito y con fecha:
 
@@ -5020,7 +5020,7 @@ print(f"[Dominio context]\n{content}")
 print(json.dumps({"systemMessage": content}))
 ```
 
-> **[2026-06-22] verificado en producción:** Keywords genéricos (`new`, `view`, `component`, `swift`) en hub hook inyectaban el triage de capas en conversaciones de git, docs y cualquier cosa con esas palabras. Fix: Tier 1 con nombres exclusivos del sistema (`@CatalogElementMacro`, `ShimmerView`, `AppTabView`...) + Tier 2 con proximidad acción+capa (`"crea un atom"`, `"nuevo molecule"`). Ahora solo dispara cuando el dominio es inequívoco.
+> **Verificado en producción:** Keywords genéricos (`new`, `view`, `component`, `swift`) en hub hook inyectaban el triage de capas en conversaciones de git, docs y cualquier cosa con esas palabras. Fix: Tier 1 con nombres exclusivos del sistema (`@CatalogElementMacro`, `ShimmerView`, `AppTabView`...) + Tier 2 con proximidad acción+capa (`"crea un atom"`, `"nuevo molecule"`). Ahora solo dispara cuando el dominio es inequívoco.
 
 ---
 
@@ -5553,10 +5553,10 @@ Cada pieza tiene su sección de referencia. Nada se inventó solo — todo se co
 ### Las 3 reglas
 
 1. **Cloud agents ≠ hooks locales** — las Routines tienen acceso al repo GitHub, no a `/Users/`. Si la tarea necesita tu filesystem → hook local o **Desktop scheduled task**. Si puede correr desde un clone fresco → Routine.
-2. **GitHub primero, pero `/web-setup` no alcanza para todo** — da acceso de clonado, y con eso basta para triggers de schedule y API. **NO instala la GitHub App ni habilita webhooks**: para triggers por evento de GitHub hay que instalar la app aparte (verificado 2026-09-02).
+2. **GitHub primero, pero `/web-setup` no alcanza para todo** — da acceso de clonado, y con eso basta para triggers de schedule y API. **NO instala la GitHub App ni habilita webhooks**: para triggers por evento de GitHub hay que instalar la app aparte (verificado).
 3. **Prompt self-contained** — el agente arranca sin contexto, sin tu CLAUDE.md local, sin tus plugins. El prompt debe incluir todo lo que necesita saber. Sí puede usar las skills **commiteadas en el repo clonado**.
 
-### Tres superficies de scheduling, no dos (verificado 2026-09-02)
+### Tres superficies de scheduling, no dos (verificado)
 
 La versión anterior de esta sección solo contemplaba cloud vs hook local. Falta la del medio, y es justo la que resuelve el caso que la guía daba por imposible:
 
@@ -5798,7 +5798,7 @@ Un prompt de CCR debe responder estas preguntas sin asumir contexto externo:
 
 ### Lo que SÍ se integra con agentes/skills/hooks (documentado)
 
-**`/fork` y `/subtask` son la forma nativa de "comando como agente" — pero no son lo mismo** (corregido 2026-09-02; la versión anterior de esta guía le atribuía a `/fork` el comportamiento de `/subtask`):
+**`/fork` y `/subtask` son la forma nativa de "comando como agente" — pero no son lo mismo** (corregido; la versión anterior de esta guía le atribuía a `/fork` el comportamiento de `/subtask`):
 
 - **`/fork`** copia la conversación a una **nueva sesión en background**. El trabajo sigue allá; vos seguís acá. No hay un "resultado" que vuelva solo al hilo — son dos sesiones.
 - **`/subtask`** delega a un subagente y **el resultado vuelve a esta conversación**. Este es el que sirve para "delegá esto y contame".
@@ -5828,7 +5828,7 @@ Patrón real: archivar el estado de un agente largo (checkpoints de delegación,
 
 ### Lo que NO se puede (verificado contra doc oficial)
 
-- Ningún hook, skill o llamada del SDK puede **forzar** `/rewind`, `/clear` o `/compact` — son CLI-only, requieren que un humano los tipee o que Claude decida escribirlos como respuesta. **Re-verificado 2026-09-02: sigue siendo cierto.**
+- Ningún hook, skill o llamada del SDK puede **forzar** `/rewind`, `/clear` o `/compact` — son CLI-only, requieren que un humano los tipee o que Claude decida escribirlos como respuesta. **Re-verificado: sigue siendo cierto.**
 - No existe evento de hook para `/rewind`/checkpoint — no hay `PreRewind` ni equivalente.
 - El SDK (`--continue`, `--resume <id>`) continúa procesos, pero no expone `session.rewind()` ni `session.fork()` a nivel de código.
 - Lo único programable alrededor de la compactación sigue siendo indirecto: el hook `PreCompact`/`PostCompact` para actuar **cuando ya se decidió**, y `/autocompact` para configurar la ventana en la que se dispara sola. Ninguno de los dos la dispara a pedido.
@@ -6113,9 +6113,9 @@ El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando o
 | Git en múltiples invocaciones separadas | 22k tokens (medido) vs ~10-12k esperado | Una sola invocación al final: BRANCH+COMMIT+PR+MERGE · VALIDADO: sí |
 | `git add -p` en agente git | Interactivo — el agente entra en loop esperando stdin, infla tool calls | Usar `git add -u` (todos los modificados) + `git status --short` previo |
 | Commit message no pasado en el prompt al agente git | El agente usa 1-2 tool calls extra para inferir qué cambió | Pasar mensaje explícito: `COMMIT: tipo: descripción` — el agente no explora |
-| `subagent_type` con nombre que no está en la lista de agent types de la sesión | Error "agent type not found" — falla inmediata, no silent | Built-ins reales: `general-purpose`, `Explore`, `Plan`, `claude`. En versiones actuales los agentes de `.claude/agents/` y `~/.claude/agents/` TAMBIÉN aparecen como agent types invocables (verificado 2026-07-02) — la restricción a built-ins era de versiones anteriores. Fallback si el agente no aparece: `subagent_type: claude` + `"Read .claude/agents/X.md and follow it. TARGET: …"` en el prompt. |
+| `subagent_type` con nombre que no está en la lista de agent types de la sesión | Error "agent type not found" — falla inmediata, no silent | Built-ins reales: `general-purpose`, `Explore`, `Plan`, `claude`. En versiones actuales los agentes de `.claude/agents/` y `~/.claude/agents/` TAMBIÉN aparecen como agent types invocables (verificado) — la restricción a built-ins era de versiones anteriores. Fallback si el agente no aparece: `subagent_type: claude` + `"Read .claude/agents/X.md and follow it. TARGET: …"` en el prompt. |
 | `\|\| return` en función bash con `set -e` | Script muere silenciosamente sin output cuando el archivo no está en el diff | `grep -qF "$file" \|\| return 0` — `return` sin código propaga el exit code 1 de grep; `set -e` mata el script antes del primer `echo`. Aplica a cualquier función de validación en CI/hooks. |
-| AskUserQuestion option con `"in notes"` | Usuario no sabe dónde escribir — confusión en cada uso real | Referenciar explícitamente: `"Other" field (option 3 below)` en la etiqueta de la opción. Validado en producción 2026-06-02. |
+| AskUserQuestion option con `"in notes"` | Usuario no sabe dónde escribir — confusión en cada uso real | Referenciar explícitamente: `"Other" field (option 3 below)` en la etiqueta de la opción. Validado en producción. |
 | Validator invocado con `subagent_type: claude` sin instrucciones Grep-first | 23 tool uses (medido) vs 10 esperado — el agente lee archivos completos | Pasar las instrucciones Grep-first explícitas + `TYPE: local\|plugin` en el prompt. Nunca leer lo que Grep puede responder. |
 | Invocar agente sin arquitectura/scope definidos | El agente asume, genera loops de corrección, tokens ×3-5 respecto a tarea bien acotada | `/plan` primero; si no hay scope → escribirlo antes de invocar. Ver §24. |
 
@@ -6366,7 +6366,7 @@ El ahorro escala con dos cosas que el resto de §23 ignora: **el ratio de compre
 
 El umbral concreto se enforcea con un hook, no con disciplina: **§7, patrón shunt hook** (Claude no delega lecturas por iniciativa propia — hay que ponerle la física).
 
-> **Procedencia — 2026-09-09.** El patrón está medido públicamente por Spotify (`shunt`, en `spotify/portal-ai-plugins`): 33.684 → 5.737 tokens en un archivo de 4.014 líneas (82%), 75.990 → 4.148 en un par source+test (94%), media 90% sobre un monorepo Java de 162k líneas. Esos números son de **una lectura**, ruteando a un modelo externo barato; no incluyen el efecto compuesto por turno descrito arriba, que va en la misma dirección. La variante con subagente haiku de esta guía **no está medida** — la aritmética de §7 es aritmética. Medí con `/context` antes de citar un porcentaje propio.
+> **Procedencia.** El patrón está medido públicamente por Spotify (`shunt`, en `spotify/portal-ai-plugins`): 33.684 → 5.737 tokens en un archivo de 4.014 líneas (82%), 75.990 → 4.148 en un par source+test (94%), media 90% sobre un monorepo Java de 162k líneas. Esos números son de **una lectura**, ruteando a un modelo externo barato; no incluyen el efecto compuesto por turno descrito arriba, que va en la misma dirección. La variante con subagente haiku de esta guía **no está medida** — la aritmética de §7 es aritmética. Medí con `/context` antes de citar un porcentaje propio.
 
 ### Anti-overkill
 
@@ -6427,7 +6427,7 @@ Si el hub tiene `skillOverrides: user-invocable-only`, los ~280 tokens no se gas
 
 ### Impacto del modelo
 
-Precios oficiales por 1M tokens (input/output, verificados 2026-09-02):
+Precios oficiales por 1M tokens (input/output, verificados):
 
 | Modelo | Precio | Costo relativo | Cuándo |
 |---|---|---|---|
@@ -6440,7 +6440,7 @@ Un reviewer en sonnet cuesta 2× más que en haiku — mismo resultado. Opus ya 
 
 ### El tokenizer cambió — tus estimados históricos están bajos
 
-**Verificado 2026-09-02** (nota oficial en la página de pricing): de Claude 4.7 en adelante — Opus 4.7, Opus 4.8, **Opus 5**, **Sonnet 5**, Fable 5/5.1 — el tokenizer es nuevo y produce **~30% más tokens para el mismo texto**. **Sonnet 4.6 y anteriores, y Haiku 4.5, usan el tokenizer viejo.**
+**Verificado** (nota oficial en la página de pricing): de Claude 4.7 en adelante — Opus 4.7, Opus 4.8, **Opus 5**, **Sonnet 5**, Fable 5/5.1 — el tokenizer es nuevo y produce **~30% más tokens para el mismo texto**. **Sonnet 4.6 y anteriores, y Haiku 4.5, usan el tokenizer viejo.**
 
 | Modelo | Tokenizer | Efecto sobre los estimados de esta sección |
 |---|---|---|
@@ -6465,7 +6465,7 @@ Para medir: `count_tokens` **con el modelo destino**. Extrapolar entre modelos e
 | Cache read | 0.1× | Mismo prefix dentro del TTL |
 | Sin cache (base) | 1× | Referencia |
 
-**Cuándo conviene cada TTL** (verificado 2026-09-02): el write de 5 min se paga solo **con 1 lectura**; el de 1 hora necesita **2 lecturas** para amortizarse. Si tu sesión tiene pausas de más de 5 minutos (pensar, revisar un PR, almorzar), el de 1 hora sale más barato que re-crear el cache desde cero. En Fable 5.1 el read baja a **0.025×** en vez de 0.1× — el único modelo con esa tarifa.
+**Cuándo conviene cada TTL** (verificado): el write de 5 min se paga solo **con 1 lectura**; el de 1 hora necesita **2 lecturas** para amortizarse. Si tu sesión tiene pausas de más de 5 minutos (pensar, revisar un PR, almorzar), el de 1 hora sale más barato que re-crear el cache desde cero. En Fable 5.1 el read baja a **0.025×** en vez de 0.1× — el único modelo con esa tarifa.
 
 - **TTL por defecto: 5 minutos** — después de 5 min de inactividad el cache expira
 - **Qué se cachea:** CLAUDE.md, system prompts de agentes, historial hasta el corte del prefix
@@ -6564,7 +6564,7 @@ Tokens: 12,450 input (8,200 cache read · 1,100 cache creation) · 2,450 output
 
 > Para cuando el sistema de learnings en markdown ya no escala. No construyas esto hasta que el dolor sea real — el sistema de archivos aguanta hasta ~500 entries sin problema.
 >
-> **Validado en producción:** un juego Godot 2D — 8/8 pruebas ✅ · threshold 0.75 · español informal · 2026-06-01
+> **Validado en producción:** un juego Godot 2D — 8/8 pruebas ✅ · threshold 0.75 · español informal ·
 
 El archivo markdown falla cuando necesitas búsqueda semántica: *"¿tuve este bug antes?"* o *"¿cómo resolví algo similar en este módulo?"*. Grep no entiende significado. Vector search sí.
 
@@ -6801,7 +6801,7 @@ tools/
 ├── vector_memory.py    → módulo base (recall_safe, save_learning)
 ├── recall              → CLI wrapper: tools/recall godot "query"
 ├── save_learning       → CLI wrapper: tools/save_learning godot "..." "..." "tags" severity
-├── test_vector_memory.py → 8 pruebas de validación (8/8 ✅ validado 2026-06-01)
+├── test_vector_memory.py → 8 pruebas de validación (8/8 ✅ validado)
 └── .venv/              → entorno Python aislado (en .gitignore)
 ```
 
@@ -7214,7 +7214,7 @@ def test_allows_clean_write():
     assert r is None  # no block
 ```
 
-**El payload del test debe ser el shape REAL del tool — no el que asume el hook.** Un test que construye `{"tool_input": {"path": ..., "new_str": ...}}` porque el hook lee esos campos valida el bug, no el hook: pasa verde con el hook muerto en producción (Edit real manda `file_path`/`new_string`). Caso real 2026-07-02: dos hooks muertos por semanas, suites verdes, porque tests y hook compartían el mismo shape inventado. Los payloads de test se copian de la doc oficial de hooks — es el mismo principio del juez real: el test que valida contra el contrato de producción > el test que valida contra la implementación.
+**El payload del test debe ser el shape REAL del tool — no el que asume el hook.** Un test que construye `{"tool_input": {"path": ..., "new_str": ...}}` porque el hook lee esos campos valida el bug, no el hook: pasa verde con el hook muerto en producción (Edit real manda `file_path`/`new_string`). Caso real: dos hooks muertos por semanas, suites verdes, porque tests y hook compartían el mismo shape inventado. Los payloads de test se copian de la doc oficial de hooks — es el mismo principio del juez real: el test que valida contra el contrato de producción > el test que valida contra la implementación.
 
 **Aislar HOME y CLAUDE_PROJECT_DIR** — hooks con estado (flags en `~/.claude/`, paths por proyecto) contaminan la máquina real y se contaminan entre tests si no se aísla el entorno:
 
@@ -7330,13 +7330,13 @@ tests/
 
 Sin pytest-cov, sin mocking framework, sin fixtures complejas. Solo `pytest` + `subprocess`.
 
-> **[2026-07-19] verificado en producción:** Para testear hooks de un plugin **sin el repo target real**, levantá un *repo desechable real* (git init + dirs + archivos + el toolchain real), no un mock. Es fiel porque el hook solo hace lo que hace — `swiftc -parse` valida sintaxis sin las deps del design system, igual que en producción. Esa prueba real destapó un bug de symlink en el path del catálogo que la simulación con flags mockeados no podía ver. **El juez real > el proxy** no es lema: es lo que encuentra el bug que el mock esconde.
+> **Verificado en producción:** Para testear hooks de un plugin **sin el repo target real**, levantá un *repo desechable real* (git init + dirs + archivos + el toolchain real), no un mock. Es fiel porque el hook solo hace lo que hace — `swiftc -parse` valida sintaxis sin las deps del design system, igual que en producción. Esa prueba real destapó un bug de symlink en el path del catálogo que la simulación con flags mockeados no podía ver. **El juez real > el proxy** no es lema: es lo que encuentra el bug que el mock esconde.
 
 ### Testear el proxy en vez del contrato — 51 tests en verde sobre un gate sin verificar
 
 > **La pregunta no es "¿mi hook imprime el JSON correcto?". Es "¿el harness hace lo que ese JSON pide?".** Son dos afirmaciones distintas y solo la segunda es la que te importa. Un test que valida la primera pasa para siempre, incluso el día en que la segunda deja de ser cierta.
 
-**El caso, analizado 2026-09-09** — plugin `shunt` de [`spotify/portal-ai-plugins`](https://github.com/spotify/portal-ai-plugins). Dos hooks `PreToolUse` cuyo único trabajo es bloquear lecturas de archivos grandes; de ese bloqueo depende el 90% de ahorro que el plugin promete. Trae 51 tests. La forma de todos ellos:
+**El caso, analizado** — plugin `shunt` de [`spotify/portal-ai-plugins`](https://github.com/spotify/portal-ai-plugins). Dos hooks `PreToolUse` cuyo único trabajo es bloquear lecturas de archivos grandes; de ese bloqueo depende el 90% de ahorro que el plugin promete. Trae 51 tests. La forma de todos ellos:
 
 ```bash
 result=$(echo "$input" | bash "$hook")
@@ -7497,7 +7497,7 @@ Además de testear el proyecto, Claude Code puede ejecutarse **dentro de CI** pa
 | **Interactivo** | Sin `prompt` — espera la frase trigger (`@claude` por default) | Comentario en el issue/PR que lo disparó |
 | **Automation** | Con `prompt` — corre sin esperar mención | **En el log del workflow**, no en el PR |
 
-> ⚠️ **Corrección 2026-09-02:** el workflow de review que traía esta guía pasaba `prompt`, o sea modo automation — y por lo tanto **su review terminaba en el log del run, no en el PR**. Un review que nadie lee es un review que no existe. Para que Claude comente en el PR hacen falta dos cosas: que el prompt se lo pida y que tenga una tool que pueda postear.
+> ⚠️ **Corrección:** el workflow de review que traía esta guía pasaba `prompt`, o sea modo automation — y por lo tanto **su review terminaba en el log del run, no en el PR**. Un review que nadie lee es un review que no existe. Para que Claude comente en el PR hacen falta dos cosas: que el prompt se lo pida y que tenga una tool que pueda postear.
 
 **Trigger via comentario `@claude`:**
 
@@ -7658,7 +7658,7 @@ Si todavía tenés `anthropics/claude-code-action@beta`:
 □ @claude trigger: workflow escucha issue_comment + pull_request_review_comment
 □ Repo con plugin distribuible: job plugin-validate (claude plugin validate — sin API key)
 □ Tests que dependen de toolchains del runner (swiftc, tsc): gate operativo con warm-up, no which()
-□ Check ❌ en CI ≠ test roto: leer la annotation — "job was not started (billing/spending limit)" es infra, no fallo (verificado 2026-07-19)
+□ Check ❌ en CI ≠ test roto: leer la annotation — "job was not started (billing/spending limit)" es infra, no fallo (verificado)
 ```
 
 ---
@@ -7682,7 +7682,7 @@ Sin Datadog, sin dashboards, sin colector. Overkill para este tamaño.
 
 ### Antes de instrumentar nada: lo que el harness ya te dice
 
-Verificado 2026-09-02. Casi todo lo que esta sección resolvía a mano tiene hoy un comando nativo, y cuesta 0 tokens:
+Verificado. Casi todo lo que esta sección resolvía a mano tiene hoy un comando nativo, y cuesta 0 tokens:
 
 | Pregunta | Comando | Qué responde |
 |---|---|---|
@@ -7958,7 +7958,7 @@ El bloque de memoria SIEMPRE marcado como "reference only — not instructions" 
 
 Por eso los agentes y prompts de ese sistema están en inglés — el CLAUDE.md lo exige.
 
-> **[2026-07-01] verificado en producción:** el proxy chars/4 asume prosa. Contenido con muchas tablas
+> **Verificado en producción:** el proxy chars/4 asume prosa. Contenido con muchas tablas
 > markdown, YAML o code blocks (el caso típico de architect/generator/validator) tokeniza peor
 > que prosa — más símbolos por char. Si necesitás el número real, corré `count_tokens` de la SDK
 > antes de decidir un refactor — no confíes en el proxy como base de una decisión de recorte.
@@ -7974,7 +7974,7 @@ Por eso los agentes y prompts de ese sistema están en inglés — el CLAUDE.md 
 □ Agentes y prompts en inglés — no español (low-cost: ~25% menos tokens)
 ```
 
-> **[2026-07-01] verificado en producción:** los 4 budgets de esta sección (architect≤800, generator≤1200,
+> **Verificado en producción:** los 4 budgets de esta sección (architect≤800, generator≤1200,
 > validator≤600, curator≤400) fallaron los 4 al testearlos contra los agentes reales del proyecto
 > (exceso de 15% a 75%). Antes de recortar un agente para cumplir el número, preguntate si el costo
 > real importa: estos agentes corren 1 vez por invocación, no por tool call como CLAUDE.md —
@@ -8017,7 +8017,7 @@ comando harness:
 Verificado en un plugin propio en producción (un `commands/harness.md` que pasa `claude plugin validate`): orquesta `atoms→molecules→organisms` con un agente reviewer como gate entre capas, invocando al agente lead para el plan. Confirma de paso que **`commands/` es componente de plugin** (§11) — el comando es la pieza que faltaba entre "tengo 12 agentes" y "corren en orden con gates".
 
 <!-- §35-ref -->
-### Las palancas del harness (física verificada — este harness, 2026-07-18)
+### Las palancas del harness (física verificada — este harness)
 
 Consolidado de lo que ya está disperso en la guía; son propiedades del tool `Agent`, no estilo:
 
@@ -8059,7 +8059,7 @@ Dos principios que sostienen el gate (Anthropic, verificado):
 
 ### El trigger es el estado de dependencias, no el tipo de artefacto
 
-> **[2026-07-19] verificado en producción:** Cablear el harness enseñó que **qué construís no dice si cruza fases — lo dice si los hijos ya existen.** Una molécula con sus átomos ya en el catálogo es 1 fase (skill directo); la misma molécula con átomos faltantes es pipeline. El Paso 0 (el `@lead` grepea el catálogo) decide por-tarea: hijos presentes → sale al skill y NO orquesta (anti-overkill §14); faltantes → pipeline con gates. Nunca hardcodees "organismo → harness siempre".
+> **Verificado en producción:** Cablear el harness enseñó que **qué construís no dice si cruza fases — lo dice si los hijos ya existen.** Una molécula con sus átomos ya en el catálogo es 1 fase (skill directo); la misma molécula con átomos faltantes es pipeline. El Paso 0 (el `@lead` grepea el catálogo) decide por-tarea: hijos presentes → sale al skill y NO orquesta (anti-overkill §14); faltantes → pipeline con gates. Nunca hardcodees "organismo → harness siempre".
 
 Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
@@ -8068,7 +8068,7 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
 ### No todos los gates se endurecen igual — gate de estado vs gate de fase
 
-> **[2026-07-20] verificado en producción:** auditar el harness ya cableado reveló que la afirmación "el validador entre fases puede ser un hook" tiene un límite físico. **Un hook ve eventos de tool (`Write`, `Edit`, `SubagentStop`), no "fronteras de fase".** De ahí dos clases de gate con dureza distinta:
+> **Verificado en producción:** auditar el harness ya cableado reveló que la afirmación "el validador entre fases puede ser un hook" tiene un límite físico. **Un hook ve eventos de tool (`Write`, `Edit`, `SubagentStop`), no "fronteras de fase".** De ahí dos clases de gate con dureza distinta:
 >
 > - **Gate de estado — se endurece a `deny`.** Se ancla a estado persistente (un flag). El gate de plan (regla 0) lee `design-plan-approved` en `PreToolUse` y deniega el `Write` si falta. Imposible de saltar. Física real.
 > - **Gate de fase — NO se endurece; se hace observable.** "Ejecuta el reviewer entre la capa atoms y molecules" no tiene evento que lo dispare: "fase" es un concepto de la prosa del `command`, invisible al hook. Pedirle un `deny` es pedirle lo imposible (§reasoning: física antes de diseño) — el modelo improvisa y el gate se disuelve en silencio. La palanca correcta es **detectar el salto y hacerlo visible**, no bloquearlo: `SubagentStop` marca (mtime) cuándo corrió el reviewer; `Stop` compara contra el último write de la fase y avisa si se escribió después del último review. Convierte un salto silencioso en un nudge — que era el hallazgo, no el bloqueo.
@@ -8077,7 +8077,7 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
 ### Un gate roto se ve idéntico a uno sano — las 3 muertes silenciosas del harness
 
-> **[2026-07-20] verificado en producción:** aplicar "¿cómo sabría que esto está muerto?" (§reasoning #3) a cada gate del harness destapó tres fallos que no dan señal — el sistema con enforcement roto es visualmente idéntico al sano:
+> **Verificado en producción:** aplicar "¿cómo sabría que esto está muerto?" (§reasoning #3) a cada gate del harness destapó tres fallos que no dan señal — el sistema con enforcement roto es visualmente idéntico al sano:
 >
 > 1. **El juez que no puede correr y calla.** El gate de sintaxis `swiftc -parse` retorna "OK" cuando no hay toolchain (`which('swiftc') → None`). En CI o una máquina sin Xcode pasa todo, y el dev cree tener red de compilación. Fix: cuando el juez no puede ejecutar, **emitir una señal** ("gate desactivado esta sesión"), nunca degradar a verde mudo.
 > 2. **El pipeline corrompe el input de su propio gate.** El `@lead` decide pipeline-vs-1-capa grepeando un catálogo que el hook actualiza con read-modify-write **sin lock**. El harness permite fases en background → dos escrituras concurrentes se pisan (lost update) y el gate decide sobre datos corruptos. Fix: `flock` + swap atómico (`os.replace`) en todo estado compartido que fases en background escriban.
@@ -8187,11 +8187,11 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 <!-- §37 -->
 ## 37. El patrón Ratchet — prevenir regresiones en cambios silenciosos
 
-> **[2026-09-05] verificado en producción:** Un cambio que funciona en runtime pero retrocede en el repo (e.g., traducción que vuelve a español) es invisible al compilador — el test debe escanear. El ratchet acopla el guard al código en el mismo commit, con invariantes explícitas (lo que nunca se toca). Para migraciones grandes donde el fallo degrada sin error.
+> **Verificado en producción:** Un cambio que funciona en runtime pero retrocede en el repo (e.g., traducción que vuelve a español) es invisible al compilador — el test debe escanear. El ratchet acopla el guard al código en el mismo commit, con invariantes explícitas (lo que nunca se toca). Para migraciones grandes donde el fallo degrada sin error.
 
 <!-- §38 -->
 ## 38. Acoplamientos ocultos — qué define el PR boundary
 
-> **[2026-09-05] verificado en producción:** El acoplamiento define el límite, no la métrica. Cuando una skill cita otra (§ Measurement cycle) o un hook comparte asserts con su skill, deben viajar juntos en el mismo commit. Buscar referencias cruzadas, strings compartidos y contratos implícitos antes de definir el PR boundary — la estructura de archivos es ruido.
+> **Verificado en producción:** El acoplamiento define el límite, no la métrica. Cuando una skill cita otra (§ Measurement cycle) o un hook comparte asserts con su skill, deben viajar juntos en el mismo commit. Buscar referencias cruzadas, strings compartidos y contratos implícitos antes de definir el PR boundary — la estructura de archivos es ruido.
 
-> **[2026-09-05] verificado en producción:** Ejemplo: un plan de migración i18n — traducir dos skills de componentes sin la skill de layout rompe las citas cruzadas a `§ Measurement cycle`, forzando los tres al mismo PR. El acoplamiento de contenido decide el boundary, no la complejidad prevista ni el orden inicial del plan — verificar qué se rompe si el contenido se traduce parcialmente.
+> **Verificado en producción:** Ejemplo: un plan de migración i18n — traducir dos skills de componentes sin la skill de layout rompe las citas cruzadas a `§ Measurement cycle`, forzando los tres al mismo PR. El acoplamiento de contenido decide el boundary, no la complejidad prevista ni el orden inicial del plan — verificar qué se rompe si el contenido se traduce parcialmente.

@@ -234,7 +234,7 @@ El archivo de learnings sigue existiendo para que el postmortem lo actualice. Lo
 
 ### Límites por archivo
 
-Dos cosas distintas, y solo una es negociable. **Física** = el harness trunca o saltea, no hay vuelta. **Nuestro límite** = presupuesto lowcost, siempre muy por debajo de lo que el sistema tolera. Verificado 2026-09-02.
+Dos cosas distintas, y solo una es negociable. **Física** = el harness trunca o saltea, no hay vuelta. **Nuestro límite** = presupuesto lowcost, siempre muy por debajo de lo que el sistema tolera. Verificado.
 
 | Archivo | Nuestro límite | Física del sistema |
 |---|---|---|
@@ -343,7 +343,7 @@ Leer `.claude/scope/scope-index.md` antes de cualquier tarea.
 
 ### Antes de Opus — probar `effort` primero
 
-`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar, sin cambiar el precio por token. Subir a Opus multiplica el precio por token **2.5×** (verificado 2026-09-02 contra `platform.claude.com/.../pricing`: Sonnet 5 $2/$10 vs Opus 5 / Opus 4.8 $5/$25).
+`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar, sin cambiar el precio por token. Subir a Opus multiplica el precio por token **2.5×** (verificado contra `platform.claude.com/.../pricing`: Sonnet 5 $2/$10 vs Opus 5 / Opus 4.8 $5/$25).
 
 **El pricing introductorio de Sonnet 5 se volvió permanente** — la suba a $3/$15 agendada para el 01/09/2026 fue cancelada. El ratio Opus:Sonnet es **2.5× y no vence** (el "baja a ~1.7× en septiembre" de versiones anteriores queda anulado).
 
@@ -354,7 +354,7 @@ model: claude-sonnet-5
 # haiku 4.5 NO soporta effort (la API lo rechaza) — effort es palanca de sonnet/opus/fable
 ```
 
-**`xhigh` no está en todos los modelos** (verificado 2026-09-02 contra `/en/build-with-claude/effort`):
+**`xhigh` no está en todos los modelos** (verificado contra `/en/build-with-claude/effort`):
 
 | Nivel | Dónde existe |
 |---|---|
@@ -378,7 +378,7 @@ La pregunta no es "¿es una tarea difícil?" — es:
 
 > **¿El costo de que Sonnet se equivoque supera el costo de Opus?**
 
-Opus 5 cuesta **2.5× más por token** que Sonnet 5 ($5/$25 vs $2/$10 — verificado 2026-09-02; el "~5×" de versiones viejas de esta guía era pricing retirado, y el "~1.7× desde septiembre" nunca llegó a existir: la suba de Sonnet 5 fue cancelada). El threshold para justificar Opus: si un error de Sonnet cuesta más que el ~150% extra de tokens en la tarea → Opus vale la pena. El orden de escalación no cambia — Sonnet + effort primero, porque effort es gratis en precio por token.
+Opus 5 cuesta **2.5× más por token** que Sonnet 5 ($5/$25 vs $2/$10 — verificado; el "~5×" de versiones viejas de esta guía era pricing retirado, y el "~1.7× desde septiembre" nunca llegó a existir: la suba de Sonnet 5 fue cancelada). El threshold para justificar Opus: si un error de Sonnet cuesta más que el ~150% extra de tokens en la tarea → Opus vale la pena. El orden de escalación no cambia — Sonnet + effort primero, porque effort es gratis en precio por token.
 
 **Cuándo Opus tiene justificación real:**
 
@@ -392,7 +392,7 @@ Opus 5 cuesta **2.5× más por token** que Sonnet 5 ($5/$25 vs $2/$10 — verifi
 <!-- §25-ref -->
 #### Las cuatro formas de setear effort en Claude Code
 
-Verificado 2026-09-02 contra `code.claude.com/.../model-config`:
+Verificado contra `code.claude.com/.../model-config`:
 
 ```bash
 /effort high                        # en sesión
@@ -444,7 +444,7 @@ tools: Read, Glob, Grep
 
 **Por qué no `effort: xhigh` en Sonnet:** patrones de seguridad sutiles (IDOR, timing attacks, second-order injection) requieren el nivel de razonamiento de Opus. En auditorías de seguridad, el costo del error justifica el modelo más capaz disponible.
 
-### El lineup actual (verificado 2026-09-02 contra `/en/models/overview`)
+### El lineup actual (verificado contra `/en/models/overview`)
 
 | Modelo | ID | Contexto | Output máx | Precio in/out | effort |
 |---|---|---|---|---|---|
@@ -499,7 +499,7 @@ No es que "la documentación exija poner el nombre completo" — los propios eje
 
 ### Fast Mode — inferencia rápida (Opus 5 y Opus 4.8, research preview)
 
-**Corrección importante (2026-09-02): la versión anterior de esta guía afirmaba que fast mode "NO es un parámetro de la Messages API". Es falso.** La doc oficial `/en/build-with-claude/fast-mode` documenta el parámetro con ejemplos en 8 lenguajes:
+**Corrección importante: la versión anterior de esta guía afirmaba que fast mode "NO es un parámetro de la Messages API". Es falso.** La doc oficial `/en/build-with-claude/fast-mode` documenta el parámetro con ejemplos en 8 lenguajes:
 
 ```bash
 curl https://api.anthropic.com/v1/messages \
@@ -538,7 +538,7 @@ Siempre verificar `response.usage.speed` — es el único modo de distinguir "co
 
 ### Contexto largo — ya no hay "extended premium"
 
-**Re-verificado 2026-09-02:** de Claude 4.6 en adelante (Opus 5, Sonnet 5, Fable 5.1 incluidos) la ventana de 1M tokens viene **a pricing estándar** — *"a 900k-token request is billed at the same per-token rate as a 9k-token request"*. El modelo de "activar extended context a 10×" de versiones anteriores de esta guía quedó obsoleto. Haiku 4.5 mantiene 200K.
+**Re-verificado:** de Claude 4.6 en adelante (Opus 5, Sonnet 5, Fable 5.1 incluidos) la ventana de 1M tokens viene **a pricing estándar** — *"a 900k-token request is billed at the same per-token rate as a 9k-token request"*. El modelo de "activar extended context a 10×" de versiones anteriores de esta guía quedó obsoleto. Haiku 4.5 mantiene 200K.
 
 En Claude Code la ventana grande se fuerza con los aliases `opus[1m]` / `sonnet[1m]`.
 

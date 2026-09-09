@@ -163,9 +163,9 @@ El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando o
 | Git en múltiples invocaciones separadas | 22k tokens (medido) vs ~10-12k esperado | Una sola invocación al final: BRANCH+COMMIT+PR+MERGE · VALIDADO: sí |
 | `git add -p` en agente git | Interactivo — el agente entra en loop esperando stdin, infla tool calls | Usar `git add -u` (todos los modificados) + `git status --short` previo |
 | Commit message no pasado en el prompt al agente git | El agente usa 1-2 tool calls extra para inferir qué cambió | Pasar mensaje explícito: `COMMIT: tipo: descripción` — el agente no explora |
-| `subagent_type` con nombre que no está en la lista de agent types de la sesión | Error "agent type not found" — falla inmediata, no silent | Built-ins reales: `general-purpose`, `Explore`, `Plan`, `claude`. En versiones actuales los agentes de `.claude/agents/` y `~/.claude/agents/` TAMBIÉN aparecen como agent types invocables (verificado 2026-07-02) — la restricción a built-ins era de versiones anteriores. Fallback si el agente no aparece: `subagent_type: claude` + `"Read .claude/agents/X.md and follow it. TARGET: …"` en el prompt. |
+| `subagent_type` con nombre que no está en la lista de agent types de la sesión | Error "agent type not found" — falla inmediata, no silent | Built-ins reales: `general-purpose`, `Explore`, `Plan`, `claude`. En versiones actuales los agentes de `.claude/agents/` y `~/.claude/agents/` TAMBIÉN aparecen como agent types invocables (verificado) — la restricción a built-ins era de versiones anteriores. Fallback si el agente no aparece: `subagent_type: claude` + `"Read .claude/agents/X.md and follow it. TARGET: …"` en el prompt. |
 | `\|\| return` en función bash con `set -e` | Script muere silenciosamente sin output cuando el archivo no está en el diff | `grep -qF "$file" \|\| return 0` — `return` sin código propaga el exit code 1 de grep; `set -e` mata el script antes del primer `echo`. Aplica a cualquier función de validación en CI/hooks. |
-| AskUserQuestion option con `"in notes"` | Usuario no sabe dónde escribir — confusión en cada uso real | Referenciar explícitamente: `"Other" field (option 3 below)` en la etiqueta de la opción. Validado en producción 2026-06-02. |
+| AskUserQuestion option con `"in notes"` | Usuario no sabe dónde escribir — confusión en cada uso real | Referenciar explícitamente: `"Other" field (option 3 below)` en la etiqueta de la opción. Validado en producción. |
 | Validator invocado con `subagent_type: claude` sin instrucciones Grep-first | 23 tool uses (medido) vs 10 esperado — el agente lee archivos completos | Pasar las instrucciones Grep-first explícitas + `TYPE: local\|plugin` en el prompt. Nunca leer lo que Grep puede responder. |
 | Invocar agente sin arquitectura/scope definidos | El agente asume, genera loops de corrección, tokens ×3-5 respecto a tarea bien acotada | `/plan` primero; si no hay scope → escribirlo antes de invocar. Ver §24. |
 
@@ -416,7 +416,7 @@ El ahorro escala con dos cosas que el resto de §23 ignora: **el ratio de compre
 
 El umbral concreto se enforcea con un hook, no con disciplina: **§7, patrón shunt hook** (Claude no delega lecturas por iniciativa propia — hay que ponerle la física).
 
-> **Procedencia — 2026-09-09.** El patrón está medido públicamente por Spotify (`shunt`, en `spotify/portal-ai-plugins`): 33.684 → 5.737 tokens en un archivo de 4.014 líneas (82%), 75.990 → 4.148 en un par source+test (94%), media 90% sobre un monorepo Java de 162k líneas. Esos números son de **una lectura**, ruteando a un modelo externo barato; no incluyen el efecto compuesto por turno descrito arriba, que va en la misma dirección. La variante con subagente haiku de esta guía **no está medida** — la aritmética de §7 es aritmética. Medí con `/context` antes de citar un porcentaje propio.
+> **Procedencia.** El patrón está medido públicamente por Spotify (`shunt`, en `spotify/portal-ai-plugins`): 33.684 → 5.737 tokens en un archivo de 4.014 líneas (82%), 75.990 → 4.148 en un par source+test (94%), media 90% sobre un monorepo Java de 162k líneas. Esos números son de **una lectura**, ruteando a un modelo externo barato; no incluyen el efecto compuesto por turno descrito arriba, que va en la misma dirección. La variante con subagente haiku de esta guía **no está medida** — la aritmética de §7 es aritmética. Medí con `/context` antes de citar un porcentaje propio.
 
 ### Anti-overkill
 
@@ -477,7 +477,7 @@ Si el hub tiene `skillOverrides: user-invocable-only`, los ~280 tokens no se gas
 
 ### Impacto del modelo
 
-Precios oficiales por 1M tokens (input/output, verificados 2026-09-02):
+Precios oficiales por 1M tokens (input/output, verificados):
 
 | Modelo | Precio | Costo relativo | Cuándo |
 |---|---|---|---|
@@ -490,7 +490,7 @@ Un reviewer en sonnet cuesta 2× más que en haiku — mismo resultado. Opus ya 
 
 ### El tokenizer cambió — tus estimados históricos están bajos
 
-**Verificado 2026-09-02** (nota oficial en la página de pricing): de Claude 4.7 en adelante — Opus 4.7, Opus 4.8, **Opus 5**, **Sonnet 5**, Fable 5/5.1 — el tokenizer es nuevo y produce **~30% más tokens para el mismo texto**. **Sonnet 4.6 y anteriores, y Haiku 4.5, usan el tokenizer viejo.**
+**Verificado** (nota oficial en la página de pricing): de Claude 4.7 en adelante — Opus 4.7, Opus 4.8, **Opus 5**, **Sonnet 5**, Fable 5/5.1 — el tokenizer es nuevo y produce **~30% más tokens para el mismo texto**. **Sonnet 4.6 y anteriores, y Haiku 4.5, usan el tokenizer viejo.**
 
 | Modelo | Tokenizer | Efecto sobre los estimados de esta sección |
 |---|---|---|
@@ -515,7 +515,7 @@ Para medir: `count_tokens` **con el modelo destino**. Extrapolar entre modelos e
 | Cache read | 0.1× | Mismo prefix dentro del TTL |
 | Sin cache (base) | 1× | Referencia |
 
-**Cuándo conviene cada TTL** (verificado 2026-09-02): el write de 5 min se paga solo **con 1 lectura**; el de 1 hora necesita **2 lecturas** para amortizarse. Si tu sesión tiene pausas de más de 5 minutos (pensar, revisar un PR, almorzar), el de 1 hora sale más barato que re-crear el cache desde cero. En Fable 5.1 el read baja a **0.025×** en vez de 0.1× — el único modelo con esa tarifa.
+**Cuándo conviene cada TTL** (verificado): el write de 5 min se paga solo **con 1 lectura**; el de 1 hora necesita **2 lecturas** para amortizarse. Si tu sesión tiene pausas de más de 5 minutos (pensar, revisar un PR, almorzar), el de 1 hora sale más barato que re-crear el cache desde cero. En Fable 5.1 el read baja a **0.025×** en vez de 0.1× — el único modelo con esa tarifa.
 
 - **TTL por defecto: 5 minutos** — después de 5 min de inactividad el cache expira
 - **Qué se cachea:** CLAUDE.md, system prompts de agentes, historial hasta el corte del prefix
