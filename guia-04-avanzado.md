@@ -1247,7 +1247,7 @@ La tabla de arriba cubre el proyecto. Esta cubre la plataforma: casos verificado
 |---|---|---|
 | Hook con `if` en un evento que no es de tool | Un guard que nunca dispara | `/hooks` lo lista igual — **hay que correr el caso** y mirar `--debug-file`. Solo vale en los 5 eventos de tool (§7) |
 | Hook JSON cuyo stdout no empieza con `{` (un `echo` del `.zshrc`) | Todo se trata como texto plano; en exit 0 **no se reporta nada** | Solo aparece en el debug log. Fix: envolver los echo del shell en `if [[ $- == *i* ]]` |
-| `additionalContext` al top level en vez de dentro de `hookSpecificOutput` | Se ignora en silencio | El contexto simplemente no llega — comparar con `/context` |
+| `additionalContext` al top level en vez de dentro de `hookSpecificOutput` | Se ignora en silencio | Solo en el camino JSON: si tu stdout empieza con `{`, el campo tiene que ir anidado. En texto plano no aplica — ahí el stdout entra tal cual, pero **solo** en `UserPromptSubmit`, `UserPromptExpansion`, `SessionStart` y `PostModelSwitch` (§7). Comparar con `/context` |
 | Regla de `rules/` con `glob:` en vez de `paths:` | Carga **siempre** en vez de nunca — lo contrario de lo buscado | `/context` → Memory files, o el hook `InstructionsLoaded` (§32) |
 | `skillOverrides` aplicado a una skill de plugin | No hace nada; el hub sigue costando sus tokens | Los overrides de plugin van por `/plugin` (§6) |
 | Agente de plugin con `hooks:`/`mcpServers:`/`permissionMode:` | Corre sin ellos, sin warning | Solo se detecta leyendo la doc — no hay señal en runtime (§11) |

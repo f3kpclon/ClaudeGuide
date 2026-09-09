@@ -508,6 +508,10 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 | `SessionStart` | `startup\|resume\|clear\|compact\|fork` | Al iniciar o retomar sesión | Inyectar contexto inicial, `watchPaths`, `reloadSkills` |
 | `FileChanged` | Nombre de archivo | Archivo vigilado cambia en disco | Recargar `.env`, disparar validaciones externas |
 
+> **stdout plano SÍ entra como contexto — en 4 eventos, y solo en esos.** No hace falta emitir JSON con `hookSpecificOutput.additionalContext` para inyectar: *"For most events, Claude Code writes stdout to the debug log and doesn't show it in the transcript. The exceptions are `UserPromptSubmit`, `UserPromptExpansion`, `SessionStart`, and `PostModelSwitch`, where Claude Code adds plain-text stdout as context that Claude can see and act on."* Un `print()` pelado en un `UserPromptSubmit` es correcto, no un bug — no lo reportes como tal en una auditoría. <!-- ver: 2026-09-09 -->
+>
+> El matiz que hace confusa la fila *"`additionalContext` al top level se ignora"* del catálogo de muertes silenciosas (§35): eso vale cuando **emitís JSON**. Ahí el campo tiene que ir dentro de `hookSpecificOutput` o se descarta sin aviso. Las dos reglas conviven — texto plano funciona, JSON mal anidado no — y son fáciles de mezclar: **si tu primera línea empieza con `{`, estás en el camino JSON y aplican sus reglas**; si no, es texto plano y solo funciona en esos 4 eventos.
+
 **`PostToolUse` — caso aparte (corregido):** NO es puramente observacional como los tres de arriba. No puede deshacer la tool (ya se ejecutó), pero SÍ soporta `"decision": "block"` + `"reason"` — un mecanismo real de tercera vía, distinto de `systemMessage`/`additionalContext`: fuerza que el error se muestre a Claude en el mismo turno para que lo corrija. Es exactamente lo que usa el ejemplo "El compilador como juez" más abajo en esta sección. La versión anterior de esta guía clasificaba PostToolUse junto a los observacionales puros — es una simplificación excesiva, no un error de la doc oficial. <!-- ver: 2026-07-04 -->
 
 <!-- §7-ref -->
@@ -1905,9 +1909,24 @@ ${CLAUDE_EFFORT}      → nivel activo: low|medium|high|xhigh|max
 ${CLAUDE_SKILL_DIR}   → directorio de la skill — para scripts bundleados (en plugins:
                         el subdirectorio de la skill, NO la raíz del plugin)
 ${CLAUDE_PROJECT_DIR} → raíz del proyecto — el mismo que reciben los hooks (§7)
-${CLAUDE_PLUGIN_ROOT} → instalación del plugin (solo en skills de plugin)
+${CLAUDE_PLUGIN_ROOT} → instalación del plugin (skills Y agentes, hooks, monitors,
+                        MCP y LSP — ver el recuadro abajo)
 ${CLAUDE_PLUGIN_DATA} → directorio persistente del plugin, sobrevive updates
 ```
+
+> **Dónde resuelve `${CLAUDE_PLUGIN_ROOT}` — la tabla oficial, porque "solo en skills" es falso.** Esta guía decía eso y dejaba fuera el caso que más se usa: **el contenido de un agente**. La doc lo lista explícitamente. <!-- ver: 2026-09-09 -->
+>
+> | Componente del plugin | Dónde resuelve el placeholder |
+> |---|---|
+> | **Contenido de skill Y de agente** | En cualquier parte donde aparezca |
+> | Comandos de hooks y monitors | En cualquier parte donde aparezca |
+> | MCP `stdio` | `command`, `args`, `env` |
+> | MCP `http`/`sse`/`ws` | `url`, `headers`, `headersHelper` |
+> | LSP | `command`, `args`, `env`, `workspaceFolder` |
+>
+> Además se exporta como variable de entorno a los procesos de hook y a los subprocesos MCP/LSP. **Por qué importa en un agente:** un subagente con `tools:` restringido **no tiene tool `Skill`**, así que la única forma de que alcance un fichero del plugin es `Read` por ruta — y esa ruta necesita esta base declarada en su body. Sin ella, la ruta se resuelve contra el cwd (el proyecto host), no existe, y el agente improvisa en silencio (§11).
+>
+> Y el caveat oficial: la ruta **cambia en cada update del plugin**. Nada de estado ahí — eso es `${CLAUDE_PLUGIN_DATA}`.
 
 > **`${CLAUDE_EFFORT}` nunca devuelve `ultracode`.** Ultracode no es un nivel propio: reporta `xhigh`. Si escribís una skill que se adapta al effort activo, no ramifiques por un valor que no puede llegar (→ §25).
 
