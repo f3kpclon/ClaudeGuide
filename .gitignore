@@ -10,3 +10,5 @@ CLAUDE.local.md
 # Python bytecode (audit importa gen_readme_es)
 __pycache__/
 *.pyc
+# Doc de los audits — vive en ~/.claude/skills/, nunca en el repo
+AUDITS.md
