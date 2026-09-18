@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.43 · **New §39 — how to build your own anti-slop filter, and how to bring another plugin's skills into yours.** An output filter does not teach the model to do it right: it lists the patterns that give away generic output and requires a written reason for every technique. Six steps: collect tells from your own output, sort them into 3 tiers (Hard Gate / Purpose-Gate / Quality Lock), write them in a fixed shape, list what *not* to flag, close with a gate where a PASS without evidence is not a PASS, and move whatever is measurable into a script. Includes a filter skill skeleton. In §11, the **3 routes** to add third-party skills to a plugin (vendoring, `dependencies`, preloading with `skills:`), and a **correction**: an agent with restricted `tools:` cannot invoke skills, but it can preload them from its frontmatter.
+**Author:** Félix Sotelo · **Version:** v5.44 · **New §40 — Aduana, a customs gate for code your agents write.** The §39 equivalent for agent-written code, running inside the loop: `SubagentStop` runs a script over the branch diff (files crossing 1000 lines, force casts, discarded errors), then two read-only lenses (Grieta: what breaks · Poda: what can be cut) review in parallel, with a single automatic fix round. Plausible findings never go back to the agent. Worked example on design-ios. Verified: plugin subagents ignore `hooks:` in their frontmatter, so the gate belongs in `hooks.json`.
 
 ---
 
@@ -48,6 +48,14 @@
 ## What's New
 
 <!-- changelog-insert -->
+
+### v5.44 — Aduana, a customs gate for code your agents write (2026-09-18)
+
+| Area | Change |
+|---|---|
+| **§40** | **New — Aduana, the agent code filter.** Structural slop in agent-written code (flags branching existing flows, identity wrappers, force casts, files growing past 1000 lines, bespoke helpers) gets the §39 treatment. Pipeline: a `SubagentStop` hook on the writing agents runs measurable rules over `git merge-base HEAD main` at zero tokens and writes `diff.patch`; blocks once, then escalates via `systemMessage` on `stop_hook_active`. Two read-only lenses with a preloaded rubric, Grieta (what breaks) and Poda (what can be cut), then review in parallel. Findings use a fixed shape with a failure scenario and confidence; only verified findings go back to the agent, and only for one round. The hook skeleton was tested on 4 cases (clean branch, first stop, second stop, outside a git repo). |
+| **§40** | **Verified — plugin subagents ignore `hooks:`, `mcpServers` and `permissionMode` in their frontmatter.** A `hooks:` field on a plugin agent registers nothing and raises no error. Put the gate in the plugin's `hooks/hooks.json`. Also verified: `decision`/`reason` are top-level fields for Stop/SubagentStop, and the harness overrides after 8 consecutive blocks. |
+| **§39, §35** | Cross-references to §40. |
 
 ### v5.43 — build your own anti-slop filter, and third-party skills in a plugin (2026-09-18)
 

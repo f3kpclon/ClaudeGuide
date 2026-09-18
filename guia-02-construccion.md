@@ -4059,6 +4059,9 @@ KEYWORD_MAP = [
     # §39 — Filtros anti-slop (reglas de salida con propósito)
     (["anti-slop", "antislop", "ai slop", "purpose-gate", "hard gate",
       "filtro de salida", "delivery gate"],                            39),
+    # §40 — Aduana: filtro de código de agentes (lentes Grieta y Poda)
+    (["aduana", "código de agentes", "filtro de código", "slop de código",
+      "lente grieta", "lente poda", "design-poda", "design-grieta"],   40),
 ]
 
 def detect_sections(prompt: str) -> list[int]:

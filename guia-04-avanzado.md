@@ -1530,6 +1530,8 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 >
 > Regla destilada: **a cada gate del harness preguntarle por separado (a) qué pasa si no puede correr, (b) quién escribe su input y si compite, (c) qué esconde su `except`.** Los tres se ven sanos hasta que fallan caro.
 
+> **Gate de calidad sobre el código del agente de capa:** §40 lo cuelga de `SubagentStop` (gate por evento, se puede endurecer). Un script corre sobre el diff y dos lentes revisan en paralelo, con una sola ronda de corrección automática.
+
 **Fuentes:** [Sub-agents](https://code.claude.com/docs/en/sub-agents.md) · [Building an agent harness with Claude Code — LogRocket](https://blog.logrocket.com/building-an-agent-harness-with-claude-code/) · patrón verificado en un plugin propio en producción.
 
 <!-- §15 -->

@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.43 · **§39 nueva — cómo crear tu propio filtro anti-slop, y cómo meter skills de otro plugin en el tuyo.** Un filtro de salida no le enseña al modelo a hacerlo bien: le lista los patrones que delatan salida genérica y le exige una razón escrita por técnica. Seis pasos: juntar señales de tu propia salida, clasificarlas en 3 niveles (Hard Gate / Purpose-Gate / Quality Lock), escribirlas con forma fija, listar lo que *no* se marca, cerrar con un checklist donde un PASS sin evidencia no es PASS y pasar a script lo medible. Incluye el esqueleto de una skill de filtro. En §11, las **3 vías** para sumar skills de terceros a un plugin (vendorizar, `dependencies`, precargar con `skills:`), y una **corrección**: un agente con `tools:` restringido no puede invocar skills, pero sí precargarlas desde el frontmatter. Antes: **el shunt hook, y una cuarta salida del techo de tokens** (§7, §23, §19, §11)
+**Versión:** v5.44 · **§40 nueva — Aduana, filtro de código de agentes.** El equivalente de §39 para el código que escriben tus agentes, dentro del loop: `SubagentStop` corre un script sobre el diff de la rama (archivos que cruzan 1000 líneas, casts forzados, errores descartados), después dos lentes de solo lectura (Grieta: qué se rompe · Poda: qué sobra) y una sola ronda de corrección automática. Lo plausible nunca vuelve al agente. Ejemplo con design-ios. Verificado: los subagentes de plugin ignoran `hooks:` en su frontmatter, así que el gate va en `hooks.json`. Antes: **§39, filtros anti-slop** (§39, §11)
 
 ---
 
@@ -49,6 +49,7 @@
 | Impedir que un cambio ya hecho se deshaga solo | §37 — el patrón Ratchet: el guard viaja con el código |
 | Decidir qué entra y qué no en un mismo PR | §38 — acoplamientos ocultos, no estructura de archivos |
 | Crear un filtro contra la salida genérica de IA / sumar skills de otro plugin al mío | §39 — filtros anti-slop · §11 — skills de terceros |
+| Revisar solo el código que escriben mis agentes antes de aceptarlo | §40 — Aduana: hook + lentes Grieta y Poda en paralelo |
 
 ---
 
@@ -89,6 +90,7 @@
 - [§23 — Techos reales de tokens](guia-03-calidad.md#23-techos-reales-de-tokens--cuándo-parar-de-optimizar)
 - [§3 — Estimados de consumo](guia-03-calidad.md#3-estimados-de-consumo)
 - [§39 — Filtros anti-slop](guia-03-calidad.md#39-filtros-anti-slop--cómo-crear-el-tuyo)
+- [§40 — Aduana, filtro de código de agentes](guia-03-calidad.md#40-aduana--filtro-de-código-de-agentes)
 
 ### Avanzado y referencia
 - [§16 — Vector Memory](guia-04-avanzado.md#16-vector-memory--upgrade-del-sistema-de-learnings)
@@ -111,7 +113,7 @@
 |---|---|
 | `guia-01-fundamentos.md` | 01 · Fundamentos — §4, §1, §2, §25, §24 |
 | `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §36, §31, §32, §17, §26, §27, §28, §29, §30, §33, §34 |
-| `guia-03-calidad.md` | 03 · Calidad y eficiencia — §14, §12, §13, §23, §3, §39 |
+| `guia-03-calidad.md` | 03 · Calidad y eficiencia — §14, §12, §13, §23, §3, §39, §40 |
 | `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §35, §37, §38, §15 |
 
 `grep -rn "<!-- §N -->" guia-*.md` encuentra la sección sin importar en qué archivo vive.
