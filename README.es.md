@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.42 · **El shunt hook, y una cuarta salida del techo de tokens.** Un `PreToolUse` tiene un segundo uso legítimo además de la seguridad: **economía**. Un guard sobre `Read` que en vez de prohibir **redirige** saca un archivo de 4.000 líneas del contexto caro antes de que entre — y `Σ(tool_outputs)` de §23, que la sección trataba como irreducible, resulta **movible** más que reducible: un subagente lee en aislamiento y devuelve solo su reporte. Con la trampa que viene adjunta — un plugin público con **51 tests en verde sobre un gate cuyo contrato nadie ejercita** — y una corrección a §11: un `scripts/` fuera de la whitelist **sí** sobrevive a la instalación; la whitelist gobierna qué se registra, no qué se copia. Antes: **§37 y §38 nuevas — el patrón Ratchet y el acoplamiento que define el PR boundary.** Un cambio que funciona en runtime pero **retrocede en el repo** es invisible al compilador: el ratchet acopla el guard al código en el mismo commit, con invariantes explícitas. Y el límite de un PR lo decide el **acoplamiento de contenido** — citas cruzadas, strings compartidos, asserts que un hook comparte con su skill — no la estructura de archivos ni la complejidad prevista. Además: **ejemplo mínimo en §5 y §6** antes de los templates completos (un agente de 4 campos, una skill de 2) — el piso enseña más que el techo; el template de skill orquestadora bajó a §6-ref porque el bloque inyectado estaba **501 chars sobre el techo de 5500** y nadie lo veía. Y la guía **dejó de nombrar proyectos privados**: 36 menciones reemplazadas por su procedencia (*verificado en producción*), sin perder contexto
+**Versión:** v5.43 · **§39 nueva — cómo crear tu propio filtro anti-slop, y cómo meter skills de otro plugin en el tuyo.** Un filtro de salida no le enseña al modelo a hacerlo bien: le lista los patrones que delatan salida genérica y le exige una razón escrita por técnica. Seis pasos: juntar señales de tu propia salida, clasificarlas en 3 niveles (Hard Gate / Purpose-Gate / Quality Lock), escribirlas con forma fija, listar lo que *no* se marca, cerrar con un checklist donde un PASS sin evidencia no es PASS y pasar a script lo medible. Incluye el esqueleto de una skill de filtro. En §11, las **3 vías** para sumar skills de terceros a un plugin (vendorizar, `dependencies`, precargar con `skills:`), y una **corrección**: un agente con `tools:` restringido no puede invocar skills, pero sí precargarlas desde el frontmatter. Antes: **el shunt hook, y una cuarta salida del techo de tokens** (§7, §23, §19, §11)
 
 ---
 
@@ -52,6 +52,7 @@
 | Saber quién usa un símbolo antes de tocarlo | §36 — LSP: las 9 operaciones, recetas por lenguaje, y por qué un 0 no es un 0 |
 | Impedir que un cambio ya hecho se deshaga solo | §37 — el patrón Ratchet: el guard viaja con el código |
 | Decidir qué entra y qué no en un mismo PR | §38 — acoplamientos ocultos, no estructura de archivos |
+| Crear un filtro contra la salida genérica de IA / sumar skills de otro plugin al mío | §39 — filtros anti-slop · §11 — skills de terceros |
 
 ---
 
@@ -91,6 +92,7 @@
 - [§13 — Checklist de calidad](guia-03-calidad.md#13-checklist-de-calidad)
 - [§23 — Techos reales de tokens](guia-03-calidad.md#23-techos-reales-de-tokens--cuándo-parar-de-optimizar)
 - [§3 — Estimados de consumo](guia-03-calidad.md#3-estimados-de-consumo)
+- [§39 — Filtros anti-slop](guia-03-calidad.md#39-filtros-anti-slop--cómo-crear-el-tuyo)
 
 ### Avanzado y referencia
 - [§16 — Vector Memory](guia-04-avanzado.md#16-vector-memory--upgrade-del-sistema-de-learnings)
@@ -113,7 +115,7 @@
 |---|---|
 | `guia-01-fundamentos.md` | 01 · Fundamentos — §4, §1, §2, §25, §24 |
 | `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §36, §31, §32, §17, §26, §27, §28, §29, §30, §33, §34 |
-| `guia-03-calidad.md` | 03 · Calidad y eficiencia — §14, §12, §13, §23, §3 |
+| `guia-03-calidad.md` | 03 · Calidad y eficiencia — §14, §12, §13, §23, §3, §39 |
 | `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §35, §37, §38, §15 |
 
 `grep -rn "<!-- §N -->" guia-*.md` encuentra la sección sin importar en qué archivo vive.
@@ -1303,9 +1305,14 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 | `SessionStart` | `startup\|resume\|clear\|compact\|fork` | Al iniciar o retomar sesión | Inyectar contexto inicial, `watchPaths`, `reloadSkills` |
 | `FileChanged` | Nombre de archivo | Archivo vigilado cambia en disco | Recargar `.env`, disparar validaciones externas |
 
+> **stdout plano SÍ entra como contexto — en 4 eventos, y solo en esos.** No hace falta emitir JSON con `hookSpecificOutput.additionalContext` para inyectar: *"For most events, Claude Code writes stdout to the debug log and doesn't show it in the transcript. The exceptions are `UserPromptSubmit`, `UserPromptExpansion`, `SessionStart`, and `PostModelSwitch`, where Claude Code adds plain-text stdout as context that Claude can see and act on."* Un `print()` pelado en un `UserPromptSubmit` es correcto, no un bug — no lo reportes como tal en una auditoría. <!-- ver: 2026-09-09 -->
+
 **`PostToolUse` — caso aparte (corregido):** NO es puramente observacional como los tres de arriba. No puede deshacer la tool (ya se ejecutó), pero SÍ soporta `"decision": "block"` + `"reason"` — un mecanismo real de tercera vía, distinto de `systemMessage`/`additionalContext`: fuerza que el error se muestre a Claude en el mismo turno para que lo corrija. Es exactamente lo que usa el ejemplo "El compilador como juez" más abajo en esta sección. La versión anterior de esta guía clasificaba PostToolUse junto a los observacionales puros — es una simplificación excesiva, no un error de la doc oficial. <!-- ver: 2026-07-04 -->
 
 <!-- §7-ref -->
+
+> **Complemento al recuadro de stdout plano (§7-quick).** El matiz que hace confusa la fila *"`additionalContext` al top level se ignora"* del catálogo de muertes silenciosas (§35): eso vale cuando **emitís JSON**. Ahí el campo tiene que ir dentro de `hookSpecificOutput` o se descarta sin aviso. Las dos reglas conviven — texto plano funciona, JSON mal anidado no — y son fáciles de mezclar: **si tu primera línea empieza con `{`, estás en el camino JSON y aplican sus reglas**; si no, es texto plano y solo funciona en esos 4 eventos.
+
 ### Eventos de nicho — no cubiertos arriba
 
 Re-verificado contra la referencia oficial de hooks — 33 eventos en total, estos son los que esta guía no desarrolla porque son de casos puntuales (agent teams, MCP elicitation, worktrees, config): <!-- ver: 2026-09-02 -->
@@ -2700,9 +2707,24 @@ ${CLAUDE_EFFORT}      → nivel activo: low|medium|high|xhigh|max
 ${CLAUDE_SKILL_DIR}   → directorio de la skill — para scripts bundleados (en plugins:
                         el subdirectorio de la skill, NO la raíz del plugin)
 ${CLAUDE_PROJECT_DIR} → raíz del proyecto — el mismo que reciben los hooks (§7)
-${CLAUDE_PLUGIN_ROOT} → instalación del plugin (solo en skills de plugin)
+${CLAUDE_PLUGIN_ROOT} → instalación del plugin (skills Y agentes, hooks, monitors,
+                        MCP y LSP — ver el recuadro abajo)
 ${CLAUDE_PLUGIN_DATA} → directorio persistente del plugin, sobrevive updates
 ```
+
+> **Dónde resuelve `${CLAUDE_PLUGIN_ROOT}` — la tabla oficial, porque "solo en skills" es falso.** Esta guía decía eso y dejaba fuera el caso que más se usa: **el contenido de un agente**. La doc lo lista explícitamente. <!-- ver: 2026-09-09 -->
+>
+> | Componente del plugin | Dónde resuelve el placeholder |
+> |---|---|
+> | **Contenido de skill Y de agente** | En cualquier parte donde aparezca |
+> | Comandos de hooks y monitors | En cualquier parte donde aparezca |
+> | MCP `stdio` | `command`, `args`, `env` |
+> | MCP `http`/`sse`/`ws` | `url`, `headers`, `headersHelper` |
+> | LSP | `command`, `args`, `env`, `workspaceFolder` |
+>
+> Además se exporta como variable de entorno a los procesos de hook y a los subprocesos MCP/LSP. **Por qué importa en un agente:** un subagente con `tools:` restringido **no tiene tool `Skill`**, así que la única forma de que alcance un fichero del plugin es `Read` por ruta — y esa ruta necesita esta base declarada en su body. Sin ella, la ruta se resuelve contra el cwd (el proyecto host), no existe, y el agente improvisa en silencio (§11).
+>
+> Y el caveat oficial: la ruta **cambia en cada update del plugin**. Nada de estado ahí — eso es `${CLAUDE_PLUGIN_DATA}`.
 
 > **`${CLAUDE_EFFORT}` nunca devuelve `ultracode`.** Ultracode no es un nivel propio: reporta `xhigh`. Si escribís una skill que se adapta al effort activo, no ramifiques por un valor que no puede llegar (→ §25).
 
@@ -3579,6 +3601,38 @@ El manifest acepta campos que apuntan a directorios propios (`agents`, `commands
 
 Si tus agentes "desaparecieron" después de tocar el manifest, esta tabla es la respuesta.
 
+### Skills de terceros en tu plugin — 3 vías
+
+Para sumar skills que viven en otro plugin (por ejemplo, un filtro anti-slop compartido, §39) sin mantenerlas a mano en cada repo:
+
+| Vía | Cómo | Cuándo | Costo |
+|---|---|---|---|
+| **1. Vendorizar** | Copias el `SKILL.md` (adaptado) a `skills/<nombre>/` de tu plugin | Hay que **adaptarla** (otra plataforma, idioma, convenciones) | El drift es tuyo. Respeta la licencia: MIT exige conservar el aviso |
+| **2. `dependencies`** | Declaras el plugin ajeno en tu `plugin.json`; se instala solo | La quieres **tal cual** y con updates | Otra marketplace requiere permiso explícito (abajo) |
+| **3. Precargar en un agente** | `skills: [nombre]` en el frontmatter del agente | Solo un agente (el reviewer) necesita la skill | El contenido completo entra al contexto de ese agente cada vez que corre |
+
+Las vías 1 y 2 hacen que la skill **exista**; la 3 decide **quién la lleva cargada**. Se combinan: vendorizas o declaras la dependencia y luego precargas en el agente que la usa.
+
+**Vía 2 — `dependencies`:**
+
+```json
+{
+  "name": "design-ios",
+  "dependencies": [
+    "helper-lib",
+    { "name": "filtros-salida", "version": "^1.2.0", "marketplace": "equipo-shared" }
+  ]
+}
+```
+
+- Un string solo, o `name` sin `marketplace`, se resuelve **en la misma marketplace** que tu plugin. `version` es un rango semver y se instala el tag más alto que lo cumple.
+- **Otra marketplace está bloqueada por default** (install falla con error `cross-marketplace`). Para permitirla, la marketplace **raíz** (la que publica tu plugin) la declara en su `marketplace.json`: `"allowCrossMarketplaceDependenciesOn": ["equipo-shared"]`. La confianza no se encadena por marketplaces intermedias. Alternativa sin tocar la allowlist: el usuario instala la dependencia a mano primero.
+- Al activar tu plugin, las dependencias se instalan y activan solas. `claude plugin uninstall <plugin> --prune` también elimina las que quedaron huérfanas.
+- Probar local las dos a la vez: `claude --plugin-dir ./dependencia --plugin-dir ./mi-plugin`. La copia local satisface la dependencia y no se chequea la versión.
+- Las skills del plugin dependiente se nombran con su namespace: `filtros-salida:slop-texto`.
+
+**Sin verificar:** si un agente de *tu* plugin puede precargar con `skills:` una skill de *otro* plugin por su nombre con namespace. La doc no lo aclara. Si lo necesitas, pruébalo y mira el debug log: una skill que no se encuentra se salta sin error visible (ver trampa abajo). Si hay que adaptarla igual, la vía 1 evita la duda. <!-- ver: 2026-09-18 -->
+
 ### Instalación — Desktop app (Claude Code)
 
 1. Code → **Customize**
@@ -3755,8 +3809,8 @@ Nadie puede cargarla — ni usuario ni modelo. Las skills de referencia (templat
 **Agentes de plugin: `hooks`, `mcpServers` y `permissionMode` en el frontmatter se ignoran en silencio.**
 Re-verificado — sigue vigente, y ahora importa más: §7 documenta que un subagente **puede** declarar hooks en su frontmatter. Esa capacidad **no llega a los agentes de plugin**. Por seguridad, estos 3 campos NO se aplican cuando el agente se carga desde un plugin — ni error ni warning, el agente simplemente corre sin ellos. Si el autor del plugin escribió `hooks:` esperando scoping por-agente, no pasa nada — mismo patrón de fallo silencioso que `rules/` en plugins (arriba en esta sección). Fix: si el consumidor necesita esos campos, debe copiar el archivo del agente a `.claude/agents/` o `~/.claude/agents/` locales — ahí sí se respetan. <!-- ver: 2026-09-02 -->
 
-**Los subagentes con `tools:` restringido NO pueden cargar skills.**
-La tool `Skill` existe en subagentes sin restricción de tools (verificado), pero los agentes de plugin bien diseñados restringen `tools:` al mínimo — y ahí `Skill` no está. Un agente restringido que dice "Cargar skill X" es una instrucción imposible. Patrón correcto: el hilo principal (la skill de creación) carga la template y o bien escribe los archivos él mismo, o pasa el contenido en el prompt de invocación del agente. El agente lleva su patrón esencial inline como fallback. <!-- ver: 2026-07-02 -->
+**Un subagente con `tools:` restringido no puede *invocar* skills, pero sí *precargarlas*.**
+Si `Skill` no está en `tools:`, una instrucción "Cargar skill X" en el cuerpo del agente es imposible de cumplir. La vía correcta es el frontmatter: `skills: [x, y]` inyecta el **contenido completo** de cada skill en el contexto del agente al arrancar, **sin importar `tools:`** (la doc lo dice explícitamente: para precargar se usa `skills`, no se agrega `Skill` a `tools`). Los agentes de plugin aceptan el campo. Dos trampas: no se puede precargar una skill con `disable-model-invocation: true`, y una skill listada que no existe o está deshabilitada **se salta con un warning que solo aparece en el debug log**. Es un fallo silencioso: el agente corre sin la skill y nadie se entera. Corrige la versión anterior de esta guía, que proponía llevar el patrón inline como fallback. <!-- ver: 2026-09-18 -->
 
 **Skills ejecutadas vía Skill tool NO pasan por UserPromptSubmit.**
 Un gate de flags que se abre solo cuando el usuario tipea `/plugin:plan` entra en deadlock si otra skill ejecuta el plan como paso interno — el hook nunca ve el prompt. Los slash commands de creación también deben abrir el gate:
@@ -4799,6 +4853,9 @@ KEYWORD_MAP = [
     # §38 — Acoplamientos ocultos (qué define el PR boundary)
     (["pr boundary", "acoplamiento oculto", "acoplamientos ocultos",
       "límite del pr", "alcance del pr"],                              38),
+    # §39 — Filtros anti-slop (reglas de salida con propósito)
+    (["anti-slop", "antislop", "ai slop", "purpose-gate", "hard gate",
+      "filtro de salida", "delivery gate"],                            39),
 ]
 
 def detect_sections(prompt: str) -> list[int]:
@@ -6553,6 +6610,118 @@ Tokens: 12,450 input (8,200 cache read · 1,100 cache creation) · 2,450 output
 
 ---
 
+<!-- §39 -->
+## 39. Filtros anti-slop — cómo crear el tuyo
+
+> Un filtro anti-slop no le enseña al modelo a hacerlo bien: le lista los patrones que delatan salida genérica y le exige **una razón escrita** para cada técnica que usa. Se construye en 6 pasos: juntar señales de tu propia salida, clasificarlas en 3 niveles, escribir cada una con forma fija, listar lo que *no* se marca, cerrar con un checklist con evidencia y pasar a script todo lo medible. <!-- ver: 2026-09-18 -->
+
+**Slop** es el default del modelo: una salida que podría pertenecer a cualquier producto. Cambias el logo, el nombre o el autor y nada se nota. El fallo opuesto es igual de real: un filtro que solo prohíbe deja un resultado **estéril**, porque quitar slop no revela calidad, deja un hueco que el modelo rellena con su siguiente default. Por eso el filtro **no inventa dirección**. La dirección vive en otro archivo (tokens del design system, una guía de marca, la voz del autor). Si el resultado sale plano, falló la dirección, no el filtro.
+
+### Paso 1 — Juntar señales de tu propia salida
+
+No partas de una lista genérica. Genera varias veces la misma tarea de tu dominio (una pantalla, un README, un módulo) y anota lo que se repite sin que nadie lo pidiera. Esas repeticiones son tu slop. Agrúpalas por tema, porque cada tema termina siendo una skill:
+
+| Tema | Señales típicas a buscar |
+|---|---|
+| UI | Datos de relleno con apariencia real, estados vacíos que no explican nada, la misma composición en cada sección, decoración que no marca jerarquía |
+| Prosa | Muletillas (*cabe destacar que, potenciar, sin fricciones*), tríos forzados, "no es solo X, es Y", anuncios del tipo "veamos…", cierres de chatbot |
+| Código | Comentarios que repiten la línea siguiente, banners decorativos, "Paso 1 / Paso 2", TODOs vagos, emoji |
+
+Una señal entra al filtro solo si aparece **sin que se pidiera** y **en varias corridas**. Un error aislado es un bug, no un patrón.
+
+### Paso 2 — Clasificar en 3 niveles
+
+| Nivel | Qué protege | Ejemplos | Falla cuando |
+|---|---|---|---|
+| **Hard Gate** | Honestidad, función, accesibilidad | Datos inventados · controles que no hacen nada · contraste < 4.5:1 · UI sin estado vacío/cargando/error | Aparece, sin excepción |
+| **Purpose-Gate** | Técnicas legítimas que el modelo usa por reflejo | Gradiente, sombra, grilla de cards, íconos genéricos, animaciones | Aparece **por default**, sin razón escrita |
+| **Quality Lock** | Consistencia del sistema | Paleta acotada · radios del sistema · CTAs específicos | Rompe el sistema declarado |
+
+El nivel del medio es la clave. Una lista plana de prohibiciones empuja al modelo al default contrario. "Permitido si puedes escribir para qué sirve" apunta a lo que importa: **la técnica sin propósito**. La regla que sostiene todo es: *cada decisión importante lleva una razón de una línea; si no cabe en una línea, la decisión no vale*.
+
+### Paso 3 — Escribir cada entrada: Señal · Por qué · Arreglo
+
+Numera las reglas (H-01 para Hard Gate, P-01 para Purpose-Gate, Q-01 para Quality Lock) y dale a cada patrón la misma forma, citando la regla que lo gobierna. Así el modelo puede detectarlo, entender por qué es malo y corregirlo sin inventar:
+
+```markdown
+### Datos de relleno en el preview
+- **Señal:** `John Doe`, `$48.2K`, `+12% esta semana` en las variantes del preview.
+- **Por qué:** contenido inventado con apariencia de real; quien lo ve lo toma como dato.
+- **Arreglo:** placeholder honesto (`Nombre`, `email@ejemplo.com`) o el campo vacío (H-02).
+```
+
+El **Arreglo** nunca puede agregar hechos. Si la versión buena necesita un dato real (una cifra, un nombre), se pide o se deja un placeholder visible.
+
+### Paso 4 — Lo que NO se marca
+
+Sin esta sección el filtro sobrecorrige y reescribe lo que estaba bien:
+
+- **Busca grupos de señales, no una aislada.** Un recurso suelto no prueba nada. Tres señales juntas en el mismo párrafo o pantalla, sí.
+- **Pulido no es slop.** Gramática perfecta, registro formal o prosa seca sin señales concretas es simplemente prosa.
+- **Preserva lo que prueba que hay un autor:** detalle específico difícil de inventar, tensión sin resolver, largo de oraciones variado.
+- **La voz del autor le gana al filtro.** Con una muestra de su escritura, se imitan sus hábitos aunque el filtro los prohíba.
+- **Las convenciones deliberadas del repo quedan fuera de forma explícita.** Si una regla choca con un estilo elegido a propósito (por ejemplo, la raya como separador en los títulos de esta guía), se excluye por escrito. No se aplica a medias.
+
+### Paso 5 — El checklist final: un PASS sin evidencia no es PASS
+
+Antes de entregar, una línea por regla con evidencia concreta: `H-03 PASS: los 4 botones tienen acción real; el menú mobile abre y cierra`. Una línea que dice PASS sin contar qué se comprobó cuenta como FAIL. Tres propiedades que lo hacen funcionar:
+
+1. **Cobertura exacta:** cada regla definida tiene su ítem en el checklist y cada ítem cita una regla que existe. Verifícalo con un script en CI (§20); si no, una regla nueva queda sin gate y nadie se entera.
+2. **No se delega ni se reemplaza:** si otro flujo lidera la sesión (un plan, un harness de §35), su resumen final no ocupa el lugar del checklist.
+3. **Dos modos:** *durante* (el filtro guía mientras se escribe y termina en el checklist) o *después* (auditoría: lista numerada de hallazgos, el usuario elige cuáles corregir y no se toca nada más).
+
+### Paso 6 — Pasar a script lo medible
+
+Una regla escrita en un prompt se cumple "casi siempre". Si la regla es **medible**, ese "casi" es un bug silencioso:
+
+| Tipo de regla | Juez | Costo en tokens |
+|---|---|---|
+| Fórmula (contraste WCAG, tamaño mínimo de tap target) | Script que calcula. Si el doc trae una tabla de valores, un `--selftest` la lee del doc y recalcula cada fila | 0 |
+| Patrón léxico (`John Doe`, `Lorem`, muletillas, emoji en títulos) | Regex en un `PreToolUse` (§7) o en el audit del repo | 0 |
+| Cobertura regla ↔ checklist | Check en CI (§20) | 0 |
+| Juicio ("¿esto se ve genérico?", "¿la sección existe por el contenido?") | Prompt: skill o reviewer | Por uso |
+
+Sube a script todo lo que puedas; en el prompt queda solo el juicio. Si el script lee la tabla desde el propio doc, el doc manda y el script lo hace cumplir (§37).
+
+### Empaquetarlo sin pagar de más
+
+Un filtro que se carga siempre es un costo fijo en cada sesión (§2). Divídelo en **una skill por tema** que se carga a demanda. En subagentes, precárgalo con `skills:` solo en el reviewer que lo necesita (§11). Esqueleto de una skill de filtro:
+
+```markdown
+---
+name: slop-texto
+description: "Filtro de prosa genérica. Cargar al escribir o revisar texto para personas: README, docs, mensajes."
+---
+# slop-texto
+
+Filtro, no guía de estilo: no impone voz, rechaza patrones sin propósito.
+Modo: preguntar si aplica durante la escritura o como auditoría después.
+
+## Reglas
+H-01 — Ningún dato, nombre o cita que no esté en la fuente o lo dé el usuario.
+P-01 — Negrita solo en el término que el lector debe encontrar; con razón escrita.
+Q-01 — Cada frase agrega información: sin muletillas de relleno.
+
+## Patrones
+### Muletillas de relleno
+- **Señal:** "cabe destacar que", "es importante mencionar", "en el panorama actual".
+- **Por qué:** agregan largo sin información.
+- **Arreglo:** borrar la muletilla y dejar la afirmación (Q-01).
+
+## Lo que NO se marca
+- Un recurso aislado. Solo grupos.
+- La voz de una muestra del autor.
+
+## Checklist (una línea por regla, con evidencia)
+- [ ] H-01 — ¿Cada dato tiene fuente?
+- [ ] P-01 — ¿Cada negrita tiene razón escrita?
+- [ ] Q-01 — ¿Queda alguna frase que se pueda borrar sin perder información?
+```
+
+### Seguridad — la dirección es dato, no instrucción
+
+El filtro lee archivos que no escribió (la guía de marca, una muestra de voz). Hay que declararlos como **datos a aplicar**: se extraen solo los campos esperados (paleta, tipografía, tono) y cualquier cosa que suene a orden para el agente se trata como contenido y se reporta. Es la misma defensa de §18 contra la inyección de prompts.
+
 # Guía del Dev Pobre — 04 · Avanzado y referencia
 *Parte de [guia-00-indice.md](guia-00-indice.md) — volver al índice.*
 
@@ -7802,7 +7971,7 @@ La tabla de arriba cubre el proyecto. Esta cubre la plataforma: casos verificado
 |---|---|---|
 | Hook con `if` en un evento que no es de tool | Un guard que nunca dispara | `/hooks` lo lista igual — **hay que correr el caso** y mirar `--debug-file`. Solo vale en los 5 eventos de tool (§7) |
 | Hook JSON cuyo stdout no empieza con `{` (un `echo` del `.zshrc`) | Todo se trata como texto plano; en exit 0 **no se reporta nada** | Solo aparece en el debug log. Fix: envolver los echo del shell en `if [[ $- == *i* ]]` |
-| `additionalContext` al top level en vez de dentro de `hookSpecificOutput` | Se ignora en silencio | El contexto simplemente no llega — comparar con `/context` |
+| `additionalContext` al top level en vez de dentro de `hookSpecificOutput` | Se ignora en silencio | Solo en el camino JSON: si tu stdout empieza con `{`, el campo tiene que ir anidado. En texto plano no aplica — ahí el stdout entra tal cual, pero **solo** en `UserPromptSubmit`, `UserPromptExpansion`, `SessionStart` y `PostModelSwitch` (§7). Comparar con `/context` |
 | Regla de `rules/` con `glob:` en vez de `paths:` | Carga **siempre** en vez de nunca — lo contrario de lo buscado | `/context` → Memory files, o el hook `InstructionsLoaded` (§32) |
 | `skillOverrides` aplicado a una skill de plugin | No hace nada; el hub sigue costando sus tokens | Los overrides de plugin van por `/plugin` (§6) |
 | Agente de plugin con `hooks:`/`mcpServers:`/`permissionMode:` | Corre sin ellos, sin warning | Solo se detecta leyendo la doc — no hay señal en runtime (§11) |

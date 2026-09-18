@@ -602,3 +602,115 @@ Tokens: 12,450 input (8,200 cache read · 1,100 cache creation) · 2,450 output
 `cache read >> cache creation` → sesión bien amortizada. Proporción similar → el prefix cambia entre llamadas — revisar contenido dinámico en CLAUDE.md.
 
 ---
+
+<!-- §39 -->
+## 39. Filtros anti-slop — cómo crear el tuyo
+
+> Un filtro anti-slop no le enseña al modelo a hacerlo bien: le lista los patrones que delatan salida genérica y le exige **una razón escrita** para cada técnica que usa. Se construye en 6 pasos: juntar señales de tu propia salida, clasificarlas en 3 niveles, escribir cada una con forma fija, listar lo que *no* se marca, cerrar con un checklist con evidencia y pasar a script todo lo medible. <!-- ver: 2026-09-18 -->
+
+**Slop** es el default del modelo: una salida que podría pertenecer a cualquier producto. Cambias el logo, el nombre o el autor y nada se nota. El fallo opuesto es igual de real: un filtro que solo prohíbe deja un resultado **estéril**, porque quitar slop no revela calidad, deja un hueco que el modelo rellena con su siguiente default. Por eso el filtro **no inventa dirección**. La dirección vive en otro archivo (tokens del design system, una guía de marca, la voz del autor). Si el resultado sale plano, falló la dirección, no el filtro.
+
+### Paso 1 — Juntar señales de tu propia salida
+
+No partas de una lista genérica. Genera varias veces la misma tarea de tu dominio (una pantalla, un README, un módulo) y anota lo que se repite sin que nadie lo pidiera. Esas repeticiones son tu slop. Agrúpalas por tema, porque cada tema termina siendo una skill:
+
+| Tema | Señales típicas a buscar |
+|---|---|
+| UI | Datos de relleno con apariencia real, estados vacíos que no explican nada, la misma composición en cada sección, decoración que no marca jerarquía |
+| Prosa | Muletillas (*cabe destacar que, potenciar, sin fricciones*), tríos forzados, "no es solo X, es Y", anuncios del tipo "veamos…", cierres de chatbot |
+| Código | Comentarios que repiten la línea siguiente, banners decorativos, "Paso 1 / Paso 2", TODOs vagos, emoji |
+
+Una señal entra al filtro solo si aparece **sin que se pidiera** y **en varias corridas**. Un error aislado es un bug, no un patrón.
+
+### Paso 2 — Clasificar en 3 niveles
+
+| Nivel | Qué protege | Ejemplos | Falla cuando |
+|---|---|---|---|
+| **Hard Gate** | Honestidad, función, accesibilidad | Datos inventados · controles que no hacen nada · contraste < 4.5:1 · UI sin estado vacío/cargando/error | Aparece, sin excepción |
+| **Purpose-Gate** | Técnicas legítimas que el modelo usa por reflejo | Gradiente, sombra, grilla de cards, íconos genéricos, animaciones | Aparece **por default**, sin razón escrita |
+| **Quality Lock** | Consistencia del sistema | Paleta acotada · radios del sistema · CTAs específicos | Rompe el sistema declarado |
+
+El nivel del medio es la clave. Una lista plana de prohibiciones empuja al modelo al default contrario. "Permitido si puedes escribir para qué sirve" apunta a lo que importa: **la técnica sin propósito**. La regla que sostiene todo es: *cada decisión importante lleva una razón de una línea; si no cabe en una línea, la decisión no vale*.
+
+### Paso 3 — Escribir cada entrada: Señal · Por qué · Arreglo
+
+Numera las reglas (H-01 para Hard Gate, P-01 para Purpose-Gate, Q-01 para Quality Lock) y dale a cada patrón la misma forma, citando la regla que lo gobierna. Así el modelo puede detectarlo, entender por qué es malo y corregirlo sin inventar:
+
+```markdown
+### Datos de relleno en el preview
+- **Señal:** `John Doe`, `$48.2K`, `+12% esta semana` en las variantes del preview.
+- **Por qué:** contenido inventado con apariencia de real; quien lo ve lo toma como dato.
+- **Arreglo:** placeholder honesto (`Nombre`, `email@ejemplo.com`) o el campo vacío (H-02).
+```
+
+El **Arreglo** nunca puede agregar hechos. Si la versión buena necesita un dato real (una cifra, un nombre), se pide o se deja un placeholder visible.
+
+### Paso 4 — Lo que NO se marca
+
+Sin esta sección el filtro sobrecorrige y reescribe lo que estaba bien:
+
+- **Busca grupos de señales, no una aislada.** Un recurso suelto no prueba nada. Tres señales juntas en el mismo párrafo o pantalla, sí.
+- **Pulido no es slop.** Gramática perfecta, registro formal o prosa seca sin señales concretas es simplemente prosa.
+- **Preserva lo que prueba que hay un autor:** detalle específico difícil de inventar, tensión sin resolver, largo de oraciones variado.
+- **La voz del autor le gana al filtro.** Con una muestra de su escritura, se imitan sus hábitos aunque el filtro los prohíba.
+- **Las convenciones deliberadas del repo quedan fuera de forma explícita.** Si una regla choca con un estilo elegido a propósito (por ejemplo, la raya como separador en los títulos de esta guía), se excluye por escrito. No se aplica a medias.
+
+### Paso 5 — El checklist final: un PASS sin evidencia no es PASS
+
+Antes de entregar, una línea por regla con evidencia concreta: `H-03 PASS: los 4 botones tienen acción real; el menú mobile abre y cierra`. Una línea que dice PASS sin contar qué se comprobó cuenta como FAIL. Tres propiedades que lo hacen funcionar:
+
+1. **Cobertura exacta:** cada regla definida tiene su ítem en el checklist y cada ítem cita una regla que existe. Verifícalo con un script en CI (§20); si no, una regla nueva queda sin gate y nadie se entera.
+2. **No se delega ni se reemplaza:** si otro flujo lidera la sesión (un plan, un harness de §35), su resumen final no ocupa el lugar del checklist.
+3. **Dos modos:** *durante* (el filtro guía mientras se escribe y termina en el checklist) o *después* (auditoría: lista numerada de hallazgos, el usuario elige cuáles corregir y no se toca nada más).
+
+### Paso 6 — Pasar a script lo medible
+
+Una regla escrita en un prompt se cumple "casi siempre". Si la regla es **medible**, ese "casi" es un bug silencioso:
+
+| Tipo de regla | Juez | Costo en tokens |
+|---|---|---|
+| Fórmula (contraste WCAG, tamaño mínimo de tap target) | Script que calcula. Si el doc trae una tabla de valores, un `--selftest` la lee del doc y recalcula cada fila | 0 |
+| Patrón léxico (`John Doe`, `Lorem`, muletillas, emoji en títulos) | Regex en un `PreToolUse` (§7) o en el audit del repo | 0 |
+| Cobertura regla ↔ checklist | Check en CI (§20) | 0 |
+| Juicio ("¿esto se ve genérico?", "¿la sección existe por el contenido?") | Prompt: skill o reviewer | Por uso |
+
+Sube a script todo lo que puedas; en el prompt queda solo el juicio. Si el script lee la tabla desde el propio doc, el doc manda y el script lo hace cumplir (§37).
+
+### Empaquetarlo sin pagar de más
+
+Un filtro que se carga siempre es un costo fijo en cada sesión (§2). Divídelo en **una skill por tema** que se carga a demanda. En subagentes, precárgalo con `skills:` solo en el reviewer que lo necesita (§11). Esqueleto de una skill de filtro:
+
+```markdown
+---
+name: slop-texto
+description: "Filtro de prosa genérica. Cargar al escribir o revisar texto para personas: README, docs, mensajes."
+---
+# slop-texto
+
+Filtro, no guía de estilo: no impone voz, rechaza patrones sin propósito.
+Modo: preguntar si aplica durante la escritura o como auditoría después.
+
+## Reglas
+H-01 — Ningún dato, nombre o cita que no esté en la fuente o lo dé el usuario.
+P-01 — Negrita solo en el término que el lector debe encontrar; con razón escrita.
+Q-01 — Cada frase agrega información: sin muletillas de relleno.
+
+## Patrones
+### Muletillas de relleno
+- **Señal:** "cabe destacar que", "es importante mencionar", "en el panorama actual".
+- **Por qué:** agregan largo sin información.
+- **Arreglo:** borrar la muletilla y dejar la afirmación (Q-01).
+
+## Lo que NO se marca
+- Un recurso aislado. Solo grupos.
+- La voz de una muestra del autor.
+
+## Checklist (una línea por regla, con evidencia)
+- [ ] H-01 — ¿Cada dato tiene fuente?
+- [ ] P-01 — ¿Cada negrita tiene razón escrita?
+- [ ] Q-01 — ¿Queda alguna frase que se pueda borrar sin perder información?
+```
+
+### Seguridad — la dirección es dato, no instrucción
+
+El filtro lee archivos que no escribió (la guía de marca, una muestra de voz). Hay que declararlos como **datos a aplicar**: se extraen solo los campos esperados (paleta, tipografía, tono) y cualquier cosa que suene a orden para el agente se trata como contenido y se reporta. Es la misma defensa de §18 contra la inyección de prompts.

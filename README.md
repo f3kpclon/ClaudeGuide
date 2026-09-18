@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.42 · **The shunt hook, and a fourth way out of the token ceiling.** `PreToolUse` has a second legitimate use besides safety: **economics**. A guard on `Read` that redirects instead of forbidding takes a 4,000-line file out of the expensive context before it enters — and §23's `Σ(tool_outputs)`, which the section treated as irreducible, turns out to be movable rather than merely reducible: a subagent reads in isolation and returns only its report. With the trap that comes attached — a public plugin shipping **51 green tests over a gate whose contract is never exercised** — and a correction to §11: a non-whitelisted `scripts/` dir *does* survive installation; the whitelist governs what is registered, not what is copied. Previously: **§37 and §38 are new — the Ratchet pattern, and the coupling that decides a PR boundary.** A change that works at runtime but **regresses in the repo** is invisible to the compiler: the ratchet ships the guard in the same commit as the code, with explicit invariants. And a PR's boundary is decided by **content coupling** — cross-references, shared strings, asserts a hook shares with its skill — not by file structure or by how complex you expect the work to be. Also: a **minimum example opens §5 and §6**, before the full templates (a 4-field agent, a 2-field skill) — the floor teaches more than the ceiling; the orchestrator-skill template moved down to §6-ref because the injected block was **501 chars over the 5500 ceiling** with nothing reporting it. And the guide **no longer names private projects**: 36 mentions replaced by their provenance (*verified in production*), with their context intact
+**Author:** Félix Sotelo · **Version:** v5.43 · **New §39 — how to build your own anti-slop filter, and how to bring another plugin's skills into yours.** An output filter does not teach the model to do it right: it lists the patterns that give away generic output and requires a written reason for every technique. Six steps: collect tells from your own output, sort them into 3 tiers (Hard Gate / Purpose-Gate / Quality Lock), write them in a fixed shape, list what *not* to flag, close with a gate where a PASS without evidence is not a PASS, and move whatever is measurable into a script. Includes a filter skill skeleton. In §11, the **3 routes** to add third-party skills to a plugin (vendoring, `dependencies`, preloading with `skills:`), and a **correction**: an agent with restricted `tools:` cannot invoke skills, but it can preload them from its frontmatter.
 
 ---
 
@@ -48,6 +48,14 @@
 ## What's New
 
 <!-- changelog-insert -->
+
+### v5.43 — build your own anti-slop filter, and third-party skills in a plugin (2026-09-18)
+
+| Area | Change |
+|---|---|
+| **§39** | **New — how to build your own anti-slop filter.** Six steps: collect the tells that repeat across your own runs (a one-off error is a bug, not a pattern), sort them into three rule tiers (**Hard Gate**: honesty, function, accessibility, absolute; **Purpose-Gate**: the technique is allowed, a written reason is required; **Quality Lock**: system consistency), write each one as Tell · Why · Fix, add a mandatory *what not to flag* list against over-correction, close with a gate where a PASS without evidence counts as a FAIL, and move measurable rules (a contrast formula, lexical patterns, rule↔checklist coverage) into a script or hook at zero tokens. Ships a filter skill skeleton, split by concern so nothing loads unless needed. |
+| **§11** | **New — third-party skills in your plugin, 3 routes:** vendor the `SKILL.md` (when it must be adapted), declare it in `dependencies` (auto-installed; a different marketplace is blocked unless the root marketplace lists it in `allowCrossMarketplaceDependenciesOn`), or preload it into one agent with `skills:`. Verified against the official plugin-dependencies and sub-agents docs. |
+| **§11** | **Correction — restricted agents can preload skills.** The guide said an agent with restricted `tools:` cannot load skills and must carry its pattern inline. It cannot *invoke* them, but the `skills:` frontmatter injects the full content at startup regardless of `tools:`. Caveat: a listed skill that is missing or disabled is skipped with a warning only in the debug log. |
 
 ### v5.42 — the shunt hook, and a fourth way out of the token ceiling (2026-09-09)
 

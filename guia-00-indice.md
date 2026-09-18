@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.42 · **El shunt hook, y una cuarta salida del techo de tokens.** Un `PreToolUse` tiene un segundo uso legítimo además de la seguridad: **economía**. Un guard sobre `Read` que en vez de prohibir **redirige** saca un archivo de 4.000 líneas del contexto caro antes de que entre — y `Σ(tool_outputs)` de §23, que la sección trataba como irreducible, resulta **movible** más que reducible: un subagente lee en aislamiento y devuelve solo su reporte. Con la trampa que viene adjunta — un plugin público con **51 tests en verde sobre un gate cuyo contrato nadie ejercita** — y una corrección a §11: un `scripts/` fuera de la whitelist **sí** sobrevive a la instalación; la whitelist gobierna qué se registra, no qué se copia. Antes: **§37 y §38 nuevas — el patrón Ratchet y el acoplamiento que define el PR boundary.** Un cambio que funciona en runtime pero **retrocede en el repo** es invisible al compilador: el ratchet acopla el guard al código en el mismo commit, con invariantes explícitas. Y el límite de un PR lo decide el **acoplamiento de contenido** — citas cruzadas, strings compartidos, asserts que un hook comparte con su skill — no la estructura de archivos ni la complejidad prevista. Además: **ejemplo mínimo en §5 y §6** antes de los templates completos (un agente de 4 campos, una skill de 2) — el piso enseña más que el techo; el template de skill orquestadora bajó a §6-ref porque el bloque inyectado estaba **501 chars sobre el techo de 5500** y nadie lo veía. Y la guía **dejó de nombrar proyectos privados**: 36 menciones reemplazadas por su procedencia (*verificado en producción*), sin perder contexto
+**Versión:** v5.43 · **§39 nueva — cómo crear tu propio filtro anti-slop, y cómo meter skills de otro plugin en el tuyo.** Un filtro de salida no le enseña al modelo a hacerlo bien: le lista los patrones que delatan salida genérica y le exige una razón escrita por técnica. Seis pasos: juntar señales de tu propia salida, clasificarlas en 3 niveles (Hard Gate / Purpose-Gate / Quality Lock), escribirlas con forma fija, listar lo que *no* se marca, cerrar con un checklist donde un PASS sin evidencia no es PASS y pasar a script lo medible. Incluye el esqueleto de una skill de filtro. En §11, las **3 vías** para sumar skills de terceros a un plugin (vendorizar, `dependencies`, precargar con `skills:`), y una **corrección**: un agente con `tools:` restringido no puede invocar skills, pero sí precargarlas desde el frontmatter. Antes: **el shunt hook, y una cuarta salida del techo de tokens** (§7, §23, §19, §11)
 
 ---
 
@@ -48,6 +48,7 @@
 | Saber quién usa un símbolo antes de tocarlo | §36 — LSP: las 9 operaciones, recetas por lenguaje, y por qué un 0 no es un 0 |
 | Impedir que un cambio ya hecho se deshaga solo | §37 — el patrón Ratchet: el guard viaja con el código |
 | Decidir qué entra y qué no en un mismo PR | §38 — acoplamientos ocultos, no estructura de archivos |
+| Crear un filtro contra la salida genérica de IA / sumar skills de otro plugin al mío | §39 — filtros anti-slop · §11 — skills de terceros |
 
 ---
 
@@ -87,6 +88,7 @@
 - [§13 — Checklist de calidad](guia-03-calidad.md#13-checklist-de-calidad)
 - [§23 — Techos reales de tokens](guia-03-calidad.md#23-techos-reales-de-tokens--cuándo-parar-de-optimizar)
 - [§3 — Estimados de consumo](guia-03-calidad.md#3-estimados-de-consumo)
+- [§39 — Filtros anti-slop](guia-03-calidad.md#39-filtros-anti-slop--cómo-crear-el-tuyo)
 
 ### Avanzado y referencia
 - [§16 — Vector Memory](guia-04-avanzado.md#16-vector-memory--upgrade-del-sistema-de-learnings)
@@ -109,7 +111,7 @@
 |---|---|
 | `guia-01-fundamentos.md` | 01 · Fundamentos — §4, §1, §2, §25, §24 |
 | `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §36, §31, §32, §17, §26, §27, §28, §29, §30, §33, §34 |
-| `guia-03-calidad.md` | 03 · Calidad y eficiencia — §14, §12, §13, §23, §3 |
+| `guia-03-calidad.md` | 03 · Calidad y eficiencia — §14, §12, §13, §23, §3, §39 |
 | `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §35, §37, §38, §15 |
 
 `grep -rn "<!-- §N -->" guia-*.md` encuentra la sección sin importar en qué archivo vive.

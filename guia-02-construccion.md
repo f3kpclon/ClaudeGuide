@@ -509,12 +509,13 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 | `FileChanged` | Nombre de archivo | Archivo vigilado cambia en disco | Recargar `.env`, disparar validaciones externas |
 
 > **stdout plano SÍ entra como contexto — en 4 eventos, y solo en esos.** No hace falta emitir JSON con `hookSpecificOutput.additionalContext` para inyectar: *"For most events, Claude Code writes stdout to the debug log and doesn't show it in the transcript. The exceptions are `UserPromptSubmit`, `UserPromptExpansion`, `SessionStart`, and `PostModelSwitch`, where Claude Code adds plain-text stdout as context that Claude can see and act on."* Un `print()` pelado en un `UserPromptSubmit` es correcto, no un bug — no lo reportes como tal en una auditoría. <!-- ver: 2026-09-09 -->
->
-> El matiz que hace confusa la fila *"`additionalContext` al top level se ignora"* del catálogo de muertes silenciosas (§35): eso vale cuando **emitís JSON**. Ahí el campo tiene que ir dentro de `hookSpecificOutput` o se descarta sin aviso. Las dos reglas conviven — texto plano funciona, JSON mal anidado no — y son fáciles de mezclar: **si tu primera línea empieza con `{`, estás en el camino JSON y aplican sus reglas**; si no, es texto plano y solo funciona en esos 4 eventos.
 
 **`PostToolUse` — caso aparte (corregido):** NO es puramente observacional como los tres de arriba. No puede deshacer la tool (ya se ejecutó), pero SÍ soporta `"decision": "block"` + `"reason"` — un mecanismo real de tercera vía, distinto de `systemMessage`/`additionalContext`: fuerza que el error se muestre a Claude en el mismo turno para que lo corrija. Es exactamente lo que usa el ejemplo "El compilador como juez" más abajo en esta sección. La versión anterior de esta guía clasificaba PostToolUse junto a los observacionales puros — es una simplificación excesiva, no un error de la doc oficial. <!-- ver: 2026-07-04 -->
 
 <!-- §7-ref -->
+
+> **Complemento al recuadro de stdout plano (§7-quick).** El matiz que hace confusa la fila *"`additionalContext` al top level se ignora"* del catálogo de muertes silenciosas (§35): eso vale cuando **emitís JSON**. Ahí el campo tiene que ir dentro de `hookSpecificOutput` o se descarta sin aviso. Las dos reglas conviven — texto plano funciona, JSON mal anidado no — y son fáciles de mezclar: **si tu primera línea empieza con `{`, estás en el camino JSON y aplican sus reglas**; si no, es texto plano y solo funciona en esos 4 eventos.
+
 ### Eventos de nicho — no cubiertos arriba
 
 Re-verificado contra la referencia oficial de hooks — 33 eventos en total, estos son los que esta guía no desarrolla porque son de casos puntuales (agent teams, MCP elicitation, worktrees, config): <!-- ver: 2026-09-02 -->
@@ -2803,6 +2804,38 @@ El manifest acepta campos que apuntan a directorios propios (`agents`, `commands
 
 Si tus agentes "desaparecieron" después de tocar el manifest, esta tabla es la respuesta.
 
+### Skills de terceros en tu plugin — 3 vías
+
+Para sumar skills que viven en otro plugin (por ejemplo, un filtro anti-slop compartido, §39) sin mantenerlas a mano en cada repo:
+
+| Vía | Cómo | Cuándo | Costo |
+|---|---|---|---|
+| **1. Vendorizar** | Copias el `SKILL.md` (adaptado) a `skills/<nombre>/` de tu plugin | Hay que **adaptarla** (otra plataforma, idioma, convenciones) | El drift es tuyo. Respeta la licencia: MIT exige conservar el aviso |
+| **2. `dependencies`** | Declaras el plugin ajeno en tu `plugin.json`; se instala solo | La quieres **tal cual** y con updates | Otra marketplace requiere permiso explícito (abajo) |
+| **3. Precargar en un agente** | `skills: [nombre]` en el frontmatter del agente | Solo un agente (el reviewer) necesita la skill | El contenido completo entra al contexto de ese agente cada vez que corre |
+
+Las vías 1 y 2 hacen que la skill **exista**; la 3 decide **quién la lleva cargada**. Se combinan: vendorizas o declaras la dependencia y luego precargas en el agente que la usa.
+
+**Vía 2 — `dependencies`:**
+
+```json
+{
+  "name": "design-ios",
+  "dependencies": [
+    "helper-lib",
+    { "name": "filtros-salida", "version": "^1.2.0", "marketplace": "equipo-shared" }
+  ]
+}
+```
+
+- Un string solo, o `name` sin `marketplace`, se resuelve **en la misma marketplace** que tu plugin. `version` es un rango semver y se instala el tag más alto que lo cumple.
+- **Otra marketplace está bloqueada por default** (install falla con error `cross-marketplace`). Para permitirla, la marketplace **raíz** (la que publica tu plugin) la declara en su `marketplace.json`: `"allowCrossMarketplaceDependenciesOn": ["equipo-shared"]`. La confianza no se encadena por marketplaces intermedias. Alternativa sin tocar la allowlist: el usuario instala la dependencia a mano primero.
+- Al activar tu plugin, las dependencias se instalan y activan solas. `claude plugin uninstall <plugin> --prune` también elimina las que quedaron huérfanas.
+- Probar local las dos a la vez: `claude --plugin-dir ./dependencia --plugin-dir ./mi-plugin`. La copia local satisface la dependencia y no se chequea la versión.
+- Las skills del plugin dependiente se nombran con su namespace: `filtros-salida:slop-texto`.
+
+**Sin verificar:** si un agente de *tu* plugin puede precargar con `skills:` una skill de *otro* plugin por su nombre con namespace. La doc no lo aclara. Si lo necesitas, pruébalo y mira el debug log: una skill que no se encuentra se salta sin error visible (ver trampa abajo). Si hay que adaptarla igual, la vía 1 evita la duda. <!-- ver: 2026-09-18 -->
+
 ### Instalación — Desktop app (Claude Code)
 
 1. Code → **Customize**
@@ -2979,8 +3012,8 @@ Nadie puede cargarla — ni usuario ni modelo. Las skills de referencia (templat
 **Agentes de plugin: `hooks`, `mcpServers` y `permissionMode` en el frontmatter se ignoran en silencio.**
 Re-verificado — sigue vigente, y ahora importa más: §7 documenta que un subagente **puede** declarar hooks en su frontmatter. Esa capacidad **no llega a los agentes de plugin**. Por seguridad, estos 3 campos NO se aplican cuando el agente se carga desde un plugin — ni error ni warning, el agente simplemente corre sin ellos. Si el autor del plugin escribió `hooks:` esperando scoping por-agente, no pasa nada — mismo patrón de fallo silencioso que `rules/` en plugins (arriba en esta sección). Fix: si el consumidor necesita esos campos, debe copiar el archivo del agente a `.claude/agents/` o `~/.claude/agents/` locales — ahí sí se respetan. <!-- ver: 2026-09-02 -->
 
-**Los subagentes con `tools:` restringido NO pueden cargar skills.**
-La tool `Skill` existe en subagentes sin restricción de tools (verificado), pero los agentes de plugin bien diseñados restringen `tools:` al mínimo — y ahí `Skill` no está. Un agente restringido que dice "Cargar skill X" es una instrucción imposible. Patrón correcto: el hilo principal (la skill de creación) carga la template y o bien escribe los archivos él mismo, o pasa el contenido en el prompt de invocación del agente. El agente lleva su patrón esencial inline como fallback. <!-- ver: 2026-07-02 -->
+**Un subagente con `tools:` restringido no puede *invocar* skills, pero sí *precargarlas*.**
+Si `Skill` no está en `tools:`, una instrucción "Cargar skill X" en el cuerpo del agente es imposible de cumplir. La vía correcta es el frontmatter: `skills: [x, y]` inyecta el **contenido completo** de cada skill en el contexto del agente al arrancar, **sin importar `tools:`** (la doc lo dice explícitamente: para precargar se usa `skills`, no se agrega `Skill` a `tools`). Los agentes de plugin aceptan el campo. Dos trampas: no se puede precargar una skill con `disable-model-invocation: true`, y una skill listada que no existe o está deshabilitada **se salta con un warning que solo aparece en el debug log**. Es un fallo silencioso: el agente corre sin la skill y nadie se entera. Corrige la versión anterior de esta guía, que proponía llevar el patrón inline como fallback. <!-- ver: 2026-09-18 -->
 
 **Skills ejecutadas vía Skill tool NO pasan por UserPromptSubmit.**
 Un gate de flags que se abre solo cuando el usuario tipea `/plugin:plan` entra en deadlock si otra skill ejecuta el plan como paso interno — el hook nunca ve el prompt. Los slash commands de creación también deben abrir el gate:
@@ -4023,6 +4056,9 @@ KEYWORD_MAP = [
     # §38 — Acoplamientos ocultos (qué define el PR boundary)
     (["pr boundary", "acoplamiento oculto", "acoplamientos ocultos",
       "límite del pr", "alcance del pr"],                              38),
+    # §39 — Filtros anti-slop (reglas de salida con propósito)
+    (["anti-slop", "antislop", "ai slop", "purpose-gate", "hard gate",
+      "filtro de salida", "delivery gate"],                            39),
 ]
 
 def detect_sections(prompt: str) -> list[int]:
