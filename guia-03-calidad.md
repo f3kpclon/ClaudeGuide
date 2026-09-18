@@ -781,7 +781,7 @@ La rama es lo que hace que el gate no necesite estado: el diff sale de `git merg
 
 ### Hook — `hooks/aduana.py`
 
-Se probó en un repo de prueba con 4 casos: rama limpia (silencio), primera parada (bloquea con la lista), segunda parada (escala con `systemMessage`) y fuera de un repo git (avisa que el gate está desactivado, nunca un verde mudo). <!-- ver: 2026-09-18 -->
+Se probó en un repo de prueba con 5 casos: rama limpia (silencio), primera parada (bloquea con la lista), segunda parada (escala con `systemMessage`), fuera de un repo git (avisa que el gate está desactivado, nunca un verde mudo) y lanzado desde una subcarpeta (el `chdir` a `CLAUDE_PROJECT_DIR` deja el patch en la raíz del proyecto). <!-- ver: 2026-09-18 -->
 
 ```python
 #!/usr/bin/env python3
@@ -805,6 +805,8 @@ def main():
         payload = json.load(sys.stdin)
     except Exception:
         payload = {}
+    # El cwd del hook es el del shell: si el agente hizo `cd`, un path relativo apunta a otro lado.
+    os.chdir(os.environ.get("CLAUDE_PROJECT_DIR") or payload.get("cwd") or ".")
     try:
         base = git("merge-base", "HEAD", BASE).strip()
         tracked = git("diff", "--name-only", base).split()
@@ -868,13 +870,13 @@ Agrega `.claude/review/` al `.gitignore`. Datos verificados contra la referencia
 ```json
 "SubagentStop": [
   {
-    "matcher": "(design-ios:)?design-(atoms|molecules|organisms|templates)",
+    "matcher": "^(design-ios:)?design-(atoms|molecules|organisms|templates)$",
     "hooks": [{"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/aduana.py"}]
   }
 ]
 ```
 
-Solo los agentes que **escriben** llevan el matcher. Si lo pones sobre `design-reviewer` o `design-debugger`, el gate corre sobre agentes de solo lectura.
+Solo los agentes que **escriben** llevan el matcher. Si lo pones sobre `design-reviewer` o `design-debugger`, el gate corre sobre agentes de solo lectura. El matcher va anclado (`^…$`): lleva `(`, `:` y `|`, así que se evalúa como regex sin anclar, y sin `^…$` también dispararía para un futuro `design-atoms-legacy`.
 
 ### Reviewer — una lente por agente
 
