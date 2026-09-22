@@ -1299,7 +1299,7 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 | `Stop` | Fuerza continuar | `decision: block`/exit 2 — Claude ignora la parada y sigue | Forzar "no termines hasta que los tests pasen" |
 | `SubagentStop` | Fuerza continuar | Mismo mecanismo que `Stop`, scopeado al subagente | Encadenar agentes, exigir un paso más antes de devolver |
 
-**Solo observacionales** — no pueden bloquear nada, solo inyectan contexto con `systemMessage` o `additionalContext`:
+**Solo observacionales** — no pueden bloquear nada: inyectan contexto con `additionalContext` y avisan a la persona con `systemMessage`:
 
 | Evento | Matcher | Cuándo dispara | Uso típico |
 |---|---|---|---|
@@ -6163,7 +6163,7 @@ El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando o
 | Matcher `str_replace` en hooks.json | El hook NUNCA dispara — falla en silencio | Usar `MultiEdit`. Tool names válidos: `Bash`, `Write`, `Edit`, `MultiEdit`, `Read` |
 | Campo de payload inventado (`path`, `new_str`, `subagent_type`) | `.get()` retorna `''` → exit 0 → hook muerto que se ve sano, tests verdes si comparten el shape | Campos reales: Edit → `file_path`/`new_string` · MultiEdit → `edits[].new_string` · SubagentStop → `agent_type`. Copiar de la doc oficial, nunca de memoria (§7) |
 | PreToolUse con exit 2 | Bloquea pero sin razón visible para el usuario | Retornar JSON `permissionDecision: deny` + exit 0 — el campo acepta `deny\|allow\|ask\|defer` |
-| SubagentStop con `echo` crudo | Texto sin formato contamina el contexto como stdout | `{"systemMessage": "..."}` |
+| SubagentStop con `echo` crudo | Nadie lo ve: fuera de 4 eventos el stdout plano va al debug log (§7) | `{"systemMessage": "..."}` para la persona |
 | PostToolUse con `print()` crudo | Mismo problema — texto contamina stdout | `{"systemMessage": "..."}` |
 | `try/except` solo en PreToolUse | SubagentStop, PostToolUse y Stop crashean si stdin viene vacío | try/except en **todos** los hooks |
 | `"texto" in cmd` en hook Bash | Falso positivo si el texto aparece en `--body` | `re.split(r'\s*&&\|\s*\|\|', cmd)[0]` para aislar el primer comando |
@@ -8526,7 +8526,7 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
 **Stop** — Se ejecuta cuando Claude cierra la sesión. Usar para recordatorios de fin de sesión (postmortem, learnings). Output debe ser JSON `{"systemMessage": "..."}`.
 
-**systemMessage** — El formato correcto para que un hook inyecte texto en el contexto de Claude. `print(json.dumps({"systemMessage": "tu mensaje"}))`. Nunca `print("texto crudo")`.
+**systemMessage** — Campo del JSON de un hook que se muestra **a la persona** como banner; no entra al contexto del modelo. Para que Claude lo vea: `hookSpecificOutput.additionalContext`, o stdout plano en los 4 eventos que lo aceptan (`UserPromptSubmit`, `UserPromptExpansion`, `SessionStart`, `PostModelSwitch` — §7). Algunos eventos lo descartan o lo entregan en otro lado; la sección de cada evento en la doc lo indica. <!-- ver: 2026-09-22 -->
 
 **permissionDecision** — Campo JSON que un hook PreToolUse usa para controlar una acción. Acepta `deny` (bloquea), `allow` (aprueba sin prompt), `ask` (muestra dialog igual) o `defer` (delega al siguiente hook). Siempre combinado con exit 0: `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "razón"}}`. Exit 2 también bloquea pero sin razón estructurada — no usarlo en PreToolUse.
 

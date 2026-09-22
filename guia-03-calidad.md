@@ -151,7 +151,7 @@ El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando o
 | Matcher `str_replace` en hooks.json | El hook NUNCA dispara — falla en silencio | Usar `MultiEdit`. Tool names válidos: `Bash`, `Write`, `Edit`, `MultiEdit`, `Read` |
 | Campo de payload inventado (`path`, `new_str`, `subagent_type`) | `.get()` retorna `''` → exit 0 → hook muerto que se ve sano, tests verdes si comparten el shape | Campos reales: Edit → `file_path`/`new_string` · MultiEdit → `edits[].new_string` · SubagentStop → `agent_type`. Copiar de la doc oficial, nunca de memoria (§7) |
 | PreToolUse con exit 2 | Bloquea pero sin razón visible para el usuario | Retornar JSON `permissionDecision: deny` + exit 0 — el campo acepta `deny\|allow\|ask\|defer` |
-| SubagentStop con `echo` crudo | Texto sin formato contamina el contexto como stdout | `{"systemMessage": "..."}` |
+| SubagentStop con `echo` crudo | Nadie lo ve: fuera de 4 eventos el stdout plano va al debug log (§7) | `{"systemMessage": "..."}` para la persona |
 | PostToolUse con `print()` crudo | Mismo problema — texto contamina stdout | `{"systemMessage": "..."}` |
 | `try/except` solo en PreToolUse | SubagentStop, PostToolUse y Stop crashean si stdin viene vacío | try/except en **todos** los hooks |
 | `"texto" in cmd` en hook Bash | Falso positivo si el texto aparece en `--body` | `re.split(r'\s*&&\|\s*\|\|', cmd)[0]` para aislar el primer comando |

@@ -500,7 +500,7 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 | `Stop` | Fuerza continuar | `decision: block`/exit 2 — Claude ignora la parada y sigue | Forzar "no termines hasta que los tests pasen" |
 | `SubagentStop` | Fuerza continuar | Mismo mecanismo que `Stop`, scopeado al subagente | Encadenar agentes, exigir un paso más antes de devolver |
 
-**Solo observacionales** — no pueden bloquear nada, solo inyectan contexto con `systemMessage` o `additionalContext`:
+**Solo observacionales** — no pueden bloquear nada: inyectan contexto con `additionalContext` y avisan a la persona con `systemMessage`:
 
 | Evento | Matcher | Cuándo dispara | Uso típico |
 |---|---|---|---|

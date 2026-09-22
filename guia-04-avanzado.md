@@ -1593,7 +1593,7 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
 **Stop** — Se ejecuta cuando Claude cierra la sesión. Usar para recordatorios de fin de sesión (postmortem, learnings). Output debe ser JSON `{"systemMessage": "..."}`.
 
-**systemMessage** — El formato correcto para que un hook inyecte texto en el contexto de Claude. `print(json.dumps({"systemMessage": "tu mensaje"}))`. Nunca `print("texto crudo")`.
+**systemMessage** — Campo del JSON de un hook que se muestra **a la persona** como banner; no entra al contexto del modelo. Para que Claude lo vea: `hookSpecificOutput.additionalContext`, o stdout plano en los 4 eventos que lo aceptan (`UserPromptSubmit`, `UserPromptExpansion`, `SessionStart`, `PostModelSwitch` — §7). Algunos eventos lo descartan o lo entregan en otro lado; la sección de cada evento en la doc lo indica. <!-- ver: 2026-09-22 -->
 
 **permissionDecision** — Campo JSON que un hook PreToolUse usa para controlar una acción. Acepta `deny` (bloquea), `allow` (aprueba sin prompt), `ask` (muestra dialog igual) o `defer` (delega al siguiente hook). Siempre combinado con exit 0: `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "razón"}}`. Exit 2 también bloquea pero sin razón estructurada — no usarlo en PreToolUse.
 
