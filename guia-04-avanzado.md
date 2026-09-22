@@ -1642,3 +1642,8 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 > **Verificado en producción:** El acoplamiento define el límite, no la métrica. Cuando una skill cita otra (§ Measurement cycle) o un hook comparte asserts con su skill, deben viajar juntos en el mismo commit. Buscar referencias cruzadas, strings compartidos y contratos implícitos antes de definir el PR boundary — la estructura de archivos es ruido. <!-- ver: 2026-09-05 -->
 
 > **Verificado en producción:** Ejemplo: un plan de migración i18n — traducir dos skills de componentes sin la skill de layout rompe las citas cruzadas a `§ Measurement cycle`, forzando los tres al mismo PR. El acoplamiento de contenido decide el boundary, no la complejidad prevista ni el orden inicial del plan — verificar qué se rompe si el contenido se traduce parcialmente. <!-- ver: 2026-09-05 -->
+
+<!-- §41 -->
+## 41. Hook protocol — lectura de stdin y routing de salida
+
+> **[2026-09-21] codebase-indexer:** El harness pasa `hook_event_name` en stdin para que hooks adapten su salida por evento. SessionStart emite `systemMessage` (banner visible a la persona) + `hookSpecificOutput.additionalContext` (para el modelo); otros eventos usan stdout plano. Lectura acotada con `select` (timeout 0.2s) previene colgadas de stdin abierto; fallback a texto plano. Stop hooks no tienen audiencia; no marcar resultados como reportados en Stop, se pierden silenciosamente.

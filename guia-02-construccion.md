@@ -4062,6 +4062,9 @@ KEYWORD_MAP = [
     # §40 — Aduana: filtro de código de agentes (lentes Grieta y Poda)
     (["aduana", "código de agentes", "filtro de código", "slop de código",
       "lente grieta", "lente poda", "design-poda", "design-grieta"],   40),
+    # §41 — Hook protocol: lectura de stdin y routing de salida por evento
+    (["hook_event_name", "hook protocol", "routing de salida", "stdin del hook",
+      "lectura de stdin", "stdout plano", "salida por evento"],       41),
 ]
 
 def detect_sections(prompt: str) -> list[int]:
