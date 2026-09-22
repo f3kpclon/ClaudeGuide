@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.44 · **New §40 — Aduana, a customs gate for code your agents write.** The §39 equivalent for agent-written code, running inside the loop: `SubagentStop` runs a script over the branch diff (files crossing 1000 lines, force casts, discarded errors), then two read-only lenses (Grieta: what breaks · Poda: what can be cut) review in parallel, with a single automatic fix round. Plausible findings never go back to the agent. Worked example on design-ios. Verified: plugin subagents ignore `hooks:` in their frontmatter, so the gate belongs in `hooks.json`.
+**Author:** Félix Sotelo · **Version:** v5.45 · **New §41 — hook protocol: reading stdin and routing output.** One hook script can serve several events: `hook_event_name` arrives on stdin and the hook picks its audience — the person (`systemMessage`) or the model (`additionalContext` or plain stdout). Verified against the hooks docs: outside 4 events plain stdout goes to the debug log, so a `print()` in a `Stop` hook reaches nobody. Includes a bounded stdin read with `select`. Also a **correction**: `systemMessage` is shown to the person; it does not inject context.
 
 ---
 
@@ -48,6 +48,15 @@
 ## What's New
 
 <!-- changelog-insert -->
+
+### v5.45 — Hook protocol: reading stdin and routing output (2026-09-22)
+
+| Area | Change |
+|---|---|
+| **§41** | **New — hook protocol.** `hook_event_name` is a common input field, so one script can register on several events and branch its output: `SessionStart` emits `systemMessage` (banner for the person) plus `hookSpecificOutput.additionalContext` (for the model); `UserPromptSubmit`/`UserPromptExpansion`/`PostModelSwitch` take plain stdout; everything else needs JSON, because plain stdout goes to the debug log. A `Stop` hook that prints a result and marks it as reported loses it silently. Bounded stdin read with `select` (~0.2s) so an open stdin can't hang the session. |
+| **§15, §12, §7** | **Correction — `systemMessage` is shown to the person, not injected into context.** Verified against `code.claude.com/docs/en/hooks`. Fixed the glossary entry, the "raw `echo` in SubagentStop" row (it reaches nobody, not the context) and the intro to observational events. |
+| **§26** | `KEYWORD_MAP` entry for §41. |
+
 
 ### v5.44 — Aduana, a customs gate for code your agents write (2026-09-18)
 

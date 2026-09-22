@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.44 · **§40 nueva — Aduana, filtro de código de agentes.** El equivalente de §39 para el código que escriben tus agentes, dentro del loop: `SubagentStop` corre un script sobre el diff de la rama (archivos que cruzan 1000 líneas, casts forzados, errores descartados), después dos lentes de solo lectura (Grieta: qué se rompe · Poda: qué sobra) y una sola ronda de corrección automática. Lo plausible nunca vuelve al agente. Ejemplo con design-ios. Verificado: los subagentes de plugin ignoran `hooks:` en su frontmatter, así que el gate va en `hooks.json`. Antes: **§39, filtros anti-slop** (§39, §11)
+**Versión:** v5.45 · **§41 nueva — hook protocol: lectura de stdin y routing de salida.** Un mismo script de hook puede atender varios eventos: `hook_event_name` llega en el stdin y el hook elige a quién le habla — la persona (`systemMessage`) o el modelo (`additionalContext` o stdout plano). Verificado contra la doc de hooks: fuera de 4 eventos el stdout plano va al debug log, así que un `print()` en un hook de `Stop` no lo ve nadie. Incluye la lectura de stdin acotada con `select`. Además, **corrección**: `systemMessage` se muestra a la persona, no inyecta contexto (glosario §15, §12, §7). Antes: **§40 nueva — Aduana, filtro de código de agentes.** (§40)
 
 ---
 
@@ -54,6 +54,7 @@
 | Decidir qué entra y qué no en un mismo PR | §38 — acoplamientos ocultos, no estructura de archivos |
 | Crear un filtro contra la salida genérica de IA / sumar skills de otro plugin al mío | §39 — filtros anti-slop · §11 — skills de terceros |
 | Revisar solo el código que escriben mis agentes antes de aceptarlo | §40 — Aduana: hook + lentes Grieta y Poda en paralelo |
+| Que un hook le hable a la persona o al modelo según el evento | §41 — hook protocol: `hook_event_name`, canales de salida, stdin acotado |
 
 ---
 
@@ -106,6 +107,7 @@
 - [§35 — El patrón Harness — pipelines con gates](guia-04-avanzado.md#35-el-patrón-harness--pipelines-con-gates)
 - [§37 — El patrón Ratchet — prevenir regresiones en cambios silenciosos](guia-04-avanzado.md#37-el-patrón-ratchet--prevenir-regresiones-en-cambios-silenciosos)
 - [§38 — Acoplamientos ocultos — qué define el PR boundary](guia-04-avanzado.md#38-acoplamientos-ocultos--qué-define-el-pr-boundary)
+- [§41 — Hook protocol — lectura de stdin y routing de salida](guia-04-avanzado.md#41-hook-protocol--lectura-de-stdin-y-routing-de-salida)
 - [§15 — Glosario](guia-04-avanzado.md#15-glosario)
 
 ---
@@ -118,7 +120,7 @@
 | `guia-01-fundamentos.md` | 01 · Fundamentos — §4, §1, §2, §25, §24 |
 | `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §36, §31, §32, §17, §26, §27, §28, §29, §30, §33, §34 |
 | `guia-03-calidad.md` | 03 · Calidad y eficiencia — §14, §12, §13, §23, §3, §39, §40 |
-| `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §35, §37, §38, §15 |
+| `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §35, §37, §38, §41, §15 |
 
 `grep -rn "<!-- §N -->" guia-*.md` encuentra la sección sin importar en qué archivo vive.
 
@@ -8582,4 +8584,39 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 <!-- §41 -->
 ## 41. Hook protocol — lectura de stdin y routing de salida
 
-> **[2026-09-21] codebase-indexer:** El harness pasa `hook_event_name` en stdin para que hooks adapten su salida por evento. SessionStart emite `systemMessage` (banner visible a la persona) + `hookSpecificOutput.additionalContext` (para el modelo); otros eventos usan stdout plano. Lectura acotada con `select` (timeout 0.2s) previene colgadas de stdin abierto; fallback a texto plano. Stop hooks no tienen audiencia; no marcar resultados como reportados en Stop, se pierden silenciosamente.
+> Un mismo script de hook puede atender varios eventos: el harness manda `hook_event_name` en el stdin de cada invocación, y el hook decide por él **a quién le habla** — a la persona (`systemMessage`) o al modelo (`additionalContext` o stdout plano). Elegir mal el canal no da error: el mensaje simplemente no llega. <!-- ver: 2026-09-22 -->
+
+**`hook_event_name` es un campo común del input** (tabla *Common input fields* de `code.claude.com/docs/en/hooks`), así que un solo `.py` puede registrarse en varios eventos y ramificar su salida:
+
+| Evento | Canal correcto | Quién lo ve |
+|---|---|---|
+| `SessionStart` | `systemMessage` + `hookSpecificOutput.additionalContext` | Banner para la persona + contexto para el modelo |
+| `UserPromptSubmit`, `UserPromptExpansion`, `PostModelSwitch` | stdout plano (o `additionalContext`) | El modelo |
+| `Stop`, `SubagentStop`, `PostToolUse` y el resto | JSON (`systemMessage`, `decision`/`reason`) | Según el campo — el stdout plano va al debug log (§7) |
+
+**En `Stop`, un `print()` plano no lo ve nadie.** Fuera de los 4 eventos de §7 el stdout va al debug log. Si un hook de `Stop` "reporta" un resultado con texto plano y además lo marca como reportado en su estado, ese resultado se pierde en silencio: nadie lo leyó y el hook ya no lo repite. Marca como reportado solo lo que salió por un canal que alguien ve.
+
+**Lectura acotada de stdin.** Un hook que hace `json.load(sys.stdin)` sobre un stdin que nunca se cierra cuelga la sesión hasta el timeout. `select` con un timeout corto (≈0.2s) antes de leer lo evita; si no llega nada, el hook cae a su salida de texto plano en vez de fallar.
+
+```python
+import json, select, sys
+
+def read_payload(timeout=0.2):
+    ready, _, _ = select.select([sys.stdin], [], [], timeout)
+    if not ready:
+        return {}
+    try:
+        return json.load(sys.stdin)
+    except Exception:
+        return {}
+
+payload = read_payload()
+if payload.get("hook_event_name") == "SessionStart":
+    print(json.dumps({
+        "systemMessage": "✅ Index up to date",            # la persona
+        "hookSpecificOutput": {"hookEventName": "SessionStart",
+                               "additionalContext": "..."}  # el modelo
+    }))
+else:
+    print("...")  # texto plano: solo llega al modelo en los 4 eventos de §7
+```

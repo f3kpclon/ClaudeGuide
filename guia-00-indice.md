@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.44 · **§40 nueva — Aduana, filtro de código de agentes.** El equivalente de §39 para el código que escriben tus agentes, dentro del loop: `SubagentStop` corre un script sobre el diff de la rama (archivos que cruzan 1000 líneas, casts forzados, errores descartados), después dos lentes de solo lectura (Grieta: qué se rompe · Poda: qué sobra) y una sola ronda de corrección automática. Lo plausible nunca vuelve al agente. Ejemplo con design-ios. Verificado: los subagentes de plugin ignoran `hooks:` en su frontmatter, así que el gate va en `hooks.json`. Antes: **§39, filtros anti-slop** (§39, §11)
+**Versión:** v5.45 · **§41 nueva — hook protocol: lectura de stdin y routing de salida.** Un mismo script de hook puede atender varios eventos: `hook_event_name` llega en el stdin y el hook elige a quién le habla — la persona (`systemMessage`) o el modelo (`additionalContext` o stdout plano). Verificado contra la doc de hooks: fuera de 4 eventos el stdout plano va al debug log, así que un `print()` en un hook de `Stop` no lo ve nadie. Incluye la lectura de stdin acotada con `select`. Además, **corrección**: `systemMessage` se muestra a la persona, no inyecta contexto (glosario §15, §12, §7). Antes: **§40 nueva — Aduana, filtro de código de agentes.** (§40)
 
 ---
 
@@ -50,6 +50,7 @@
 | Decidir qué entra y qué no en un mismo PR | §38 — acoplamientos ocultos, no estructura de archivos |
 | Crear un filtro contra la salida genérica de IA / sumar skills de otro plugin al mío | §39 — filtros anti-slop · §11 — skills de terceros |
 | Revisar solo el código que escriben mis agentes antes de aceptarlo | §40 — Aduana: hook + lentes Grieta y Poda en paralelo |
+| Que un hook le hable a la persona o al modelo según el evento | §41 — hook protocol: `hook_event_name`, canales de salida, stdin acotado |
 
 ---
 
@@ -102,6 +103,7 @@
 - [§35 — El patrón Harness — pipelines con gates](guia-04-avanzado.md#35-el-patrón-harness--pipelines-con-gates)
 - [§37 — El patrón Ratchet — prevenir regresiones en cambios silenciosos](guia-04-avanzado.md#37-el-patrón-ratchet--prevenir-regresiones-en-cambios-silenciosos)
 - [§38 — Acoplamientos ocultos — qué define el PR boundary](guia-04-avanzado.md#38-acoplamientos-ocultos--qué-define-el-pr-boundary)
+- [§41 — Hook protocol — lectura de stdin y routing de salida](guia-04-avanzado.md#41-hook-protocol--lectura-de-stdin-y-routing-de-salida)
 - [§15 — Glosario](guia-04-avanzado.md#15-glosario)
 
 ---
@@ -114,7 +116,7 @@
 | `guia-01-fundamentos.md` | 01 · Fundamentos — §4, §1, §2, §25, §24 |
 | `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §36, §31, §32, §17, §26, §27, §28, §29, §30, §33, §34 |
 | `guia-03-calidad.md` | 03 · Calidad y eficiencia — §14, §12, §13, §23, §3, §39, §40 |
-| `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §35, §37, §38, §15 |
+| `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §35, §37, §38, §41, §15 |
 
 `grep -rn "<!-- §N -->" guia-*.md` encuentra la sección sin importar en qué archivo vive.
 

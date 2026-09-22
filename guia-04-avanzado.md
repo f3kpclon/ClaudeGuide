@@ -1646,4 +1646,39 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 <!-- §41 -->
 ## 41. Hook protocol — lectura de stdin y routing de salida
 
-> **[2026-09-21] codebase-indexer:** El harness pasa `hook_event_name` en stdin para que hooks adapten su salida por evento. SessionStart emite `systemMessage` (banner visible a la persona) + `hookSpecificOutput.additionalContext` (para el modelo); otros eventos usan stdout plano. Lectura acotada con `select` (timeout 0.2s) previene colgadas de stdin abierto; fallback a texto plano. Stop hooks no tienen audiencia; no marcar resultados como reportados en Stop, se pierden silenciosamente.
+> Un mismo script de hook puede atender varios eventos: el harness manda `hook_event_name` en el stdin de cada invocación, y el hook decide por él **a quién le habla** — a la persona (`systemMessage`) o al modelo (`additionalContext` o stdout plano). Elegir mal el canal no da error: el mensaje simplemente no llega. <!-- ver: 2026-09-22 -->
+
+**`hook_event_name` es un campo común del input** (tabla *Common input fields* de `code.claude.com/docs/en/hooks`), así que un solo `.py` puede registrarse en varios eventos y ramificar su salida:
+
+| Evento | Canal correcto | Quién lo ve |
+|---|---|---|
+| `SessionStart` | `systemMessage` + `hookSpecificOutput.additionalContext` | Banner para la persona + contexto para el modelo |
+| `UserPromptSubmit`, `UserPromptExpansion`, `PostModelSwitch` | stdout plano (o `additionalContext`) | El modelo |
+| `Stop`, `SubagentStop`, `PostToolUse` y el resto | JSON (`systemMessage`, `decision`/`reason`) | Según el campo — el stdout plano va al debug log (§7) |
+
+**En `Stop`, un `print()` plano no lo ve nadie.** Fuera de los 4 eventos de §7 el stdout va al debug log. Si un hook de `Stop` "reporta" un resultado con texto plano y además lo marca como reportado en su estado, ese resultado se pierde en silencio: nadie lo leyó y el hook ya no lo repite. Marca como reportado solo lo que salió por un canal que alguien ve.
+
+**Lectura acotada de stdin.** Un hook que hace `json.load(sys.stdin)` sobre un stdin que nunca se cierra cuelga la sesión hasta el timeout. `select` con un timeout corto (≈0.2s) antes de leer lo evita; si no llega nada, el hook cae a su salida de texto plano en vez de fallar.
+
+```python
+import json, select, sys
+
+def read_payload(timeout=0.2):
+    ready, _, _ = select.select([sys.stdin], [], [], timeout)
+    if not ready:
+        return {}
+    try:
+        return json.load(sys.stdin)
+    except Exception:
+        return {}
+
+payload = read_payload()
+if payload.get("hook_event_name") == "SessionStart":
+    print(json.dumps({
+        "systemMessage": "✅ Index up to date",            # la persona
+        "hookSpecificOutput": {"hookEventName": "SessionStart",
+                               "additionalContext": "..."}  # el modelo
+    }))
+else:
+    print("...")  # texto plano: solo llega al modelo en los 4 eventos de §7
+```
