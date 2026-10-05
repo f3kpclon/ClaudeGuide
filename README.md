@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.46 · **New §42 — Mods: hooks that run inside Claude Code.** A plugin whose `hooks/hooks.json` names a JS/TS module under `"modules"` registers functions that observe, rewrite or answer tool calls, prompts and turns, add `/commands` that run with no model turn, and draw panes. Not sandboxed, and a failing hook is skipped silently: a guard without `.catch` fails open. **Sweep against the official docs:** Opus 5.5 / Sonnet 5.5 generation (Opus drops to $4/$20, so Opus:Sonnet goes from 2.5× to 2×; account default is Opus 5.5 on every plan; default effort `medium`), permission-mode table fixed, hook `timeout` default is 600s, `claude plugin add` does not exist. Before: **§41 — hook protocol.** (§41)
+**Author:** Félix Sotelo · **Version:** v5.47 · **Second sweep against the official docs.** §31 now separates the Advisor Pattern (a cheap model reviews the output) from Claude Code's advisor tool (`/advisor`: an equal or stronger model advises the main one; Haiku can't be the advisor, each consultation reads the whole conversation uncached, and subagents inherit it). Haiku 4.5's "not sooner than October 15, 2026" is a floor, not a date (still active, no deprecation announced); Sonnet 4.5 retires November 30, 2026. 14 facts re-verified, four corrected: `marketplace.json` lives in `.claude-plugin/`, `PostToolBatch` cuts the loop, the plugin component list in §32, and the built-in agents. Three figures recomputed for Opus at $4/$20, and the hook's mods keyword no longer fires on "un modelo". Before: **§42 — Mods.** (§42)
 
 ---
 
@@ -48,6 +48,20 @@
 ## What's New
 
 <!-- changelog-insert -->
+
+### v5.47 — Second sweep against the official docs (2026-10-05)
+
+| Area | Change |
+|---|---|
+| **§31** | **The Advisor Pattern is not the advisor tool.** The guide's pattern has a cheaper model review the output; Claude Code's `/advisor` goes the other way, with an equal or stronger model advising the main one at decision points. New §31-ref: comparison table, how to enable it (`/advisor`, `advisorModel`, `--advisor`), the pairing rule (Haiku can't be the advisor — `claude --advisor haiku` exits with an error), cost (each consultation reads the whole conversation uncached; subagents inherit the configured advisor) and six silent deaths, including `DISABLE_TELEMETRY` turning it off. |
+| **§25** | **Haiku 4.5: "not sooner than October 15, 2026" is a floor, not a date.** Still `Active`, no deprecation announced, no successor; with the 60-day notice policy, retirement cannot land before December. The `vence:` marker moves to 2026-11-05. **Sonnet 4.5 was deprecated on September 30 and retires November 30, 2026**, which hits the Claude Code default on Microsoft Foundry. |
+| **§11** | **`marketplace.json` lives in `.claude-plugin/`**, not loose at the repo root (the tree was right, the prose wasn't). A leftover `claude plugin add` in the intro is gone. |
+| **§7** | `PostToolBatch` **cuts the loop** before the next model call; it does not force continuation. On `PermissionRequest`, exit 2 is not honored. `WorktreeCreate` / `WorktreeRemove` fail on any non-zero exit. `MultiEdit` is no longer in the hooks reference. |
+| **§32, §12, §5** | Plugin component list in §32 aligned with §11 (`workflows`, `bin`, `settings.json` were missing), and a `CLAUDE.md` at a plugin root is not loaded. Built-in agents gain `statusline-setup` and `claude-code-guide`. `initialPrompt` is also ignored for plugin agents. |
+| **§7, §31, §25** | **Three figures still assumed Opus at $5/$25**: the 33k-token read in the main thread (33k × 5 → × 4, saving ~76% → ~70%), Opus + advisor (~2.65× → ~2.15×) and the security-auditor delta per run (~$0.04 → ~$0.03). |
+| **§26** | **The mods keyword uses a word boundary.** As a substring, `"un mod"` injected §42 on prompts about "un modelo", "un modo" and "un modal". The matcher now treats keywords starting with `\b` as regex; §42 uses `\bmods?\b`. |
+| **§42** | The `push-guard` example is now verified loaded, not just validated: with `--plugin-dir` in `claude -p` sessions the guard denied a real Bash command and `/tally` answered with no model turn. |
+| **Staleness** | 14 `ver:` markers re-dated after checking against the docs. The remaining 14 are the guide's own measurements and production cases, which the docs cannot confirm; they keep their dates. |
 
 ### v5.46 — Mods, and a sweep against the official docs (2026-10-05)
 
