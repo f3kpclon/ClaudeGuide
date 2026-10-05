@@ -932,14 +932,14 @@ RESULTADO: PASS | FAIL
 | `memory` | No | Memoria persistente entre sesiones: `user` (`~/.claude/agent-memory/`) · `project` · `local` |
 | `isolation` | No | `worktree` = corre en un checkout git aislado — los cambios no tocan el hilo principal |
 | `background` | No | `true` = siempre corre en background como tarea — no bloquea el hilo |
-| `hooks` | No | Hooks scoped al ciclo de vida de este agente (misma sintaxis que settings.json). **Ignorado si el agente viene de un plugin** (verificado) <!-- ver: 2026-07-04 --> |
+| `hooks` | No | Hooks scoped al ciclo de vida de este agente (misma sintaxis que settings.json). **Ignorado si el agente viene de un plugin** (verificado) <!-- ver: 2026-10-05 --> |
 | `mcpServers` | No | MCP servers disponibles para este agente — referencia por nombre a uno ya configurado, o definición inline. **Ignorado si el agente viene de un plugin** |
 | `effort` | No | Override de esfuerzo: `low` · `medium` · `high` · `xhigh` · `max` |
 | `color` | No | Color en la UI: `red` · `blue` · `green` · `yellow` · `purple` · `orange` · `pink` · `cyan` |
 | `omitClaudeMd` | No | `true` = el subagente arranca **sin** los CLAUDE.md de usuario, proyecto y local (los managed sí cargan). Palanca lowcost directa para agentes que reciben todo en el prompt de delegación: se ahorran el costo fijo de §2. Ignorado si el agente corre como sesión principal (`--agent`). Requiere v2.1.271+ <!-- ver: 2026-10-05 --> |
 | `experimental` | No | Mapa de opciones experimentales. `cacheTtl: 5m` o `1h` elige la vida del prompt cache para los requests de ese subagente. Se ignora `1h` mientras tu suscripción esté consumiendo usage credits. Requiere v2.1.248+ |
 
-**Gotcha verificado (doc oficial de sub-agents):** `hooks`, `mcpServers` y `permissionMode` se **ignoran en silencio** cuando el agente se carga desde un plugin — sin error, sin warning. Si un agente de plugin necesita alguno de estos tres, la única forma es que el usuario copie el archivo a `.claude/agents/` o `~/.claude/agents/` locales; agregar reglas en `permissions.allow` de `settings.json` es la alternativa para permisos, pero aplica a toda la sesión, no solo a ese subagente. <!-- ver: 2026-07-04 -->
+**Gotcha verificado (doc oficial de sub-agents):** `hooks`, `mcpServers` y `permissionMode` se **ignoran en silencio** cuando el agente se carga desde un plugin — sin error, sin warning. Si un agente de plugin necesita alguno de estos tres, la única forma es que el usuario copie el archivo a `.claude/agents/` o `~/.claude/agents/` locales; agregar reglas en `permissions.allow` de `settings.json` es la alternativa para permisos, pero aplica a toda la sesión, no solo a ese subagente. `initialPrompt` también se ignora en agentes de plugin. <!-- ver: 2026-10-05 -->
 
 ### Modelo por tipo de agente
 
@@ -1307,7 +1307,7 @@ Mantenimiento mensual de learnings. No correr en cada sesión.
 
 Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 
-**`command` SIEMPRE con `$CLAUDE_PROJECT_DIR`** — el hook corre con el cwd actual del shell de la sesión, no con la raíz del proyecto. Un `command: "python3 .claude/hooks/x.py"` relativo funciona hasta que un Bash hace `cd` a otro directorio — desde ahí el hook revienta con "can't open file" y bloquea tool calls legítimas. Verificado en vivo. <!-- ver: 2026-07-02 -->
+**`command` SIEMPRE con `$CLAUDE_PROJECT_DIR`** — el hook corre con el cwd actual del shell de la sesión, no con la raíz del proyecto. Un `command: "python3 .claude/hooks/x.py"` relativo funciona hasta que un Bash hace `cd` a otro directorio — desde ahí el hook revienta con "can't open file" y bloquea tool calls legítimas. Verificado en vivo. <!-- ver: 2026-10-05 -->
 
 **Plugins**: `hooks/hooks.json` usa el MISMO wrapper `{"hooks": {...}}` — eventos al top level se rechazan en silencio y ningún hook se registra. Scripts con `"${CLAUDE_PLUGIN_ROOT}"` (ver §11 Trampas). El matcher de `SubagentStop` para agentes de plugin puede necesitar el nombre con namespace: `(mi-plugin:)?mi-agente`.
 
@@ -1315,14 +1315,14 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 
 33 eventos existen en total (re-verificado contra la referencia oficial: eran 30 en julio, entraron `DirectoryAdded`, `PreModelSwitch` y `PostModelSwitch`) — acá solo los de uso lowcost. Nicho (agent teams, MCP, worktrees) → §7-ref. `PreCompact`/`PostCompact` → §33. <!-- ver: 2026-09-02 -->
 
-**Bloqueantes** — corregido: `Stop`/`SubagentStop` SÍ bloquean (la guía anterior los daba como solo observacionales) — no deniegan una acción, fuerzan que la conversación **continúe** en vez de terminar. Distinto de `PreToolUse`/`UserPromptSubmit`/`PermissionRequest`, que deniegan ANTES de que la acción ocurra: <!-- ver: 2026-07-04 -->
+**Bloqueantes** — corregido: `Stop`/`SubagentStop` SÍ bloquean (la guía anterior los daba como solo observacionales) — no deniegan una acción, fuerzan que la conversación **continúe** en vez de terminar. Distinto de `PreToolUse`/`UserPromptSubmit`/`PermissionRequest`, que deniegan ANTES de que la acción ocurra: <!-- ver: 2026-10-05 -->
 
 | Evento | Tipo | Cómo bloquea | Uso típico |
 |---|---|---|---|
 | `PreToolUse` | Deniega acción | `permissionDecision: deny` + exit 0 | Validar paths, bloquear comandos peligrosos |
 | `UserPromptSubmit` | Deniega acción | `decision: block` o exit 2 | Bloquear instrucciones peligrosas, inyectar contexto |
 | `PermissionRequest` | Deniega acción | `decision.behavior: deny` | Auto-aprobar comandos seguros conocidos |
-| `PostToolBatch` | Fuerza continuar | `decision: block`/exit 2 — para el loop antes del próximo model call | Pausar la próxima tanda si algo salió mal |
+| `PostToolBatch` | Corta el loop | `decision: block`/exit 2 — para el loop antes del próximo model call | Pausar la próxima tanda si algo salió mal |
 | `Stop` | Fuerza continuar | `decision: block`/exit 2 — Claude ignora la parada y sigue | Forzar "no termines hasta que los tests pasen" |
 | `SubagentStop` | Fuerza continuar | Mismo mecanismo que `Stop`, scopeado al subagente | Encadenar agentes, exigir un paso más antes de devolver |
 
@@ -1336,7 +1336,7 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 
 > **stdout plano SÍ entra como contexto — en 4 eventos, y solo en esos.** No hace falta emitir JSON con `hookSpecificOutput.additionalContext` para inyectar: *"For most events, Claude Code writes stdout to the debug log and doesn't show it in the transcript. The exceptions are `UserPromptSubmit`, `UserPromptExpansion`, `SessionStart`, and `PostModelSwitch`, where Claude Code adds plain-text stdout as context that Claude can see and act on."* Un `print()` pelado en un `UserPromptSubmit` es correcto, no un bug — no lo reportes como tal en una auditoría. <!-- ver: 2026-09-09 -->
 
-**`PostToolUse` — caso aparte (corregido):** NO es puramente observacional como los tres de arriba. No puede deshacer la tool (ya se ejecutó), pero SÍ soporta `"decision": "block"` + `"reason"` — un mecanismo real de tercera vía, distinto de `systemMessage`/`additionalContext`: fuerza que el error se muestre a Claude en el mismo turno para que lo corrija. Es exactamente lo que usa el ejemplo "El compilador como juez" más abajo en esta sección. La versión anterior de esta guía clasificaba PostToolUse junto a los observacionales puros — es una simplificación excesiva, no un error de la doc oficial. <!-- ver: 2026-07-04 -->
+**`PostToolUse` — caso aparte (corregido):** NO es puramente observacional como los tres de arriba. No puede deshacer la tool (ya se ejecutó), pero SÍ soporta `"decision": "block"` + `"reason"` — un mecanismo real de tercera vía, distinto de `systemMessage`/`additionalContext`: fuerza que el error se muestre a Claude en el mismo turno para que lo corrija. Es exactamente lo que usa el ejemplo "El compilador como juez" más abajo en esta sección. La versión anterior de esta guía clasificaba PostToolUse junto a los observacionales puros — es una simplificación excesiva, no un error de la doc oficial. <!-- ver: 2026-10-05 -->
 
 <!-- §7-ref -->
 
@@ -1360,12 +1360,14 @@ Re-verificado contra la referencia oficial de hooks — 33 eventos en total, est
 | `PermissionDenied` | Auto-mode deniega una tool — no bloquea, pero soporta `retry: true` |
 | `PostToolUseFailure` | Una tool call falla — no bloquea |
 | `Elicitation` / `ElicitationResult` | Un MCP server pide input al usuario — bloquea con `action: decline` |
-| `WorktreeCreate` / `WorktreeRemove` | Ciclo de vida de worktrees (`--worktree`, isolation) |
+| `WorktreeCreate` / `WorktreeRemove` | Ciclo de vida de worktrees (`--worktree`, isolation) — cualquier exit ≠ 0 hace fallar la creación (o el borrado, si el directorio sigue ahí) |
 | `Notification` / `MessageDisplay` | Solo de UI — nunca bloquean |
 | `Setup` | Con flags `--init-only`/`--init`/`--maintenance` — preparación única |
 | `UserPromptExpansion` | Un slash command se expande a un prompt — bloquea la expansión |
 | `DirectoryAdded` | Se agrega un directorio al workspace — no bloquea *(nuevo desde julio 2026)* |
 | `PreModelSwitch` / `PostModelSwitch` | Cambio de modelo en la sesión; el matcher matchea el **nombre del modelo** (`claude-opus-5-5`, `.*opus.*`) y `Pre` bloquea con exit 2 *(nuevos desde julio 2026)* |
+
+**Dos matices de la tabla de bloqueantes (§7-quick), re-verificados contra la doc:** en `PermissionRequest` el exit 2 **no se respeta** — el flujo de permisos sigue igual; se deniega solo con el objeto `decision`. Y el cwd de un hook es el directorio actual de la sesión (*"Handlers run in the current directory"*): si ese directorio ya no existe, Claude Code cae al de inicio de sesión, la raíz del proyecto, tu home o el temp, y lo anota en el debug log. <!-- ver: 2026-10-05 -->
 
 > **`PreModelSwitch` es la palanca lowcost que faltaba:** hasta ahora no había forma de impedir que una sesión escale de modelo sin querer. Un hook con `matcher: ".*opus.*"` que devuelve exit 2 convierte "no uses Opus salvo que lo decidas" de sugerencia del prompt en física del harness (§7 intro). Mismo argumento que cualquier otro guard: la regla escrita se ignora, el hook no.
 
@@ -1758,13 +1760,13 @@ Un path como `cwd="/Users/nombre/Desktop/proyecto"` rompe si el proyecto se muev
 
 ### Campos de payload por tool — verificar, nunca recordar
 
-Los nombres reales de los campos (verificados — versiones anteriores de esta guía tenían `path`/`new_str`, que NO existen): <!-- ver: 2026-07-02 -->
+Los nombres reales de los campos (verificados — versiones anteriores de esta guía tenían `path`/`new_str`, que NO existen): <!-- ver: 2026-10-05 -->
 
 | Tool | Campos de `tool_input` |
 |---|---|
 | `Write` | `file_path`, `content` |
 | `Edit` | `file_path`, `old_string`, `new_string` |
-| `MultiEdit` (legacy) | `file_path`, `edits[].old_string`, `edits[].new_string` |
+| `MultiEdit` (legacy — ya no figura en la referencia de hooks) | `file_path`, `edits[].old_string`, `edits[].new_string` |
 | `Bash` | `command` |
 
 ```python
@@ -2335,7 +2337,7 @@ allowed-tools: Read
 | <tarea-1> | @<agente> | <condición> |
 | <tarea-2> | skill `<nombre>` | <condición> |
 ```
-> Límite: < 40 líneas si el proyecto tiene CLAUDE.md · < 60 líneas si es hub de plugin sin CLAUDE.md, ya que ahí también carga reglas universales (§2, §11). Si CLAUDE.md ya tiene el dispatch, ocultarla del menú `/` sin tocar el SKILL.md — **`skillOverrides` va en `.claude/settings.json`, NO en el frontmatter** (corregido, error fácil: escribirlo en el SKILL.md no falla, simplemente no hace nada): `{"skillOverrides": {"<proyecto>-hub": "user-invocable-only"}}`. <!-- ver: 2026-07-04 -->
+> Límite: < 40 líneas si el proyecto tiene CLAUDE.md · < 60 líneas si es hub de plugin sin CLAUDE.md, ya que ahí también carga reglas universales (§2, §11). Si CLAUDE.md ya tiene el dispatch, ocultarla del menú `/` sin tocar el SKILL.md — **`skillOverrides` va en `.claude/settings.json`, NO en el frontmatter** (corregido, error fácil: escribirlo en el SKILL.md no falla, simplemente no hace nada): `{"skillOverrides": {"<proyecto>-hub": "user-invocable-only"}}`. <!-- ver: 2026-10-05 -->
 
 ---
 
@@ -3220,7 +3222,7 @@ Un subagente corre de una pasada hasta terminar. Tres imposibles que aparecen un
 
 1. **No puede pausar** a "esperar confirmación del usuario antes del siguiente paso" — termina y devuelve su output; los checkpoints con el usuario son del hilo principal
 2. **No puede delegar** sin la tool `Agent` en su lista — un lead con `tools: Read, Glob, Grep` que dice "delego a @especialista" produce texto, no invocaciones
-3. **Solo puede cargar skills si `Skill` está en su lista de tools** — los subagentes sin `tools:` restringido SÍ la tienen (verificado); un especialista típico con `tools: Read, Write, Edit, Glob, Grep` NO. Regla lowcost: no contar con ella — pasar la template en el prompt de invocación e inline el patrón esencial como fallback <!-- ver: 2026-07-02 -->
+3. **Solo puede cargar skills si `Skill` está en su lista de tools** — los subagentes sin `tools:` restringido SÍ la tienen (verificado); un especialista típico con `tools: Read, Write, Edit, Glob, Grep` NO. Regla lowcost: no contar con ella — pasar la template en el prompt de invocación e inline el patrón esencial como fallback <!-- ver: 2026-10-05 -->
 
 Dos diseños válidos de lead — elegir uno, no mezclar:
 
@@ -3538,7 +3540,7 @@ Los números por arquetipo están en §3; los techos en §23.
 <!-- §11-quick -->
 ## 11. Plugin distribuible
 
-> Llegaste aquí porque tus agentes locales funcionan bien y quieres llevarlos a otro proyecto sin copiar archivos. El plugin es exactamente eso: tu cocina empaquetada. Una línea de `claude plugin add` y está lista en cualquier repo.
+> Llegaste aquí porque tus agentes locales funcionan bien y quieres llevarlos a otro proyecto sin copiar archivos. El plugin es exactamente eso: tu cocina empaquetada. Registras el marketplace, instalas el plugin (ver Distribución, más abajo) y está lista en cualquier repo.
 
 Solo cuando necesitas reutilizar en múltiples proyectos o compartir con el equipo.
 
@@ -3584,7 +3586,7 @@ Atrapa las tres clases de error que fallan **en silencio** en runtime: manifest 
   > Regla que sí sobrevive a la corrección: la recomendación es de **ergonomía** (import sibling, un solo lugar), no de supervivencia. Un plugin ajeno que usa `scripts/` no está roto — Spotify shippea `shunt` así (§7, patrón shunt hook). No lo reportes como bug.
   > **Verificado en producción:** `design_catalog.py` vivía en `scripts/` (importado por `post_write.py`, corrido por `/catalog`). Distinto de `rules/`: NO era dead weight, se ejecutaba de verdad — pero "vivo en dev" ≠ "viaja al install". Movido a `hooks/` (whitelisted): elimina el riesgo de strip no verificable, borra el hack `sys.path.insert(...parent.parent...)` (→ `import` sibling directo) y pasa compliance estricto. Solo `hooks.json` define qué es un hook; un `.py` que no está ahí es helper, no se mis-registra. <!-- ver: 2026-07-19 -->
 
-> **Verificado en producción:** `marketplace.json` en la raíz es REQUERIDO para el flujo "Browse plugins" del desktop app — no es un archivo opcional ni de metadata. Eliminarlo rompe la instalación UI para todos los usuarios del equipo. Error: confundirlo con dead weight porque la guía no lo mencionaba. <!-- ver: 2026-06-02 -->
+> **Verificado en producción:** `.claude-plugin/marketplace.json` (dentro de `.claude-plugin/`, en la raíz del repo del marketplace — no suelto en la raíz) es REQUERIDO para el flujo "Browse plugins" del desktop app — no es un archivo opcional ni de metadata. Eliminarlo rompe la instalación UI para todos los usuarios del equipo. Error: confundirlo con dead weight porque la guía no lo mencionaba. Ubicación re-verificada contra la doc de marketplaces: un marketplace *es* un directorio con ese archivo. <!-- ver: 2026-10-05 -->
 
 <!-- §11-ref -->
 ### Template — marketplace.json
@@ -3901,9 +3903,9 @@ Un cloud agent clona el repo desde GitHub — no tiene acceso a `.claude/learnin
 **Agentes leen archivos innecesarios sin constraint explícito.**
 Sin instrucción de "no leas componentes existentes", el modelo lee 2-4 archivos de referencia antes de crear uno nuevo — aunque la template ya contenga el patrón. Fix: añadir sección `## Archivos a leer (y nada más)` en cada agente especialista.
 
-> **Verificado en producción:** `PLUGIN_ROOT = Path(__file__).parent.parent` en hooks apunta al directorio del plugin instalado, no al proyecto destino. Todos los paths que deben ser per-project (learnings, plan flags) necesitan usar `Path.cwd()` como base. <!-- ver: 2026-06-27 -->
+> **Verificado en producción:** `PLUGIN_ROOT = Path(__file__).parent.parent` en hooks apunta al directorio del plugin instalado, no al proyecto destino. Todos los paths que deben ser per-project (learnings, plan flags) necesitan usar `Path.cwd()` como base. <!-- ver: 2026-10-05 -->
 
-> **auditoría de un plugin en producción (v2.4.0):** los 6 defectos P0 del plugin eran de infraestructura, no de contenido — hooks.json sin wrapper, `$CLAUDE_PROJECT_DIR` en vez de `${CLAUDE_PLUGIN_ROOT}`, YAML sin quotear, valor inválido de `permissionDecision`, campo inexistente en payload de SubagentStop, gate en deadlock. Ninguno era detectable usándolo: los hooks fallan invisibles. Moraleja: **cada pieza de automatización necesita una forma de avisar que murió** — `claude plugin validate` + tests subprocess (§19) son obligatorios, no opcionales. Y verificar los API shapes de hooks/plugins contra docs oficiales, nunca de memoria. <!-- ver: 2026-07-02 -->
+> **auditoría de un plugin en producción (v2.4.0):** los 6 defectos P0 del plugin eran de infraestructura, no de contenido — hooks.json sin wrapper, `$CLAUDE_PROJECT_DIR` en vez de `${CLAUDE_PLUGIN_ROOT}`, YAML sin quotear, valor inválido de `permissionDecision`, campo inexistente en payload de SubagentStop, gate en deadlock. Ninguno era detectable usándolo: los hooks fallan invisibles. Moraleja: **cada pieza de automatización necesita una forma de avisar que murió** — `claude plugin validate` + tests subprocess (§19) son obligatorios, no opcionales. Y verificar los API shapes de hooks/plugins contra docs oficiales, nunca de memoria. <!-- ver: 2026-10-05 -->
 
 ---
 
@@ -4475,7 +4477,7 @@ paths:
 - No usar `test.only` — bloquea CI sin error visible
 ```
 
-**En plugins:** ❌ NO es componente de plugin — la whitelist es cerrada (§11: skills · commands · agents · hooks · .mcp.json · output-styles · lspServers · themes · monitors). Verificado contra la referencia oficial de plugins: `rules/` solo aparece como feature de `.claude/rules/` del proyecto local, nunca como directorio de plugin. Un `rules/` dentro de un plugin es **dead weight silencioso**: no falla, simplemente nada lo carga — el autor cree que sus reglas se inyectan y el enforcement está muerto (así nacieron `rules/swift.md` y `output-styles/swift-only.md` muertos en un plugin real). <!-- ver: 2026-07-03 -->
+**En plugins:** ❌ NO es componente de plugin — la whitelist es cerrada (§11: skills · commands · agents · workflows · hooks · .mcp.json · output-styles · lspServers · themes · monitors · bin · settings.json). Verificado contra la referencia oficial de plugins: `rules/` solo aparece como feature de `.claude/rules/` del proyecto local, nunca como directorio de plugin. Lo mismo vale para un `CLAUDE.md` en la raíz del plugin: no se carga como contexto, y `claude plugin validate` avisa si lo encuentra. Un `rules/` dentro de un plugin es **dead weight silencioso**: no falla, simplemente nada lo carga — el autor cree que sus reglas se inyectan y el enforcement está muerto (así nacieron `rules/swift.md` y `output-styles/swift-only.md` muertos en un plugin real). <!-- ver: 2026-10-05 -->
 
 En un plugin, el equivalente es: reglas universales → skill hub · subset crítico → inline en cada agente · reglas mecanizables → hook PreToolUse.
 
@@ -6549,7 +6551,7 @@ El "por si acaso" se paga siempre. El "cuando lo necesite" se paga solo cuando o
 | Git en múltiples invocaciones separadas | 22k tokens (medido) vs ~10-12k esperado | Una sola invocación al final: BRANCH+COMMIT+PR+MERGE · VALIDADO: sí |
 | `git add -p` en agente git | Interactivo — el agente entra en loop esperando stdin, infla tool calls | Usar `git add -u` (todos los modificados) + `git status --short` previo |
 | Commit message no pasado en el prompt al agente git | El agente usa 1-2 tool calls extra para inferir qué cambió | Pasar mensaje explícito: `COMMIT: tipo: descripción` — el agente no explora |
-| `subagent_type` con nombre que no está en la lista de agent types de la sesión | Error "agent type not found" — falla inmediata, no silent | Built-ins reales: `general-purpose`, `Explore`, `Plan`, `claude`. En versiones actuales los agentes de `.claude/agents/` y `~/.claude/agents/` TAMBIÉN aparecen como agent types invocables (verificado) — la restricción a built-ins era de versiones anteriores. Fallback si el agente no aparece: `subagent_type: claude` + `"Read .claude/agents/X.md and follow it. TARGET: …"` en el prompt. <!-- ver: 2026-07-02 --> |
+| `subagent_type` con nombre que no está en la lista de agent types de la sesión | Error "agent type not found" — falla inmediata, no silent | Built-ins reales: `general-purpose`, `Explore`, `Plan`, `claude`, más `statusline-setup` y `claude-code-guide`. En versiones actuales los agentes de `.claude/agents/` y `~/.claude/agents/` TAMBIÉN aparecen como agent types invocables (verificado) — la restricción a built-ins era de versiones anteriores. Fallback si el agente no aparece: `subagent_type: claude` + `"Read .claude/agents/X.md and follow it. TARGET: …"` en el prompt. <!-- ver: 2026-10-05 --> |
 | `\|\| return` en función bash con `set -e` | Script muere silenciosamente sin output cuando el archivo no está en el diff | `grep -qF "$file" \|\| return 0` — `return` sin código propaga el exit code 1 de grep; `set -e` mata el script antes del primer `echo`. Aplica a cualquier función de validación en CI/hooks. |
 | AskUserQuestion option con `"in notes"` | Usuario no sabe dónde escribir — confusión en cada uso real | Referenciar explícitamente: `"Other" field (option 3 below)` en la etiqueta de la opción. Validado en producción. <!-- ver: 2026-06-02 --> |
 | Validator invocado con `subagent_type: claude` sin instrucciones Grep-first | 23 tool uses (medido) vs 10 esperado — el agente lee archivos completos | Pasar las instrucciones Grep-first explícitas + `TYPE: local\|plugin` en el prompt. Nunca leer lo que Grep puede responder. |
@@ -7966,7 +7968,7 @@ def test_allows_clean_write():
     assert r is None  # no block
 ```
 
-**El payload del test debe ser el shape REAL del tool — no el que asume el hook.** Un test que construye `{"tool_input": {"path": ..., "new_str": ...}}` porque el hook lee esos campos valida el bug, no el hook: pasa verde con el hook muerto en producción (Edit real manda `file_path`/`new_string`). Caso real: dos hooks muertos por semanas, suites verdes, porque tests y hook compartían el mismo shape inventado. Los payloads de test se copian de la doc oficial de hooks — es el mismo principio del juez real: el test que valida contra el contrato de producción > el test que valida contra la implementación. <!-- ver: 2026-07-02 -->
+**El payload del test debe ser el shape REAL del tool — no el que asume el hook.** Un test que construye `{"tool_input": {"path": ..., "new_str": ...}}` porque el hook lee esos campos valida el bug, no el hook: pasa verde con el hook muerto en producción (Edit real manda `file_path`/`new_string`). Caso real: dos hooks muertos por semanas, suites verdes, porque tests y hook compartían el mismo shape inventado. Los payloads de test se copian de la doc oficial de hooks — es el mismo principio del juez real: el test que valida contra el contrato de producción > el test que valida contra la implementación. <!-- ver: 2026-10-05 -->
 
 **Aislar HOME y CLAUDE_PROJECT_DIR** — hooks con estado (flags en `~/.claude/`, paths por proyecto) contaminan la máquina real y se contaminan entre tests si no se aísla el entorno:
 
