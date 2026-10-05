@@ -1372,10 +1372,10 @@ print(json.dumps({"hookSpecificOutput": {
 **Dónde va el trabajo delegado.** En Claude Code no hace falta infra externa: **un subagente ya es un shunt**. Corre en contexto aislado (§2, capa 3) — los archivos que lee nunca entran al contexto padre, solo vuelve su reporte. Con `model: haiku` sumás el ahorro de precio al de contexto. La aritmética, con los múltiplos de §25 (haiku 1× · sonnet 2× · opus 5×):
 
 ```
-Leer 33k tokens de archivo en el hilo principal con opus:  33k × 5  = 165k-equivalente
-Delegarlos a un subagente haiku, vuelven ~1.5k de reporte: 33k × 1 + 1.5k × 5 ≈ 40k
+Leer 33k tokens de archivo en el hilo principal con opus:  33k × 4  = 132k-equivalente
+Delegarlos a un subagente haiku, vuelven ~1.5k de reporte: 33k × 1 + 1.5k × 4 = 39k
                                                             ────────────────────────
-                                                            ~76% en la primera lectura
+                                                            ~70% en la primera lectura
 ```
 
 Y ese es el ahorro **de un solo turno**. El compuesto es mayor y es el argumento real: el archivo leído en el hilo principal se re-paga en **cada turno posterior de la sesión**; el reporte de 1.5k también, pero pesa 20× menos. Cuanto más larga la sesión, más grande la diferencia.
@@ -3351,7 +3351,7 @@ El advisor no itera — emite veredicto. Si hacés más de 1 retry, el problema 
 | Sonnet solo | 1× | Output predecible, stack conocido |
 | Sonnet + haiku advisor | ~1.15× | Output con consecuencias si está mal |
 | Opus solo | 2× | Si sonnet + advisor sigue fallando |
-| Opus + advisor | ~2.65× | Security/one-shot donde el error es irreversible |
+| Opus + advisor | ~2.15× | Security/one-shot donde el error es irreversible |
 
 El advisor barato mantiene su ventaja: haiku usa además el tokenizer viejo, así que consume ~30% menos tokens que sonnet/opus para el mismo texto de revisión (→ §3).
 

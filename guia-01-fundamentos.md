@@ -450,7 +450,7 @@ tools: Read, Glob, Grep
 ---
 ```
 
-**Por qué Opus aquí y no Sonnet:** el audit corre una vez por PR. El delta de costo es ~$0.04 por run. Un falso negativo (vulnerabilidad que pasa a producción) vale órdenes de magnitud más. El agente tiene `tools: Read, Glob, Grep` — sin Write ni Bash — para que el costo extra sea solo en razonamiento, no en ejecución.
+**Por qué Opus aquí y no Sonnet:** el audit corre una vez por PR. El delta de costo es ~$0.03 por run. Un falso negativo (vulnerabilidad que pasa a producción) vale órdenes de magnitud más. El agente tiene `tools: Read, Glob, Grep` — sin Write ni Bash — para que el costo extra sea solo en razonamiento, no en ejecución.
 
 **Por qué no `effort: xhigh` en Sonnet:** patrones de seguridad sutiles (IDOR, timing attacks, second-order injection) requieren el nivel de razonamiento de Opus. En auditorías de seguridad, el costo del error justifica el modelo más capaz disponible.
 
