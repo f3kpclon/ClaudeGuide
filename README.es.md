@@ -4965,15 +4965,20 @@ KEYWORD_MAP = [
     (["hook_event_name", "hook protocol", "routing de salida", "stdin del hook",
       "lectura de stdin", "stdout plano", "salida por evento"],       41),
     # §42 — Mods: hooks JS/TS que corren dentro de Claude Code
-    (["mods", "un mod", "hooks module", "function hook", "register.js",
+    ([r"\bmods?\b", "hooks module", "function hook", "register.js",
       "plugin-authoring", "tool.call", "ui.render", "plugin test"],    42),
 ]
+
+def _hit(k: str, p: str) -> bool:
+    # Keyword que empieza con \b = regex con límite de palabra. Para keywords cortos:
+    # "un mod" como substring también matchea "un modelo", "un modo" y "un modal".
+    return re.search(k, p) is not None if k.startswith("\\b") else k in p
 
 def detect_sections(prompt: str) -> list[int]:
     p = prompt.lower()
     seen, results = set(), []
     for keywords, n in KEYWORD_MAP:
-        if n not in seen and any(k in p for k in keywords):
+        if n not in seen and any(_hit(k, p) for k in keywords):
             results.append(n)
             seen.add(n)
             if len(results) >= MAX_SECTIONS:
