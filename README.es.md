@@ -6159,7 +6159,7 @@ push-guard/
 
 No hace falta Node, bundler ni paso de build: Claude Code carga `.js` y `.ts` directo. `hooks.json` puede llevar además settings hooks bajo `hooks`, así que un plugin puede traer las dos cosas.
 
-Ejemplo completo. Validado con `claude plugin validate` y con un test que pasa en `claude plugin test` (v2.1.289):
+Ejemplo completo. Validado con `claude plugin validate`, con un test que pasa en `claude plugin test`, y cargado con `--plugin-dir` en sesiones `claude -p`: el guard bloqueó un comando real y `/tally` respondió sin turno de modelo (v2.1.289):
 
 ```javascript
 // hooks/register.js
