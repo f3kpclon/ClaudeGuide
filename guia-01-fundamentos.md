@@ -470,7 +470,8 @@ tools: Read, Glob, Grep
 **Requisito de versión:** Opus 5.5 pide Claude Code ≥ v2.1.280 y Sonnet 5.5 ≥ v2.1.284.
 
 **Dos fechas que importan para una guía que apoya casi todo en haiku:**
-- **Haiku 4.5 se retira "no antes del 15/10/2026"** <!-- vence: 2026-10-15 --> — es el único modelo del lineup con retiro a menos de un año. Todos los agentes haiku de esta guía necesitan plan de sucesión antes de esa fecha.
+- **Haiku 4.5: "no antes del 15/10/2026" es un piso, no una fecha.** Re-verificado el 05/10/2026: sigue `Active`, sin fecha de deprecación y sin sucesor en el lineup. <!-- vence: 2026-11-05 --> Anthropic avisa con **al menos 60 días** entre la deprecación y el retiro, y la deprecación todavía no se anunció: *inferido de esa política*, el retiro real no puede caer antes de inicios de diciembre de 2026, y cada mes sin anuncio lo corre un mes. Sigue siendo el único modelo del lineup con compromiso a menos de un año, así que el plan de sucesión hace falta igual. La señal a vigilar no es el 15/10: es que la columna "Deprecated" de `model-deprecations` deje de decir `N/A`.
+- **Sonnet 4.5 quedó deprecado el 30/09/2026 y se retira el 30/11/2026** <!-- vence: 2026-11-30 --> (reemplazo recomendado: `claude-sonnet-5-5`). Te toca si estás en Microsoft Foundry, donde el default de Claude Code es Sonnet 4.5 y la fecha aplica; Bedrock y Google Cloud, donde `sonnet` también resuelve a 4.5, fijan su propio calendario.
 - Opus 5.5: no antes del 22/09/2027 · Sonnet 5.5: no antes del 28/09/2027 · Fable 5.1: no antes del 01/09/2027 · (legacy) Opus 5: 24/07/2027 · Sonnet 5: 30/06/2027.
 
 **Aliases de Claude Code** (`/model <alias>`, `--model`, `ANTHROPIC_MODEL`, `settings.json`) — son de Claude Code, no de la API:
@@ -600,7 +601,7 @@ Lo que sigue vigente es la física del costo: el input se cobra por token usado.
 □ effort: xhigh solo existe en Opus 4.7+/Sonnet 5+/Fable — en Opus 4.6 y Sonnet 4.6 el escalón es max
 □ Fast Mode: Opus 5.5, Opus 5 y Opus 4.8 — SÍ es parámetro de API (speed: "fast" + beta fast-mode-2026-02-01, endpoint beta) y también /fast en Claude Code; 2× el estándar ($8/$40 en 5.5, $10/$50 en 5 y 4.8); decidir al inicio (el toggle invalida el cache); Opus 4.6 lo ignora en silencio
 □ Contexto: 1M es estándar sin premium de Claude 4.6 en adelante — pero cada token en contexto se paga; fragmentar sigue siendo la regla
-□ Haiku 4.5 se retira no antes del 15/10/2026 — si la arquitectura apoya en haiku, tener sucesor elegido
+□ Haiku 4.5: sigue Active y sin deprecación anunciada (05/10/2026); el aviso llega con ≥60 días — revisar model-deprecations una vez al mes y tener sucesor elegido
 ```
 
 ---
