@@ -107,7 +107,8 @@ La estructura es la misma — solo cambia dónde vive:
                               mi-plugin/.claude-plugin/plugin.json  ← nuevo
 
 Instalar en cualquier proyecto:
-  claude plugin add github:usuario/mi-plugin
+  claude plugin marketplace add usuario/mi-repo
+  claude plugin install mi-plugin@<marketplace>
 ```
 
 ### La regla de oro
@@ -141,6 +142,9 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 ├── Algo que debe ocurrir siempre (validar, bloquear, notificar)
 │   └── → Hook (.claude/settings.json)
 │
+├── Un panel, un /comando sin modelo, o reescribir un evento en vuelo
+│   └── → Mod (plugin con hooks/hooks.json → "modules", §42) — solo si un hook no alcanza
+│
 ├── Contexto del proyecto (estado, decisiones, backlog)
 │   └── → Scope (.claude/scope/)
 │
@@ -156,7 +160,7 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 | Ubicación | `.claude/agents/` | `.claude/skills/` | directorio con `.claude-plugin/` |
 | Scope | Solo este repo | Solo este repo | Donde se instale |
 | Hooks | `.claude/settings.json` | — | `hooks/hooks.json` |
-| Compartir | Solo via el repo | Solo via el repo | `claude plugin add github:...` |
+| Compartir | Solo via el repo | Solo via el repo | `claude plugin marketplace add` + `claude plugin install` (§11) |
 
 **Regla:** empezar con agentes y skills locales. Convertir a plugin solo cuando se reutiliza en otro proyecto.
 
@@ -343,26 +347,26 @@ Leer `.claude/scope/scope-index.md` antes de cualquier tarea.
 
 ### Antes de Opus — probar `effort` primero
 
-`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar, sin cambiar el precio por token. Subir a Opus multiplica el precio por token **2.5×** (verificado contra `platform.claude.com/.../pricing`: Sonnet 5 $2/$10 vs Opus 5 / Opus 4.8 $5/$25). <!-- ver: 2026-09-02 -->
+`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar, sin cambiar el precio por token. Subir a Opus multiplica el precio por token **2×** (verificado contra `platform.claude.com/.../pricing`: Sonnet 5.5 $2/$10 vs Opus 5.5 $4/$20; Opus 5 y 4.8 siguen a $5/$25). <!-- ver: 2026-10-05 -->
 
-**El pricing introductorio de Sonnet 5 se volvió permanente** — la suba a $3/$15 agendada para el 01/09/2026 fue cancelada. El ratio Opus:Sonnet es **2.5× y no vence** (el "baja a ~1.7× en septiembre" de versiones anteriores queda anulado).
+El ratio Opus:Sonnet **bajó de 2.5× a 2×**: Opus 5.5 salió más barato que Opus 5 ($4/$20 contra $5/$25) y Sonnet 5.5 mantiene los $2/$10.
 
 ```yaml
 # En el agente o en la skill
 effort: xhigh   # opciones: low | medium | high | xhigh | max — NO existe "ultra" ni "xlow"
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 # haiku 4.5 NO soporta effort (la API lo rechaza) — effort es palanca de sonnet/opus/fable
 ```
 
-**`xhigh` no está en todos los modelos** (verificado contra `/en/build-with-claude/effort`): <!-- ver: 2026-09-02 -->
+**`xhigh` no está en todos los modelos** (verificado contra `code.claude.com/docs/en/model-config`): <!-- ver: 2026-10-05 -->
 
 | Nivel | Dónde existe |
 |---|---|
-| `low` / `medium` / `high` / `max` | Fable 5.1, Fable 5, Opus 5, Opus 4.8, Opus 4.7, **Opus 4.6**, Sonnet 5, **Sonnet 4.6**, Opus 4.5 |
-| `xhigh` | Fable 5.1, Fable 5, Opus 5, Opus 4.8, Opus 4.7, Sonnet 5 — **no** en Opus 4.6 ni Sonnet 4.6 |
+| `low` / `medium` / `high` / `max` | Fable 5.1, Fable 5, **Opus 5.5**, **Sonnet 5.5**, Opus 5, Sonnet 5, Opus 4.8, Opus 4.7, **Opus 4.6**, **Sonnet 4.6** |
+| `xhigh` | Fable 5.1, Fable 5, Opus 5.5, Sonnet 5.5, Opus 5, Sonnet 5, Opus 4.8, Opus 4.7 — **no** en Opus 4.6 ni Sonnet 4.6 |
 | (ninguno) | **Haiku 4.5** — no soporta `effort` en absoluto |
 
-Default en todos: `high`. Poner `effort: high` es idéntico a omitirlo. → cómo setearlo en Claude Code y la trampa de cache, en §25-ref.
+**El default ya no es `high` en todos.** En Claude Code: `high` en general, **`medium` en Opus 5.5 y Sonnet 5.5**, `xhigh` en Opus 4.7. Ahí `effort: high` **no** es idéntico a omitirlo. Opus 5.5 a `medium` iguala o supera a Opus 5 a `high` (dato de Anthropic). → cómo setearlo y sus trampas, en §25-ref. <!-- ver: 2026-10-05 -->
 
 **Cuándo `effort: xhigh` resuelve lo que parecía Opus:**
 
@@ -378,7 +382,7 @@ La pregunta no es "¿es una tarea difícil?" — es:
 
 > **¿El costo de que Sonnet se equivoque supera el costo de Opus?**
 
-Opus 5 cuesta **2.5× más por token** que Sonnet 5 ($5/$25 vs $2/$10 — verificado; el "~5×" de versiones viejas de esta guía era pricing retirado, y el "~1.7× desde septiembre" nunca llegó a existir: la suba de Sonnet 5 fue cancelada). El threshold para justificar Opus: si un error de Sonnet cuesta más que el ~150% extra de tokens en la tarea → Opus vale la pena. El orden de escalación no cambia — Sonnet + effort primero, porque effort es gratis en precio por token. <!-- ver: 2026-09-02 -->
+Opus 5.5 cuesta **2× más por token** que Sonnet 5.5 ($4/$20 vs $2/$10 — verificado; con Opus 5 era 2.5×). El threshold para justificar Opus: si un error de Sonnet cuesta más que el ~100% extra de tokens en la tarea → Opus vale la pena. El orden de escalación no cambia — Sonnet + effort primero, porque effort es gratis en precio por token. <!-- ver: 2026-10-05 -->
 
 **Cuándo Opus tiene justificación real:**
 
@@ -392,7 +396,7 @@ Opus 5 cuesta **2.5× más por token** que Sonnet 5 ($5/$25 vs $2/$10 — verifi
 <!-- §25-ref -->
 #### Las cuatro formas de setear effort en Claude Code
 
-Verificado contra `code.claude.com/.../model-config`: <!-- ver: 2026-09-02 -->
+Verificado contra `code.claude.com/.../model-config`: <!-- ver: 2026-10-05 -->
 
 ```bash
 /effort high                        # en sesión
@@ -400,13 +404,19 @@ claude --effort xhigh               # al arrancar
 export CLAUDE_CODE_EFFORT_LEVEL=high
 ```
 ```json
-// En settings.json para toda la sesión
-{ "effortLevel": "high" }
+// En settings.json — por modelo (la forma vigente)
+{ "modelSettings": { "claude-opus-5-5": { "effortLevel": "high" } } }
 ```
+
+**Trampa silenciosa:** el `"effortLevel": "high"` de nivel superior en tu `~/.claude/settings.json` **no cuenta para Opus 5.5** ni para los modelos que salgan después: sigue aplicando en Opus 5, Fable 5.1 y anteriores, pero 5.5 arranca en su propio default (`medium`) hasta que elijas nivel con `/effort` o con `modelSettings`. No da error: simplemente corres en otro nivel del que crees. (En settings de proyecto, local, managed o `--settings`, el `effortLevel` top-level sí aplica a todos los modelos.) Ni `effortLevel` ni `modelSettings` aceptan `max`.
+
+Orden de resolución, gana el primero: `CLAUDE_CODE_EFFORT_LEVEL` → `--effort` / `/effort` → settings (`modelSettings` antes que `effortLevel`) → default del modelo.
+
+**Thinking no se puede apagar en Opus 5.5, Sonnet 5.5 ni Fable.** `MAX_THINKING_TOKENS=0` y `alwaysThinkingEnabled: false` no tienen efecto ahí. La única palanca de costo de razonamiento es `effort`.
 
 Claude Code agrega un nivel que **no existe en la API**: `ultracode` = `xhigh` + orquestación dinámica de workflow. Si lo ves en un settings.json no es un typo — pero tampoco es portable a un request de la Messages API.
 
-**Trampa de caching con effort:** cambiar el `effort` de nivel superior a mitad de conversación **invalida el prompt cache** (cambia el prefix renderizado). Elegí un nivel al inicio y mantenelo. Excepción: Opus 5 y Fable 5.1 soportan cambio de effort *por mensaje* (beta `mid-conversation-output-config-2026-07-01`), que sí lo preserva.
+**Trampa de caching con effort:** cambiar el `effort` de nivel superior a mitad de conversación **invalida el prompt cache** (cambia el prefix renderizado). Elige un nivel al inicio y mantenlo. Excepción: Opus 5.5, Sonnet 5.5, Opus 5 y Fable 5.1 soportan cambio de effort *por mensaje* (beta `mid-conversation-output-config-2026-07-01`), que sí lo preserva.
 
 #### Casos de uso — reviewer
 
@@ -435,7 +445,7 @@ Claude Code agrega un nivel que **no existe en la API**: `ultracode` = `xhigh` +
 name: security-auditor
 description: Audit de seguridad antes de merge a main. Invocar SOLO en PRs con cambios
   de auth, permisos, storage o inputs de usuario. NO usar para linting o code style.
-model: claude-opus-5
+model: claude-opus-5-5
 tools: Read, Glob, Grep
 ---
 ```
@@ -444,20 +454,24 @@ tools: Read, Glob, Grep
 
 **Por qué no `effort: xhigh` en Sonnet:** patrones de seguridad sutiles (IDOR, timing attacks, second-order injection) requieren el nivel de razonamiento de Opus. En auditorías de seguridad, el costo del error justifica el modelo más capaz disponible.
 
-### El lineup actual (verificado contra `/en/models/overview`) <!-- ver: 2026-09-02 -->
+### El lineup actual (verificado contra `/en/models/overview`, pricing y deprecations) <!-- ver: 2026-10-05 -->
 
 | Modelo | ID | Contexto | Output máx | Precio in/out | effort |
 |---|---|---|---|---|---|
 | **Claude Fable 5.1** | `claude-fable-5-1` | 1M | 128K | $10 / $50 | los 5 (thinking siempre on) |
-| **Claude Opus 5** | `claude-opus-5` | 1M | 128K | $5 / $25 | los 5 |
-| **Claude Sonnet 5** | `claude-sonnet-5` | 1M | 128K | $2 / $10 | los 5 |
+| **Claude Opus 5.5** | `claude-opus-5-5` | 1M | 128K | $4 / $20 | los 5 — default `medium`, thinking siempre on |
+| **Claude Sonnet 5.5** | `claude-sonnet-5-5` | 1M | 128K | $2 / $10 | los 5 — default `medium` en Claude Code, thinking siempre on |
 | **Claude Haiku 4.5** | `claude-haiku-4-5-20251001` | 200K | 64K | $1 / $5 | ninguno |
 
-**Opus 5 reemplazó a Opus 4.8 como el Opus vigente** — 4.8, 4.7, 4.6, Sonnet 4.6 y Fable 5 pasaron a "legacy (todavía disponible)". La recomendación oficial hoy es *"start with Claude Opus 5 for most workloads"*, y Fable 5.1 solo cuando tus evals con Opus 5 a effort alto se quedan cortos.
+**Opus 5.5 y Sonnet 5.5 son la generación vigente.** Opus 5 duró dos meses como "el Opus actual": hoy está en "legacy (todavía disponible)" junto a Fable 5, Opus 4.8, 4.7 y 4.6. La recomendación oficial es *"start with Claude Opus 5.5 for most workloads"*, y Fable 5.1 para razonamiento exigente y trabajo agéntico de largo aliento.
+
+**Opus 5.5 salió más barato que el que reemplaza**: $4/$20 contra los $5/$25 de Opus 5, con cache reads a $0.20/MTok (0.05× del input, la mitad del 0.1× habitual). Un agente pinneado a `claude-opus-5` hoy paga 25% de más por un modelo legacy. Es el caso exacto de "pinear no te ahorra el mantenimiento: te lo hace visible" (más abajo).
+
+**Requisito de versión:** Opus 5.5 pide Claude Code ≥ v2.1.280 y Sonnet 5.5 ≥ v2.1.284.
 
 **Dos fechas que importan para una guía que apoya casi todo en haiku:**
 - **Haiku 4.5 se retira "no antes del 15/10/2026"** <!-- vence: 2026-10-15 --> — es el único modelo del lineup con retiro a menos de un año. Todos los agentes haiku de esta guía necesitan plan de sucesión antes de esa fecha.
-- Opus 5: no antes del 24/07/2027 · Sonnet 5: no antes del 30/06/2027 · Fable 5.1: no antes del 01/09/2027.
+- Opus 5.5: no antes del 22/09/2027 · Sonnet 5.5: no antes del 28/09/2027 · Fable 5.1: no antes del 01/09/2027 · (legacy) Opus 5: 24/07/2027 · Sonnet 5: 30/06/2027.
 
 **Aliases de Claude Code** (`/model <alias>`, `--model`, `ANTHROPIC_MODEL`, `settings.json`) — son de Claude Code, no de la API:
 
@@ -465,12 +479,12 @@ tools: Read, Glob, Grep
 |---|---|
 | `best` | El Fable más nuevo donde esté disponible, si no Opus |
 | `fable` | Fable más nuevo (hoy 5.1) — requiere Claude Code ≥ v2.1.255, **nunca es default**, puede consumir usage credits |
-| `opus` / `sonnet` / `haiku` | El más nuevo del tier (hoy Opus 5 / Sonnet 5) |
+| `opus` / `sonnet` / `haiku` | El más nuevo del tier. En la Anthropic API hoy: Opus 5.5 / Sonnet 5.5. **Depende del proveedor**: en Bedrock y Google Cloud `sonnet` → Sonnet 4.5; en Claude Platform on AWS → Sonnet 4.6; en Foundry `opus` → Opus 4.6 |
 | `opus[1m]` / `sonnet[1m]` | Mismo modelo, ventana de 1M forzada |
 | `opusplan` | Opus para planificar, cambia solo a Sonnet para ejecutar |
 | `default` | Limpia el override y usa el default de la cuenta |
 
-**El default depende del plan, no del CLI:** Max / Team Premium / Enterprise / Anthropic API → **Opus 5**. Pro / Team Standard → **Sonnet 5**. Microsoft Foundry → Sonnet 4.5. Opus 5 requiere Claude Code ≥ v2.1.219.
+**El default ya no depende del plan** (corregido): desde v2.1.280, Pro, Max, Team, Enterprise y Anthropic API → **Opus 5.5**. Microsoft Foundry → Sonnet 4.5. Antes de esa versión, Pro y Team Standard arrancaban en Sonnet 5. Para el dev pobre en plan Pro esto es el cambio que más pesa: **tu sesión principal pasó de Sonnet a Opus sin que tocaras nada**, y todo agente con `model: inherit` (o sin `model:`) la sigue. Si quieres Sonnet, hay que pedirlo: `/model sonnet` o `"model": "sonnet"` en settings. <!-- ver: 2026-10-05 -->
 
 ### Aliases y defaults en el frontmatter — qué es realmente "pinear" (verificado contra sub-agents y model-config oficiales)
 
@@ -478,7 +492,7 @@ tools: Read, Glob, Grep
 
 ```yaml
 model: sonnet              # alias de tier — ej. usado en la documentación oficial
-model: claude-sonnet-5     # ID completo
+model: claude-sonnet-5-5     # ID completo
 model: inherit             # mismo modelo que la conversación principal
 ```
 
@@ -486,25 +500,25 @@ No es que "la documentación exija poner el nombre completo" — los propios eje
 
 | Forma | Ejemplo | ¿Puede cambiar sin que lo toques? |
 |---|---|---|
-| Alias de **tier** (sin número de versión) | `sonnet`, `opus`, `haiku`, `fable` | **Sí** — "apunta a la versión recomendada para tu proveedor y se actualiza con el tiempo" (doc oficial). Hoy `sonnet`→Sonnet 5, mañana puede ser Sonnet 6 sin que edites nada |
-| ID/alias **con versión, sin fecha** (Sonnet 5, Opus 5, Fable 5.1 — generación 4.6+) | `claude-sonnet-5`, `claude-opus-5`, `claude-fable-5-1` | **No** — desde la generación 4.6, el formato sin fecha ES el snapshot pinneado, no un puntero evergreen. La doc oficial lo dice explícito: *"Every Claude model ID is a pinned snapshot, including the dateless IDs used from the 4.6 generation on"* |
+| Alias de **tier** (sin número de versión) | `sonnet`, `opus`, `haiku`, `fable` | **Sí** — "apunta a la versión recomendada para tu proveedor y se actualiza con el tiempo" (doc oficial). En julio `sonnet`→Sonnet 5, hoy →Sonnet 5.5, sin que edites nada |
+| ID/alias **con versión, sin fecha** (Sonnet 5.5, Opus 5.5, Fable 5.1 — generación 4.6+) | `claude-sonnet-5-5`, `claude-opus-5-5`, `claude-fable-5-1` | **No** — desde la generación 4.6, el formato sin fecha ES el snapshot pinneado, no un puntero evergreen. La doc oficial lo dice explícito: *"Every Claude model ID is a pinned snapshot, including the dateless IDs used from the 4.6 generation on"* |
 | ID **con fecha** (modelos pre-4.6, ej. Haiku 4.5) | `claude-haiku-4-5-20251001` | No — es el ID real, pinneado por definición |
 | Alias con versión, sin fecha, de un modelo **pre-4.6** | `claude-haiku-4-5` | Es un puntero de conveniencia al ID con fecha — en la práctica estable, pero la forma explícitamente pinneada es la fechada |
 
-**Regla corregida:** el riesgo de drift está en los alias de **tier sin número** (`sonnet`, `opus`, `haiku`, `fable`), no en `claude-haiku-4-5-20251001` — ese SÍ es la forma más pinneada que existe para Haiku, no un anti-patrón. Para Sonnet 5 / Opus 5 / Fable 5.1 no hay una forma "más pinneada" que `claude-sonnet-5` / `claude-opus-5` / `claude-fable-5-1` — ya es el snapshot, no hace falta fecha.
+**Regla corregida:** el riesgo de drift está en los alias de **tier sin número** (`sonnet`, `opus`, `haiku`, `fable`), no en `claude-haiku-4-5-20251001` — ese SÍ es la forma más pinneada que existe para Haiku, no un anti-patrón. Para Sonnet 5.5 / Opus 5.5 / Fable 5.1 no hay una forma "más pinneada" que `claude-sonnet-5-5` / `claude-opus-5-5` / `claude-fable-5-1` — ya es el snapshot, no hace falta fecha.
 
-**Prueba de que el drift de tier es real, no teórico:** esta guía escribió `claude-opus-4-8` en todos sus ejemplos en julio. Hoy `opus` resuelve a Opus 5. Los agentes que decían `model: opus` cambiaron de modelo y de comportamiento sin que nadie tocara un archivo; los que decían `claude-opus-4-8` siguen exactamente donde estaban — que es el punto, aunque ahora corran un modelo legacy. Pinear no te ahorra el mantenimiento: te lo hace **visible**.
+**Prueba de que el drift de tier es real, no teórico:** esta guía escribió `claude-opus-4-8` en todos sus ejemplos en julio, `claude-opus-5` en septiembre y `claude-opus-5-5` en octubre. Los agentes que decían `model: opus` cambiaron dos veces de modelo, de precio y de effort default sin que nadie tocara un archivo; los que decían `claude-opus-4-8` siguen exactamente donde estaban — que es el punto, aunque ahora corran un modelo legacy que cuesta 25% más que el vigente. Pinear no te ahorra el mantenimiento: te lo hace **visible**.
 
 **Sin `model:` en el agente → NO usa "el modelo más caro" ni Fable 5 por default.** Verificado contra la doc de sub-agents: el campo, si se omite, **default a `inherit`** — el agente hereda el modelo de la conversación principal. (Corrección: versiones anteriores de esta guía afirmaban que el default era `claude-fable-5` — no es así.)
 
-### Fast Mode — inferencia rápida (Opus 5 y Opus 4.8, research preview)
+### Fast Mode — inferencia rápida (Opus 5.5, Opus 5 y Opus 4.8, research preview)
 
 **Corrección importante: la versión anterior de esta guía afirmaba que fast mode "NO es un parámetro de la Messages API". Es falso.** La doc oficial `/en/build-with-claude/fast-mode` documenta el parámetro con ejemplos en 8 lenguajes: <!-- ver: 2026-09-02 -->
 
 ```bash
 curl https://api.anthropic.com/v1/messages \
   -H "anthropic-beta: fast-mode-2026-02-01" \
-  -d '{ "model": "claude-opus-5", "max_tokens": 4096, "speed": "fast", ... }'
+  -d '{ "model": "claude-opus-5-5", "max_tokens": 4096, "speed": "fast", ... }'
 ```
 
 Es un **parámetro top-level `speed: "fast"`** + beta header `fast-mode-2026-02-01`, sobre el endpoint **beta** de messages (`client.beta.messages.*`). No va en headers sueltos ni en `extra_body`. Existe además como feature de producto (`/fast` en Claude Code), pero las dos cosas son la misma palanca, no dos features distintas.
@@ -515,14 +529,14 @@ Es un **parámetro top-level `speed: "fast"`** + beta header `fast-mode-2026-02-
 
 | Modelo | `speed: "fast"` |
 |---|---|
-| **Opus 5**, **Opus 4.8** | ✅ funciona — hasta 2.5× más tokens de output por segundo |
+| **Opus 5.5**, **Opus 5**, **Opus 4.8** | ✅ funciona — hasta 2.5× más tokens de output por segundo |
 | Opus 4.7 | ❌ **error**, sin fallback |
 | Opus 4.6 | ⚠️ **no falla**: corre a velocidad estándar y factura estándar. `usage.speed` dice `"standard"` |
 | Sonnet / Haiku / Fable | ❌ no existe |
 
 Siempre verificar `response.usage.speed` — es el único modo de distinguir "corrió rápido" de "corrió normal y no te avisó" (§21).
 
-**Precio: $10/$50 por MTok** — 2× el estándar de Opus, y aplica sobre **toda** la ventana de contexto, incluidos los requests de más de 200k tokens de input.
+**Precio: 2× el estándar del modelo** — $8/$40 por MTok en Opus 5.5, $10/$50 en Opus 5 y 4.8 — y aplica sobre **toda** la ventana de contexto, incluidos los requests de más de 200k tokens de input. <!-- ver: 2026-10-05 -->
 
 **Dónde NO está:** Bedrock, Google Cloud, Microsoft Foundry, Claude Platform on AWS, Batch API y Priority Tier. Claude API (incluido Managed Agents) y nada más. Es research preview: hace falta account manager o waitlist.
 
@@ -530,7 +544,7 @@ Siempre verificar `response.usage.speed` — es el único modo de distinguir "co
 
 | Escenario | Fast Mode |
 |---|---|
-| Sesión interactiva en Opus 5 donde la latencia molesta | ✅ — mismo modelo y mismas capacidades, más rápido; activar desde el inicio |
+| Sesión interactiva en Opus 5.5 donde la latencia molesta | ✅ — mismo modelo y mismas capacidades, más rápido; activar desde el inicio |
 | Agentes haiku/sonnet (git, postmortem, implementador) | ❌ — no disponible, y no lo necesitan |
 | Trabajo batch/CI sin humano esperando | ❌ — pagás 2× premium por velocidad que nadie ve (y con Batch API ni siquiera se puede) |
 | Toggle a mitad de una sesión larga | ❌ — cache miss del prefix completo, refacturado a precio premium |
@@ -538,9 +552,9 @@ Siempre verificar `response.usage.speed` — es el único modo de distinguir "co
 
 ### Contexto largo — ya no hay "extended premium"
 
-**Re-verificado:** de Claude 4.6 en adelante (Opus 5, Sonnet 5, Fable 5.1 incluidos) la ventana de 1M tokens viene **a pricing estándar** — *"a 900k-token request is billed at the same per-token rate as a 9k-token request"*. El modelo de "activar extended context a 10×" de versiones anteriores de esta guía quedó obsoleto. Haiku 4.5 mantiene 200K. <!-- ver: 2026-09-02 -->
+**Re-verificado:** de Claude 4.6 en adelante (Opus 5.5, Sonnet 5.5, Fable 5.1 incluidos) la ventana de 1M tokens viene **a pricing estándar** — *"a 900k-token request is billed at the same per-token rate as a 9k-token request"*. El modelo de "activar extended context a 10×" de versiones anteriores de esta guía quedó obsoleto. Haiku 4.5 mantiene 200K. <!-- ver: 2026-09-02 -->
 
-En Claude Code la ventana grande se fuerza con los aliases `opus[1m]` / `sonnet[1m]`.
+En Claude Code la ventana grande se fuerza con los aliases `opus[1m]` / `sonnet[1m]`; no hacen nada cuando el alias ya resuelve a un modelo con 1M nativo (Sonnet 5 y 5.5, Opus 4.7 en adelante).
 
 Lo que sigue vigente es la física del costo: el input se cobra por token usado. Una sesión que arrastra 500k tokens de contexto paga esos 500k en cada llamada (menos lo cacheado — §3). La palanca lowcost no es un flag: es fragmentar el problema y no cargar lo que no se usa.
 
@@ -554,32 +568,37 @@ Lo que sigue vigente es la física del costo: el input se cobra por token usado.
 | Reviewer de bugs/seguridad con haiku | Falsos negativos silenciosos — no detecta lo que no puede razonar. Sonnet mínimo |
 | Plan arquitectónico con haiku | Aprueba el primer approach que se le ocurre sin evaluar trade-offs — sonnet |
 | Opus para git/postmortem | haiku — tarea estructurada |
-| Alias de tier sin versión (`sonnet`, `haiku`, `opus`) en el agente | Drift silencioso — se actualiza solo con el tiempo, rompe reproducibilidad de costo. Usar `claude-sonnet-5` / `claude-haiku-4-5` |
+| Alias de tier sin versión (`sonnet`, `haiku`, `opus`) en el agente | Drift silencioso — se actualiza solo con el tiempo, rompe reproducibilidad de costo. Usar `claude-sonnet-5-5` / `claude-haiku-4-5` |
 | Asumir que sin `model:` el agente usa el modelo más caro | Falso — default a `inherit` (hereda el modelo de la sesión principal), no a Fable 5.1 |
 | Sonnet para triage/dispatch | haiku — decisión simple sobre keywords |
-| Opus por defecto "para estar seguros" | Sonnet + `effort: xhigh` primero — 2.5× más barato por token |
+| Opus por defecto "para estar seguros" | Sonnet + `effort: xhigh` primero — 2× más barato por token |
+| Dejar el default de la cuenta en plan Pro creyendo que es Sonnet | Desde v2.1.280 el default es Opus 5.5 en todos los planes — fijar `"model": "sonnet"` si eso es lo que quieres |
+| `"effortLevel": "high"` top-level en `~/.claude/settings.json` y asumir que rige en Opus 5.5 | No cuenta para 5.5: corre en `medium`. Usar `modelSettings` |
+| Agente pinneado a `claude-opus-5` "porque es el vigente" | Es legacy y cuesta 25% más que `claude-opus-5-5` |
 | `effort: xhigh` en Sonnet 4.6 u Opus 4.6 | La API lo rechaza — `xhigh` solo existe de Opus 4.7 / Sonnet 5 en adelante. En esos modelos el escalón es `max` |
-| Cambiar `effort` a mitad de conversación | Invalida el prompt cache (salvo el effort por-mensaje de Opus 5 / Fable 5.1) — elegir nivel al inicio |
+| Cambiar `effort` a mitad de conversación | Invalida el prompt cache (salvo el effort por-mensaje de Opus 5.5 / Sonnet 5.5 / Opus 5 / Fable 5.1) — elegir nivel al inicio |
 | Asumir que `speed: "fast"` falla si el modelo no lo soporta | Solo Opus 4.7 da error. **Opus 4.6 corre estándar y no avisa** — chequear `usage.speed` |
 | `effort: xhigh` global en settings.json | Solo en agentes o skills específicas — el costo se multiplica por cada tool call |
 
 ### Checklist §25
 
 ```
-□ Cada agente tiene model: especificado con alias de versión, NO alias de tier desnudo (ej. claude-haiku-4-5 o claude-sonnet-5, NO haiku ni sonnet a secas)
+□ Cada agente tiene model: especificado con alias de versión, NO alias de tier desnudo (ej. claude-haiku-4-5 o claude-sonnet-5-5, NO haiku ni sonnet a secas)
 □ Reviewer de convenciones (checklist fijo) → claude-haiku-4-5
-□ Reviewer de correctness (bugs, seguridad, edge cases) → claude-sonnet-5 mínimo
+□ Reviewer de correctness (bugs, seguridad, edge cases) → claude-sonnet-5-5 mínimo
 □ git, postmortem, curador → claude-haiku-4-5
 □ Plan mecánico (archivos conocidos, sin ambigüedad) → claude-haiku-4-5
-□ Plan arquitectónico (trade-offs, multi-sistema) → claude-sonnet-5
+□ Plan arquitectónico (trade-offs, multi-sistema) → claude-sonnet-5-5
 □ Antes de Opus → probar Sonnet con effort: xhigh (skill frontmatter o settings.json)
 □ Opus solo si: security/arch one-shot O contexto > 10k tokens O costo de error es irreversible
 □ Agentes Opus tienen tools mínimas (Read/Grep/Glob) — el costo extra debe estar en razonamiento, no en ejecución
 □ effort: xhigh no en settings.json global — solo en agentes/skills que lo necesitan
 □ Evitar alias de tier desnudo (haiku ❌, sonnet ❌, opus ❌ — cambian de versión solos); claude-haiku-4-5 ✅ y claude-haiku-4-5-20251001 ✅ son AMBOS formas pinneadas válidas para Haiku
-□ El Opus vigente es claude-opus-5 — 4.8/4.7/4.6 pasaron a legacy; revisar los agentes que quedaron pinneados a 4.8
-□ effort: xhigh solo existe en Opus 4.7+/Sonnet 5/Fable — en Opus 4.6 y Sonnet 4.6 el escalón es max
-□ Fast Mode: Opus 5 y Opus 4.8 — SÍ es parámetro de API (speed: "fast" + beta fast-mode-2026-02-01, endpoint beta) y también /fast en Claude Code; $10/$50/MTok; decidir al inicio (el toggle invalida el cache); Opus 4.6 lo ignora en silencio
+□ La generación vigente es claude-opus-5-5 / claude-sonnet-5-5 — Opus 5, 4.8, 4.7 y 4.6 son legacy; revisar los agentes pinneados a claude-opus-5 (pagan $5/$25 en vez de $4/$20)
+□ Opus 5.5 y Sonnet 5.5 arrancan en effort medium — si un agente necesita high, escribirlo en su frontmatter
+□ Default de cuenta = Opus 5.5 en todos los planes (v2.1.280+) — si quieres Sonnet en la sesión principal, fijarlo en settings
+□ effort: xhigh solo existe en Opus 4.7+/Sonnet 5+/Fable — en Opus 4.6 y Sonnet 4.6 el escalón es max
+□ Fast Mode: Opus 5.5, Opus 5 y Opus 4.8 — SÍ es parámetro de API (speed: "fast" + beta fast-mode-2026-02-01, endpoint beta) y también /fast en Claude Code; 2× el estándar ($8/$40 en 5.5, $10/$50 en 5 y 4.8); decidir al inicio (el toggle invalida el cache); Opus 4.6 lo ignora en silencio
 □ Contexto: 1M es estándar sin premium de Claude 4.6 en adelante — pero cada token en contexto se paga; fragmentar sigue siendo la regla
 □ Haiku 4.5 se retira no antes del 15/10/2026 — si la arquitectura apoya en haiku, tener sucesor elegido
 ```

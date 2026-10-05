@@ -1081,7 +1081,7 @@ Si todavía tenés `anthropics/claude-code-action@beta`:
 | Deploy automático al marketplace | Plugins requieren revisión manual de Anthropic |
 | Coverage report + badge | No hay target de coverage — solo tests de fallos silenciosos |
 | Dependabot auto-update | Deps auto-actualizadas pueden romper agentes silenciosamente |
-| Claude en CI sin `--model` explícito | Usa el default de la cuenta (Opus 5 en Anthropic API/Max/Team Premium/Enterprise, Sonnet 5 en Pro/Team Standard, Sonnet 4.5 en Microsoft Foundry) — nunca Fable, pero igual impredecible por PR si cambia el default de cuenta |
+| Claude en CI sin `--model` explícito | Usa el default de la cuenta (Opus 5.5 en todos los planes y en la Anthropic API desde v2.1.280, Sonnet 4.5 en Microsoft Foundry) — nunca Fable, pero igual impredecible por PR si cambia el default de cuenta |
 
 ### Checklist §20
 
@@ -1553,9 +1553,9 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
 **sonnet** — El intermedio. 2× más caro que haiku ($2/$10 por 1M tokens; ese precio dejó de ser introductorio y pasó a estándar — la suba a $3/$15 agendada para el 01/09/2026 fue cancelada). Para implementación, debugging, tareas que requieren razonar sobre contexto variable. La mayoría de los agentes especialistas viven aquí.
 
-**opus** — El más poderoso. 5× más caro que haiku y 2.5× más que sonnet ($5/$25 por 1M tokens en Opus 5 — el 15× histórico ya no aplica). Ese 2.5× es estable, no un descuento temporal. Para arquitectura con trade-offs complejos y security. Si crees que lo necesitas, primero intenta con sonnet + effort.
+**opus** — El más poderoso. 4× más caro que haiku y 2× más que sonnet ($4/$20 por 1M tokens en Opus 5.5 — el 15× histórico ya no aplica, y el 2.5× era de Opus 5). Para arquitectura con trade-offs complejos y security. Si crees que lo necesitas, primero intenta con sonnet + effort.
 
-**fable** — El techo. 10× haiku, 5× sonnet ($10/$50 en Fable 5.1). Thinking siempre encendido, no se puede desactivar. Reservado para lo que Opus 5 a `xhigh` no resuelve — si no mediste eso primero, no es tu modelo.
+**fable** — El techo. 10× haiku, 5× sonnet ($10/$50 en Fable 5.1). Thinking siempre encendido, no se puede desactivar. Reservado para lo que Opus 5.5 a `xhigh` no resuelve — si no mediste eso primero, no es tu modelo.
 
 ### Los componentes
 
@@ -1565,9 +1565,13 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
 **Hub** — Skill especial de triage siempre en contexto (auto-load). Su único trabajo es decirle a Claude qué agente usar para cada tarea. Debe ser corto (< 60 líneas para plugins, < 40 para proyectos con CLAUDE.md) porque se paga en cada tarea.
 
-**Hook** — Script Python que se ejecuta automáticamente cuando Claude hace algo. Hay 4 tipos: `PreToolUse` (antes de una acción, puede bloquearla), `PostToolUse` (después, solo informa), `SubagentStop` (cuando un agente termina), `Stop` (cuando cierra la sesión).
+**Hook** — Comando, request HTTP o prompt que el harness ejecuta solo cuando ocurre un evento (un *settings hook*, §7). Hay 33 eventos; los que más usa esta guía: `PreToolUse` (antes de una acción, puede denegarla), `PostToolUse` (después; no deshace, pero puede devolverle el error a Claude), `SubagentStop` (cuando un agente termina) y `Stop` (cuando Claude termina de responder — no cuando se cierra la sesión: eso es `SessionEnd`). <!-- ver: 2026-10-05 -->
 
-**Plugin** — Conjunto de agentes + skills + hooks empaquetados en un directorio con `plugin.json`. Se instala con `claude plugin add github:usuario/repo` y funciona en cualquier proyecto.
+**Mod** — Plugin cuyo `hooks/hooks.json` apunta a un módulo JS/TS con `"modules"`. Sus hooks son funciones que corren dentro del proceso de Claude Code: observan, reescriben o responden eventos, registran comandos y dibujan en la interfaz. Corren con tus permisos y sin sandbox (§42).
+
+**Settings hook** — El hook de §7, llamado así para distinguirlo del hook de un mod. Se declara en un archivo de settings o en el `hooks/hooks.json` de un plugin y corre fuera del proceso.
+
+**Plugin** — Conjunto de agentes + skills + hooks empaquetados en un directorio con `plugin.json`. Se instala desde un marketplace (`claude plugin marketplace add usuario/repo` + `claude plugin install plugin@marketplace`, §11) y funciona en cualquier proyecto. Si además trae un hooks module, es un mod (§42).
 
 **Orchestrador / Lead** — Agente que coordina otros agentes pero no implementa código directamente. No tiene Bash — coordina con instrucciones, no con comandos.
 
@@ -1585,13 +1589,13 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
 ### Los hooks en detalle
 
-**PreToolUse** — El único hook bloqueante. Se ejecuta antes de que Claude use una herramienta. Si retorna `permissionDecision: deny`, la acción no ocurre. Usar para validaciones críticas e irreversibles.
+**PreToolUse** — Se ejecuta antes de que Claude use una herramienta. Si retorna `permissionDecision: deny`, la acción no ocurre. Es el hook que deniega una tool call antes de que pase; no es el único que bloquea (`UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolBatch` y otros también, cada uno a su manera — §7). Usar para validaciones críticas e irreversibles.
 
-**PostToolUse** — Informativo. Se ejecuta después de que Claude usa una herramienta. No puede deshacer la acción. Usar para confirmar, notificar o encadenar acciones secundarias.
+**PostToolUse** — Se ejecuta después de que Claude usa una herramienta. No puede deshacer la acción, pero con `"decision": "block"` + `reason` le devuelve el error a Claude en el mismo turno (§7). Usar para validar el resultado, notificar o encadenar acciones secundarias.
 
-**SubagentStop** — Se ejecuta cuando un agente termina su trabajo. Usar para encadenar agentes o notificar al usuario. Output debe ser JSON `{"systemMessage": "..."}`.
+**SubagentStop** — Se ejecuta cuando un agente termina su trabajo. Usar para encadenar agentes o exigir un paso más (`decision: block` lo hace seguir). Su stdout plano va al debug log: para avisar a la persona, JSON `{"systemMessage": "..."}`; para hablarle al modelo, `additionalContext` (§41).
 
-**Stop** — Se ejecuta cuando Claude cierra la sesión. Usar para recordatorios de fin de sesión (postmortem, learnings). Output debe ser JSON `{"systemMessage": "..."}`.
+**Stop** — Se ejecuta cuando Claude termina de responder (cada turno, no al cerrar la sesión). Usar para recordatorios de fin de trabajo o para forzar que siga (`decision: block`). Su stdout plano va al debug log: para la persona, JSON `{"systemMessage": "..."}` (§41).
 
 **systemMessage** — Campo del JSON de un hook que se muestra **a la persona** como banner; no entra al contexto del modelo. Para que Claude lo vea: `hookSpecificOutput.additionalContext`, o stdout plano en los 4 eventos que lo aceptan (`UserPromptSubmit`, `UserPromptExpansion`, `SessionStart`, `PostModelSwitch` — §7). Algunos eventos lo descartan o lo entregan en otro lado; la sección de cada evento en la doc lo indica. <!-- ver: 2026-09-22 -->
 

@@ -40,7 +40,7 @@ FALLÓ: <archivo::test> — <línea del error>
 name: <nombre-kebab-case>           # cómo se invoca: @nombre · único en el proyecto
 description: "<Qué hace este agente>. Usar cuando <caso principal>,
   <caso secundario>, o el contexto involucra <señal de activación>."
-model: <claude-haiku-4-5|claude-sonnet-5|claude-opus-5|claude-fable-5-1>   # pinear siempre — ver §25
+model: <claude-haiku-4-5|claude-sonnet-5-5|claude-opus-5-5|claude-fable-5-1>   # pinear siempre — ver §25
 tools: <Read, Glob, Grep>           # solo las necesarias — ver tabla de tools abajo
 ---
 
@@ -72,7 +72,7 @@ Si un comando falla:
 name: security-auditor
 description: "Audit de seguridad. Usar cuando el PR modifica auth, permisos,
   storage o cualquier input de usuario. No usar para linting o code style."
-model: claude-opus-5                 # one-shot irreversible — ver §25
+model: claude-opus-5-5                 # one-shot irreversible — ver §25
 tools: Read, Glob, Grep             # sin Write ni Bash — solo lectura
 ---
 
@@ -112,6 +112,8 @@ RESULTADO: PASS | FAIL
 | `mcpServers` | No | MCP servers disponibles para este agente — referencia por nombre a uno ya configurado, o definición inline. **Ignorado si el agente viene de un plugin** |
 | `effort` | No | Override de esfuerzo: `low` · `medium` · `high` · `xhigh` · `max` |
 | `color` | No | Color en la UI: `red` · `blue` · `green` · `yellow` · `purple` · `orange` · `pink` · `cyan` |
+| `omitClaudeMd` | No | `true` = el subagente arranca **sin** los CLAUDE.md de usuario, proyecto y local (los managed sí cargan). Palanca lowcost directa para agentes que reciben todo en el prompt de delegación: se ahorran el costo fijo de §2. Ignorado si el agente corre como sesión principal (`--agent`). Requiere v2.1.271+ <!-- ver: 2026-10-05 --> |
+| `experimental` | No | Mapa de opciones experimentales. `cacheTtl: 5m` o `1h` elige la vida del prompt cache para los requests de ese subagente. Se ignora `1h` mientras tu suscripción esté consumiendo usage credits. Requiere v2.1.248+ |
 
 **Gotcha verificado (doc oficial de sub-agents):** `hooks`, `mcpServers` y `permissionMode` se **ignoran en silencio** cuando el agente se carga desde un plugin — sin error, sin warning. Si un agente de plugin necesita alguno de estos tres, la única forma es que el usuario copie el archivo a `.claude/agents/` o `~/.claude/agents/` locales; agregar reglas en `permissions.allow` de `settings.json` es la alternativa para permisos, pero aplica a toda la sesión, no solo a ese subagente. <!-- ver: 2026-07-04 -->
 
@@ -514,6 +516,8 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 
 <!-- §7-ref -->
 
+> Estos son los **settings hooks**: un comando, HTTP o prompt que corre fuera del proceso. Desde v2.1.287 un plugin también puede registrar hooks como funciones JS/TS que corren *dentro* de Claude Code y dibujan en la interfaz: eso es un **mod** (§42). Ojo con el alcance de "física pura": vale frente al modelo, no frente a un mod instalado, que puede saltarse un `PreToolUse` no-managed (§42). <!-- ver: 2026-10-05 -->
+
 > **Complemento al recuadro de stdout plano (§7-quick).** El matiz que hace confusa la fila *"`additionalContext` al top level se ignora"* del catálogo de muertes silenciosas (§35): eso vale cuando **emitís JSON**. Ahí el campo tiene que ir dentro de `hookSpecificOutput` o se descarta sin aviso. Las dos reglas conviven — texto plano funciona, JSON mal anidado no — y son fáciles de mezclar: **si tu primera línea empieza con `{`, estás en el camino JSON y aplican sus reglas**; si no, es texto plano y solo funciona en esos 4 eventos.
 
 ### Eventos de nicho — no cubiertos arriba
@@ -537,7 +541,7 @@ Re-verificado contra la referencia oficial de hooks — 33 eventos en total, est
 | `Setup` | Con flags `--init-only`/`--init`/`--maintenance` — preparación única |
 | `UserPromptExpansion` | Un slash command se expande a un prompt — bloquea la expansión |
 | `DirectoryAdded` | Se agrega un directorio al workspace — no bloquea *(nuevo desde julio 2026)* |
-| `PreModelSwitch` / `PostModelSwitch` | Cambio de modelo en la sesión; el matcher matchea el **nombre del modelo** (`claude-opus-5`, `.*opus.*`) y `Pre` bloquea con exit 2 *(nuevos desde julio 2026)* |
+| `PreModelSwitch` / `PostModelSwitch` | Cambio de modelo en la sesión; el matcher matchea el **nombre del modelo** (`claude-opus-5-5`, `.*opus.*`) y `Pre` bloquea con exit 2 *(nuevos desde julio 2026)* |
 
 > **`PreModelSwitch` es la palanca lowcost que faltaba:** hasta ahora no había forma de impedir que una sesión escale de modelo sin querer. Un hook con `matcher: ".*opus.*"` que devuelve exit 2 convierte "no uses Opus salvo que lo decidas" de sugerencia del prompt en física del harness (§7 intro). Mismo argumento que cualquier otro guard: la regla escrita se ignora, el hook no.
 
@@ -561,7 +565,7 @@ La guía usa `"type": "command"` (Python/shell) en todos los ejemplos. Existen *
 {"type": "prompt", "prompt": "¿Este comando Bash es seguro para ejecutar en producción? $ARGUMENTS"}
 ```
 
-**Prompt hooks: corren en Haiku por defecto** (campo `model` para subirlo) y responden `{"ok": true|false, "reason": "..."}`. Es literalmente el Advisor Pattern (§31) implementado por el harness — un juez barato que no consume el contexto principal.
+**Prompt hooks: corren en el modelo de background** (el que Claude Code usa para sus tareas de fondo: Haiku salvo que `ANTHROPIC_DEFAULT_HAIKU_MODEL` diga otra cosa; campo `model` para cambiarlo) y responden `{"ok": true|false, "reason": "..."}`. Es literalmente el Advisor Pattern (§31) implementado por el harness — un juez barato que no consume el contexto principal.
 
 **Agent hooks** (experimental, preferir `command` en producción): mismo formato `ok`/`reason`, timeout default **60s**, hasta **50 turnos de tool use**, sin campo `impossible`. Úsalo solo cuando la verificación necesita *mirar* el repo — "¿pasan los tests?" — y no alcanza con leer el payload.
 
@@ -604,7 +608,7 @@ La tabla de arriba (§7-quick) cubre los dos habituales. La lista completa, con 
 
 Los dos últimos son la novedad que conecta §6 y §7: una skill puede **registrar sus propios hooks al invocarse** (campo `hooks` en el frontmatter, → §6). El detalle que hay que leer dos veces: el hook de una skill **queda registrado el resto de la sesión**, no solo durante la skill. Para que se desregistre después de disparar una vez, el campo es `once: true`.
 
-**`disableAllHooks: true`** apaga todo. Precedencia con trampa: gana el valor que queda **después** de resolver la precedencia de settings, así que el `settings.json` de un proyecto puede desactivar los hooks que definiste en tu `~/.claude/`. Los de managed settings siguen corriendo salvo que el `disableAllHooks` esté también ahí.
+**`disableAllHooks: true`** apaga todo. Precedencia con trampa: gana el valor que queda **después** de resolver la precedencia de settings, así que el `settings.json` de un proyecto puede desactivar los hooks que definiste en tu `~/.claude/`. Los de managed settings siguen corriendo salvo que el `disableAllHooks` esté también ahí. Para apagarlos una sola corrida sin importar lo que diga el proyecto: `claude --settings '{"disableAllHooks": true}'`. No existe forma de deshabilitar un hook individual dejándolo en la config. El mismo flag apaga también los **mods** que instalaste (§42), no solo los settings hooks. <!-- ver: 2026-10-05 -->
 
 **`/hooks` lista todos los hooks configurados agrupados por evento.** Es la respuesta directa a la pregunta de §35 ("¿cómo sabría que este hook está muerto?"): si tu guard no aparece en `/hooks`, no está registrado — no hace falta esperar a que falle un caso real para descubrirlo.
 
@@ -640,7 +644,7 @@ Consecuencia práctica: `Bash` matchea exactamente `Bash`, pero `Bash.` es regex
     "args": [],                 // si se setea, ejecuta en forma exec (sin shell)
     "shell": "bash",            // "bash" (default) o "powershell"
     "if": "Bash(npm *)",        // AND con matcher — SOLO en los 5 eventos de tool
-    "timeout": 30,              // segundos antes de timeout (default: sin límite)
+    "timeout": 30,              // segundos antes de cancelar (default: 600 — ver nota abajo)
     "statusMessage": "Verificando paquete...",  // spinner visible al usuario
     "once": false,              // true = corre una vez y se desregistra
     "async": false,             // true = corre en background, no bloquea
@@ -650,21 +654,32 @@ Consecuencia práctica: `Bash` matchea exactamente `Bash`, pero `Bash.` es regex
 }
 ```
 
+**Defaults de `timeout`** (corregido: la versión anterior decía "sin límite"): **600 s** para `command`, `http` y `mcp_tool`; **30 s** para `prompt`; **60 s** para `agent`. El default de `command`/`http`/`mcp_tool` baja a **30 s** en `UserPromptSubmit`, `PreModelSwitch` y `PostModelSwitch`, y a **10 s** en `MessageDisplay`. No se aplica a un hook `command` con `async: true`. Un guard colgado en `PreToolUse` retiene la tool call hasta 10 minutos si no pones `timeout`. <!-- ver: 2026-10-05 -->
+
 **Placeholders de path** — resuelven contra la raíz correcta sin importar el cwd: `${CLAUDE_PROJECT_DIR}` (raíz del proyecto), `${CLAUDE_PLUGIN_ROOT}` (instalación del plugin) y `${CLAUDE_PLUGIN_DATA}` (directorio persistente del plugin, **sobrevive a los updates** — ahí van caches y dependencias instaladas, nunca dentro de `PLUGIN_ROOT`). En worktrees `${CLAUDE_PROJECT_DIR}` queda fijo: para el directorio actual usá el campo `cwd` del payload del hook.
 
 **`if` y comandos encadenados** — un `if` angosto tipo `Bash(git push *)` NO matchea `git add -u && git commit && git push origin master`: la regla evalúa por prefijo y el comando parte con `git add`. Para guards de seguridad: `if` amplio (`Bash(git *)`) + el script segmenta internamente por `&&`/`||`/`;`. Un `if` angosto en un guard es un bypass, no una optimización.
 
 ### Modos de permiso — cuándo usar cada uno
 
-| Modo | Cómo activar | Comportamiento | Cuándo usar |
-|---|---|---|---|
-| `plan` | `"permissionMode": "plan"` | Solo Read/Glob/Grep — 0 writes ni Bash | Auditar antes de ejecutar |
-| `auto` | default | Pide confirmación en acciones destructivas | Trabajo interactivo normal |
-| `acceptEdits` | `"permissionMode": "acceptEdits"` | Auto-aprueba Write/Edit, pide Bash peligroso | Refactors grandes sin riesgo |
-| `dontAsk` | `--dangerously-skip-permissions` | Todo automático, sin interrupciones | CI/CD no interactivo |
-| `bypassPermissions` | Solo config interna | Bypasea hooks y permissions completamente | **Sandboxes aislados únicamente** |
+| Modo | Qué corre sin preguntar | Cuándo usar |
+|---|---|---|
+| `default` (en la UI: **Manual**) | Solo lecturas | Revisar cada acción, trabajo sensible |
+| `acceptEdits` | Lecturas, edits de archivos y comandos comunes de filesystem (`mkdir`, `touch`, `mv`, `cp`) | Iterar sobre código que estás revisando |
+| `plan` | Lecturas, más comandos aprobados por el classifier si auto mode está disponible | Explorar antes de cambiar |
+| `auto` | Todo, con un classifier (un segundo modelo) revisando cada acción | Tareas largas, menos fatiga de prompts |
+| `dontAsk` | Lecturas y tools pre-aprobadas; **lo que habría preguntado se deniega** | CI y scripts bloqueados |
+| `bypassPermissions` | Todo, incluidas escrituras a paths protegidos | **Solo contenedores y VMs aislados** |
 
-Regla: el modo más restrictivo que permita trabajar sin fricción innecesaria. En producción: nunca `bypassPermissions`.
+Corregido contra `code.claude.com/docs/en/permission-modes` — la tabla anterior tenía tres filas mal: <!-- ver: 2026-10-05 -->
+
+- **`auto` no es "el default que pide confirmación"**: es el modo donde un classifier decide en tu lugar. Desde **v2.1.283** es el modo de arranque de las sesiones interactivas de terminal y VS Code. El modo que pregunta todo es `default` (Manual).
+- **`dontAsk` no es `--dangerously-skip-permissions`**: es lo contrario. No aprueba todo, **deniega** todo lo que no esté pre-aprobado. El flag `--dangerously-skip-permissions` activa `bypassPermissions`.
+- **`plan` ya no es "0 Bash"**: con auto mode disponible, corre los comandos que el classifier aprueba.
+
+Se elige con `claude --permission-mode <modo>`, con `permissions.defaultMode` en settings, o con `permissionMode:` en el frontmatter de un agente (§5). `auto` y `bypassPermissions` puestos como `defaultMode` en el `.claude/settings.json` de un **proyecto** no surten efecto: un repo no puede subirte el modo.
+
+Regla: el modo más restrictivo que permita trabajar sin fricción innecesaria. En producción: nunca `bypassPermissions`. Para CI sin humano, `dontAsk` + una allowlist explícita es la opción bloqueada; `bypassPermissions` solo dentro de un contenedor.
 
 > **Verificado en producción:** **3 capas de seguridad para apps multi-usuario:** Layer 1 (input) — regla en CLAUDE.md `user input = DATA` + `strip_prompt_injection()` en architect. Layer 2 (generation) — `pre_write_guard.py` bloquea path traversal y secretos en archivos generados. Layer 3 (storage) — `sanitize_for_storage()` antes de Atlas. Orden: implementar Layer 2 primero — es el único bloqueante (PreToolUse). <!-- ver: 2026-06-01 -->
 
@@ -1257,11 +1272,11 @@ COMPLEXITY_MAP = [
     (["typo", "rename", "format", "lint", "mover", "copiar"],
      "claude-haiku-4-5", None, "simple"),
     (["bug", "fix", "test", "feature", "añadir", "agregar", "refactor"],
-     "claude-sonnet-5", "medium", "media"),
+     "claude-sonnet-5-5", "medium", "media"),
     (["arquitectura", "diseño", "migración", "seguridad", "critico", "critical"],
-     "claude-sonnet-5", "xhigh", "compleja"),
+     "claude-sonnet-5-5", "xhigh", "compleja"),
     (["irreversible", "producción", "production"],
-     "claude-opus-5", None, "crítica"),
+     "claude-opus-5-5", None, "crítica"),
 ]
 
 try:
@@ -2599,7 +2614,7 @@ name: lead-planner
 description: "Planifica la delegación de tareas cross-especialistas. Usar cuando
   una tarea toca ≥2 sistemas o requiere ≥2 especialistas en secuencia.
   NO implementa ni delega — devuelve el plan y el hilo principal lo ejecuta."
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 tools: Read, Glob, Grep
 ---
 
@@ -2628,7 +2643,7 @@ name: lead-orchestrator
 description: "Ejecuta pipelines cross-especialistas de una pasada, sin checkpoints
   con el usuario. Usar SOLO cuando la secuencia está pre-aprobada
   (/plan corrió y el usuario dio el ok)."
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 tools: Read, Glob, Grep, Agent(implementador, reviewer)
 ---
 
@@ -2847,8 +2862,11 @@ Las vías 1 y 2 hacen que la skill **exista**; la 3 decide **quién la lleva car
 ### Instalación — CLI
 
 ```bash
-claude plugin add github:usuario/mi-repo
+claude plugin marketplace add usuario/mi-repo        # el repo necesita .claude-plugin/marketplace.json
+claude plugin install mi-plugin@<nombre-del-marketplace>
 ```
+
+Corregido: `claude plugin add github:...` **no existe** (verificado con `claude plugin --help` en v2.1.289: los subcomandos son `install`, `marketplace`, `validate`, `test`, `update`...). Un plugin se instala desde un marketplace, así que son dos pasos: registrar el marketplace y luego instalar `plugin@marketplace`. `#ref` pinea rama o tag (`usuario/mi-repo#v1.2.0`). Para pasarle el plugin a pocas personas sin marketplace: el directorio o un `.zip`, y `claude --plugin-dir`. <!-- ver: 2026-10-05 -->
 
 ### Probar localmente
 
@@ -2934,7 +2952,7 @@ Es REQUERIDO para distribución y ningún template lo mostraba:
 <Una línea: qué hace y para quién.>
 
 ## Instalación
-`claude plugin add github:<usuario>/<repo>` — o desktop: Browse plugins → Add marketplace → `<usuario>/<repo>`
+`claude plugin marketplace add <usuario>/<repo>` y luego `claude plugin install <plugin>@<marketplace>` — o desktop: Browse plugins → Add marketplace → `<usuario>/<repo>`
 
 ## Componentes
 | Componente | Qué hace | Modelo |
@@ -3276,7 +3294,7 @@ El inventario cruza los plugins habilitados con sus `lspServers`, chequea que ca
 
 > Como un sous-chef que revisa el plato antes de que salga a la mesa: no cocina — solo dice si algo está mal. El chef sigue siendo sonnet; el revisor es haiku. El plato mejora sin cambiar al chef Michelin.
 
-El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus" (2.5× por token, ratio estable — §25). La solución no es subir de modelo — es agregar un segundo agente barato que revisa el output del primero.
+El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus" (2× por token desde Opus 5.5 — §25). La solución no es subir de modelo — es agregar un segundo agente barato que revisa el output del primero.
 
 ### Cuándo aplicar
 
@@ -3284,7 +3302,7 @@ El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus"
 |---|---|---|
 | Sonnet genera output que incumple un criterio fijo (schema, formato, campos obligatorios) | Iterar con sonnet hasta que funcione | haiku detecta y reporta el fallo en un turno |
 | El output de un agente es input del siguiente (pipeline) | Error se propaga silenciosamente | Advisor corta la cadena antes de que escale |
-| Subir a opus parece la única solución | ~2.5× costo por token hoy (~1.7× desde 01/09/2026) | Sonnet + haiku advisor (~1.15× costo) |
+| Subir a opus parece la única solución | ~2× costo por token | Sonnet + haiku advisor (~1.15× costo) |
 
 **No aplicar cuando:** ya existe un agente reviewer explícito en el sistema. Dos revisores para lo mismo = costo duplicado sin beneficio.
 
@@ -3332,7 +3350,7 @@ El advisor no itera — emite veredicto. Si hacés más de 1 retry, el problema 
 |---|---|---|
 | Sonnet solo | 1× | Output predecible, stack conocido |
 | Sonnet + haiku advisor | ~1.15× | Output con consecuencias si está mal |
-| Opus solo | 2.5× | Si sonnet + advisor sigue fallando |
+| Opus solo | 2× | Si sonnet + advisor sigue fallando |
 | Opus + advisor | ~2.65× | Security/one-shot donde el error es irreversible |
 
 El advisor barato mantiene su ventaja: haiku usa además el tokenizer viejo, así que consume ~30% menos tokens que sonnet/opus para el mismo texto de revisión (→ §3).
@@ -4065,6 +4083,9 @@ KEYWORD_MAP = [
     # §41 — Hook protocol: lectura de stdin y routing de salida por evento
     (["hook_event_name", "hook protocol", "routing de salida", "stdin del hook",
       "lectura de stdin", "stdout plano", "salida por evento"],       41),
+    # §42 — Mods: hooks JS/TS que corren dentro de Claude Code
+    (["mods", "un mod", "hooks module", "function hook", "register.js",
+      "plugin-authoring", "tool.call", "ui.render", "plugin test"],    42),
 ]
 
 def detect_sections(prompt: str) -> list[int]:
@@ -4858,8 +4879,8 @@ La versión anterior de esta sección solo contemplaba cloud vs hook local. Falt
 | Tarea | Modelo |
 |---|---|
 | Mantenimiento / curation / deduplicación | `claude-haiku-4-5` |
-| Análisis de código / PR review automático | `claude-sonnet-5` |
-| Tareas complejas multi-step | `claude-sonnet-5` |
+| Análisis de código / PR review automático | `claude-sonnet-5-5` |
+| Tareas complejas multi-step | `claude-sonnet-5-5` |
 
 ### /web-setup — conectar servicios OAuth
 
@@ -5213,3 +5234,273 @@ Markdown plano, sin estructura obligatoria; se recarga **en caliente** (los edit
 `/loop` para polling rápido dentro de una sesión; **Routines/Desktop (§30)** cuando debe correr sin tu máquina o sin sesión abierta. El pipeline que orquesta un loop no es lo mismo que el patrón harness — ver §35.
 
 **Fuentes:** [Scheduled tasks](https://code.claude.com/docs/en/scheduled-tasks.md) · [Channels](https://code.claude.com/docs/en/channels) · [Tools reference — Monitor](https://code.claude.com/docs/en/tools-reference) · [`/goal`](https://code.claude.com/docs/en/goal)
+
+---
+
+<!-- §42 -->
+<!-- §42-quick -->
+## 42. Mods — hooks que corren dentro de Claude Code
+
+> Un mod es un plugin cuyo `hooks/hooks.json` apunta a un módulo JS/TS con la clave `"modules"`. Sus funciones corren **dentro del proceso de Claude Code** en cada evento: observan, reescriben o responden una tool call, un prompt o un turno, registran un `/comando` que corre sin modelo y dibujan paneles. Corren con tus permisos, sin sandbox, y un hook que falla se salta en silencio: un guard sin `.catch` falla abierto. Requiere v2.1.287+. <!-- ver: 2026-10-05 -->
+
+La doc llama "hook" a las dos cosas. En esta guía: **settings hook** es el de §7 (un comando, HTTP o prompt declarado en settings, que corre fuera del proceso) y **mod** es el de esta sección. No se reemplazan: los settings hooks siguen funcionando igual y nada de §7 queda deprecado.
+
+### Cuándo sí, cuándo no
+
+| | Mod | Settings hook (§7) | Skill (§6) | MCP server |
+|---|---|---|---|---|
+| Qué es | Funciones JS/TS en un plugin, llamadas en proceso | Comando, HTTP o prompt en un evento | `SKILL.md` que Claude lee | Proceso externo que da tools |
+| Qué cambia | Tool calls, prompts, comandos, turnos y lo que se dibuja | Si una tool call o prompt sigue, sus argumentos y resultado, contexto extra | Lo que Claude sabe y hace | Qué tools tiene Claude |
+| Dibuja en la interfaz | Sí | No | No | No |
+| Qué escribes | JavaScript o TypeScript | Un script + una entrada en `settings.json` | Markdown | Un server |
+
+**Regla lowcost:** si un settings hook ya lo resuelve, no escribas un mod. Bloquear, permitir o loguear con un script que ya tienes es §7. El mod se justifica cuando necesitas una de estas cuatro cosas que nada más da:
+
+1. **Dibujar**: un panel, una banda sobre el prompt, un sufijo en el spinner.
+2. **Un `/comando` que corre tu función sin turno de modelo**, incluso mientras Claude trabaja (`immediate: true`).
+3. **Meterte en medio de una tool call o de un request**: retenerla mientras preguntas, responderla sin ejecutar la tool, mandar un request a otro modelo.
+4. **Estado compartido entre hooks**: lo que un hook cuenta, otro lo muestra.
+
+### Anatomía — tres archivos, sin build
+
+```text
+push-guard/
+├── .claude-plugin/plugin.json     # manifest normal de plugin, sin campos especiales
+└── hooks/
+    ├── hooks.json                 # { "modules": ["./register.js"] } — esta clave es lo que lo vuelve mod
+    └── register.js                # el hooks module: exporta register(on, options)
+```
+
+No hace falta Node, bundler ni paso de build: Claude Code carga `.js` y `.ts` directo. `hooks.json` puede llevar además settings hooks bajo `hooks`, así que un plugin puede traer las dos cosas.
+
+Ejemplo completo. Validado con `claude plugin validate` y con un test que pasa en `claude plugin test` (v2.1.289):
+
+```javascript
+// hooks/register.js
+// Variable de módulo: se reinicia en cada reload (para conservarla: $.state o $.store)
+let calls = 0
+
+async function guard($, e, next) {
+  if (/git push .*--force/.test(e.command)) {
+    // Sin next(): el comando no corre y Claude lee este texto como resultado
+    return { deny: 'Force push bloqueado. Empuja a una rama nueva.' }
+  }
+  return next(e)
+}
+
+export function register(on) {
+  on('session.start', async ($, e, next) => {
+    await $.command.register({ name: 'tally', description: 'Tool calls de esta sesión' })
+    return next(e)
+  })
+
+  // Observa: cuenta y deja pasar
+  on('tool.call', async ($, e, next) => {
+    calls += 1
+    return next(e)
+  })
+
+  // Responde: bloquea. El .catch lo hace fail-closed — sin él, un guard roto deja pasar todo
+  on('tool.call', { tool: 'Bash' }, guard).catch(async ($, e, next) => {
+    return { deny: 'El guard falló (' + next.error.kind + '): comando no ejecutado.' }
+  })
+
+  // /tally corre tu función sin turno de modelo
+  on('command.run', { command: 'tally' }, async () => {
+    return { text: calls + ' tool calls desde que cargó el mod' }
+  })
+}
+```
+
+Cada hook recibe `($, e, next)`: `$` es la API de mods (lo único con lo que el módulo alcanza archivos, procesos, red, modelo o interfaz: no hay Node ni `setTimeout`), `e` es el evento congelado, y `next(e)` pasa el evento a los demás mods y al comportamiento propio de Claude Code. Lo que haces con `next` decide la jugada:
+
+| Jugada | Código | Efecto |
+|---|---|---|
+| Observar | `return next(e)` (o `await next(e)` y actuar después) | Nada cambia |
+| Reescribir | `return next({ ...e, text: nuevo })` | El resto de la cadena ve la copia. `e` es inmutable: asignarle un campo lanza error |
+| Responder | `return { deny: '...' }` sin llamar `next` | Corta la cadena: ni los mods siguientes ni Claude Code actúan |
+
+El matcher es el segundo argumento de `on`: un valor, un array o una regex por campo (`{ tool: ['Edit', 'Write'] }`, `{ tool: /^mcp__github__/ }`).
+
+<!-- §42-ref -->
+### El loop de desarrollo
+
+```bash
+claude --plugin-dir ./push-guard      # carga sin instalar y recarga el módulo al guardar
+claude plugin validate ./push-guard   # qué lee Claude Code del mod, sin ejecutarlo ni abrir sesión
+claude plugin test ./push-guard       # corre los *.test.ts sin sesión, sin login y sin red
+```
+
+`validate` imprime dos líneas que son el contrato real del mod:
+
+```text
+  ❯ ./register.js hooks: session.start, tool.call, tool.call{tool=Bash}, command.run{command=tally}
+  ❯ ./register.js calls: $.command.register
+```
+
+Si un evento que querías manejar no aparece en `hooks:`, Claude Code tampoco va a llamar ese hook. El análisis es estático, y por eso impone forma: cada llamada escrita completa (`$.fs.read(...)`, nunca `const ui = $.ui`), el nombre del evento como string literal, imports solo relativos y dentro del plugin, sin `import()` dinámico.
+
+El test dispara los eventos y revisa qué hizo el hook:
+
+```typescript
+// tests/push-guard.test.ts
+import { expect, test } from 'claude-code/testing'
+
+test('bloquea force push y deja pasar el resto', async ($, on) => {
+  on('tool.call', () => ({ result: 'ok' }))   // responde en lugar de Claude Code: ninguna tool corre
+  const blocked = await $.tool.call({ tool: 'Bash', command: 'git push origin main --force' })
+  expect(blocked.deny).toContain('Force push bloqueado')
+  const passed = await $.tool.call({ tool: 'Bash', command: 'ls' })
+  expect(passed.deny).toBeUndefined()
+  const answer = await $.command.run({ command: 'tally', args: '' })
+  expect(answer.text).toBe('2 tool calls desde que cargó el mod')
+})
+```
+
+**Tipos.** En cada carga desde `--plugin-dir`, Claude Code escribe los `.d.ts` de tu versión en `.claude-plugin/types/`. Son la referencia que manda: la API cambia entre releases y la propia doc dice que, si una página y esos archivos discrepan, valen los archivos. Para buscar algo: `grep "'tool.call'" .claude-plugin/types/claude-code/index.d.ts`.
+
+**Pedírselo a Claude.** La skill bundled `plugin-authoring` escribe el mod en `~/.claude/dev-mods/<session-id>/<nombre>/`. Al primer archivo, Claude Code pregunta una vez si habilita hot reload para la sesión; esa respuesta es solo tuya, ningún modo de permisos la contesta. El mod carga solo en esa sesión y la carpeta se borra pasado `cleanupPeriodDays`: para conservarlo, cópialo fuera y cárgalo con `--plugin-dir` o publícalo en un marketplace (§11).
+
+**No desarrolles contra la copia instalada.** Un plugin instalado corre desde un cache por versión: tus edits no llegan hasta subir la versión y reinstalar.
+
+### Lo que cuesta en tokens
+
+| Acción del mod | Costo |
+|---|---|
+| Un hook que observa o bloquea | 0 tokens: es código en proceso |
+| `/comando` que devuelve `{ text }` | Sin turno de modelo, pero **Claude lee ese `text`**: entra al contexto. Para no imprimir nada, `return {}` |
+| `$.ui.log`, `$.ui.status`, `$.ui.toast` | 0: los ve la persona, Claude no los lee |
+| `$.prompt.submit({ text })` | Arranca un turno completo |
+| `$.model.complete({ model: 'haiku', ... })` | Gasta de tu plan o API key. `maxTokens` default 1024: bájalo si esperas una palabra |
+| `$.model.fork({ prompt })` | Una pregunta sobre la conversación actual; el prefijo sale casi todo del prompt cache |
+| `prompt.section` / `prompt.context` / `skill.prompt` con texto que cambia entre requests | **Invalida el prompt cache** en cada request (§3) |
+| `$.tool.register(...)` | La descripción de la tool la lee Claude: costo fijo, igual que una tool MCP (§2). *Inferido de que la tool se lista como `mcp__<plugin>__<nombre>`; no medido* |
+
+**El medidor de cache que faltaba.** `turn.step` entrega el `usage` de cada request, así que un mod de 10 líneas responde la pregunta de §3 ("¿mi cache está pegando?") sin tocar la API:
+
+```javascript
+// turn.step transmite: el hook es un async generator
+on('turn.step', async function* ($, e, next) {
+  const result = yield* next(e)
+  if (result.usage && !e.agentId) {   // e.agentId viene seteado en requests de subagentes
+    $.ui.log('cache leyó ' + result.usage.cache_read_input_tokens +
+             ' · escribió ' + result.usage.cache_creation_input_tokens)
+  }
+  return result
+})
+```
+
+Si `cache_read_input_tokens` da 0 en requests seguidos, hay un invalidador silencioso. `$.session.usage()` da además el uso de la ventana de contexto y el porcentaje de los límites del plan.
+
+### Dónde quedan tus guards de §7
+
+El orden de la cadena, de afuera hacia adentro:
+
+1. `PreToolUse` de **managed settings**. Corre antes que cualquier mod y su bloqueo es final.
+2. Mods de la organización (`prependPlugins`), mods que instalas tú, `appendPlugins`, mods built-in.
+3. El comportamiento de Claude Code, que incluye los `PreToolUse` de **todos los demás** settings (los tuyos y los de plugins) y luego el chequeo de permisos.
+4. `tool.check`: dispara después de que reglas y hooks decidieron, y un mod puede cambiar esa decisión.
+
+Dos consecuencias para la frase de §7 "un hook `PreToolUse` es física pura":
+
+- Un mod que responde `tool.call` sin llamar `next` **impide que tus `PreToolUse` corran**.
+- Un mod con `tool.check` puede **aprobar** una call que tu `PreToolUse` bloqueó, y una que una regla `ask` iba a preguntar. Las **deny rules** solo prevalecen sobre el mod en una máquina con managed settings o con sesión Team/Enterprise (ahí carga el guard built-in `cc-plugin-sec-default`). En cualquier otro lado, que es el caso del dev solo con plan Pro o API key, **el mod puede aprobar una call que una deny rule rechaza**.
+
+Tus guards siguen siendo física frente al modelo. Frente a un mod instalado no lo son: instalar un mod es darle a su autor tu sesión completa. Lo único que un mod no puede tocar es el prompt de permisos (no es un render site).
+
+### Antes de instalar uno ajeno
+
+Un mod no está sandboxeado ni con el sandbox de Bash activo: lee y escribe donde tu usuario pueda, lee variables de entorno y settings (API keys incluidas), ve cada prompt y cada tool call, y gasta tu plan. Como todo sale por `$`, se puede auditar sin ejecutarlo:
+
+```bash
+git clone <repo> && claude plugin validate ./el-mod
+```
+
+| En `calls:` / `hooks:` | Qué significa |
+|---|---|
+| `$.fs.read`, `$.fs.write` | Lee o escribe archivos en cualquier lado que tú puedas |
+| `$.process.run`, `$.process.spawn` | Lanza programas como tú, fuera del sandbox |
+| `$.http.fetch` | Hace requests de red |
+| `$.env.get`, `$.settings.read` | Lee entorno y settings; la línea `env reads:` nombra cada variable |
+| `$.model.complete` | Gasta tu plan o API key |
+| `$.prompt.submit` | Envía un prompt, y con `asUser: true` como si lo hubieras escrito tú |
+| `tool.check` | Aprueba o deniega antes del prompt de permisos |
+| `tool.call`, `prompt.submit`, `session.append` | Ve y puede reescribir cada tool call, cada prompt y cada fila de la conversación |
+
+Un mod con `$.http.fetch` + `$.env.get` + `prompt.submit` tiene todo lo necesario para exfiltrar. Que `validate` pase no es una revisión de seguridad: dice qué puede hacer, no qué hace.
+
+### Muertes silenciosas
+
+Un módulo o un hook que falla **se salta y la sesión sigue**: un mod roto se ve igual que uno que no hace nada.
+
+| Qué pasa | Por qué | Fix |
+|---|---|---|
+| El guard deja pasar todo | El hook lanzó, hizo timeout o devolvió una forma inválida **antes** de `next`: se salta y corre lo siguiente | `.catch` en ese `on(...)` que devuelva `{ deny }`. El handler tiene 1 s |
+| El comando retenido corrió igual | El hook superó sus 10 s de ejecución propia. El tiempo dentro de `next` o de una llamada a `$` (como `$.ui.ask`) no cuenta; un `await` de una promesa tuya, sí | Mantener la espera dentro de una llamada a `$` |
+| El contador vuelve a 0 | Las variables de módulo se reinician en cada reload | `$.state` (dura la sesión) o `$.store` (persiste entre sesiones) |
+| El valor se pierde tras `/clear`, `/resume` o `/branch` | Resetean `$.state` y `session.start` **no** vuelve a disparar | Recargar en `on('classic.SessionStart', { source: ['clear', 'resume', 'fork'] }, ...)` |
+| El módulo no carga | `on('session.start')` registrado dos veces sin matcher, evento mal escrito, o error en el top-level | `claude plugin validate` lo reporta antes de abrir sesión |
+| El panel no aparece | El árbol no validó (Claude Code dibuja lo suyo), o `$.ui.open` no vino de una acción de la persona y la terminal mide menos de 144 columnas | Leer la línea `ui.render (Pane) refused:`; abrir el panel desde un comando |
+| Se pierde un `set` en `$.store` | Todas las sesiones de la máquina comparten el store y `get` + `set` no es atómico | Una clave por ítem; releer justo antes de escribir |
+| Todos los mods desaparecen | El worker compartido se cayó 3 veces: Claude Code descarga todo mod no built-in | `/reload-plugins` |
+| La call se deniega en auto mode | Un hook cambió el input después de la revisión del classifier | No reescribir inputs en auto mode, o salir de auto y aprobar a mano |
+| `$.command.register` lanza | El nombre ya es de un comando built-in; el hook se salta y el resto de `session.start` no corre | Registrar comandos al final del hook, o en `try`/`catch` |
+| No pasa nada en `claude -p` | Los hooks corren, pero nada se dibuja y `$.ui.ask` rechaza | Default seguro en el `catch`; fallback a `{ text }` |
+
+**¿Cómo sabría que está muerto?** (§35)
+
+- `/plugin` muestra bajo las pestañas una línea tipo `1 mod active · push-guard`. Si tu mod no está ahí, no cargó.
+- Con `--plugin-dir`, el transcript muestra una línea tenue por cada reload y por cada hook saltado (`push-guard: tool.call hook skipped: threw Error: ...`). **En un mod instalado desde marketplace esa línea va solo al debug log**: `claude --debug` y buscar `hooks module <nombre> loaded` o `not loaded:`.
+- `claude plugin test` en un directorio sin mod dice si la máquina puede cargar mods: `no hooks module to load` (sí puede) frente a `hooks modules are turned off here` (un setting los bloquea).
+
+### Apagarlos
+
+| Alcance | Cómo |
+|---|---|
+| Un mod | Deshabilitar su plugin en `/plugin` → Installed |
+| Todos los instalados, una sesión | `claude --safe-mode` (apaga también el resto de tus customizaciones) |
+| Todos los que instalaste, siempre | `"disableAllHooks": true` en `~/.claude/settings.json`. Se lleva también tus settings hooks y el status line |
+
+`disableAllHooks` apaga el mod pero deja el resto del plugin: sus skills, comandos, agentes y MCP servers siguen cargando. Los mods built-in (`/diff`, soporte de `AGENTS.md`, el guard) no se apagan con ninguno de los tres. La variable de early access `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS` se ignora desde v2.1.287: ponerla en `0` ya no apaga nada.
+
+### Dónde corren
+
+| Dónde | Hooks | Dibujo |
+|---|---|---|
+| `claude` en terminal | Sí | Sí |
+| Pestaña Code de Desktop | Sí | Sí, salvo elementos solo-terminal (`Raster`, `Image`) |
+| Extensión de VS Code, `claude -p`, Agent SDK, sesión cloud | Sí | No |
+| Sesión WSL en Desktop | No | No |
+
+Un guard basado en mod sí protege en CI (`claude -p`). Un panel no existe ahí.
+
+### Límites que conviene saber
+
+| Límite | Valor |
+|---|---|
+| Ejecución propia de un hook por evento | 10 s (50 ms en `prompt.edit`) |
+| Handler `.catch` | 1 s |
+| `$.process.run` | 30 s default, 10 min máximo |
+| `$.fs.read` / `$.fs.write` | 4 MiB por archivo; `write` no es atómico |
+| `$.store` | 4 MiB de JSON en total |
+| `$.model.complete` `maxTokens` | 1024 default |
+| Un test de `claude plugin test` | 5 s salvo `timeoutMs` |
+
+### Checklist §42
+
+```
+□ ¿Un settings hook (§7) lo resolvía? Entonces no es un mod
+□ hooks/hooks.json tiene "modules" con una sola ruta relativa
+□ claude plugin validate pasa y la línea hooks: lista todos los eventos que esperas
+□ Todo hook que bloquea tiene .catch que devuelve { deny } (fail-closed)
+□ Esperas largas dentro de llamadas a $ ($.ui.ask), no en promesas propias
+□ Estado que debe sobrevivir un reload → $.state; entre sesiones → $.store
+□ Si usas $.state: recarga en classic.SessionStart para clear/resume/fork
+□ Al menos un *.test.ts y claude plugin test en verde
+□ Comandos que solo abren un panel devuelven {} (su text entraría al contexto)
+□ $.model.complete con model y maxTokens explícitos
+□ Mod ajeno: leer calls: y hooks: de validate antes de instalar
+□ Desarrollo con --plugin-dir, nunca contra la copia instalada
+```
+
+**Fuentes:** [Mods overview](https://code.claude.com/docs/en/plugins/mods/overview) · [Create a mod](https://code.claude.com/docs/en/plugins/mods/create) · [React to events](https://code.claude.com/docs/en/plugins/mods/events) · [Mods API](https://code.claude.com/docs/en/plugins/mods/api) · [Draw in the interface](https://code.claude.com/docs/en/plugins/mods/interface) · [Troubleshoot](https://code.claude.com/docs/en/plugins/mods/troubleshoot) · [Reference](https://code.claude.com/docs/en/plugins/mods/reference) · [Permissions — Extend permissions with hooks](https://code.claude.com/docs/en/permissions#extend-permissions-with-hooks) · ejemplo verificado con `claude plugin validate` y `claude plugin test` en v2.1.289.

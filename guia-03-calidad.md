@@ -477,32 +477,32 @@ Si el hub tiene `skillOverrides: user-invocable-only`, los ~280 tokens no se gas
 
 ### Impacto del modelo
 
-Precios oficiales por 1M tokens (input/output, verificados): <!-- ver: 2026-09-02 -->
+Precios oficiales por 1M tokens (input/output, verificados): <!-- ver: 2026-10-05 -->
 
 | Modelo | Precio | Costo relativo | Cuándo |
 |---|---|---|---|
 | haiku 4.5 | $1 / $5 | 1× | Tareas fijas: git, postmortem, reviewer de checklist |
-| sonnet 5 | $2 / $10 | 2× | Implementación, debugging |
-| opus 5 | $5 / $25 | 5× | Arquitectura con trade-offs complejos, security |
-| fable 5.1 | $10 / $50 | 10× | Solo si tus evals con Opus 5 a effort alto se quedan cortos |
+| sonnet 5.5 | $2 / $10 | 2× | Implementación, debugging |
+| opus 5.5 | $4 / $20 | 4× | Arquitectura con trade-offs complejos, security |
+| fable 5.1 | $10 / $50 | 10× | Solo si tus evals con Opus 5.5 a effort alto se quedan cortos |
 
-Un reviewer en sonnet cuesta 2× más que en haiku — mismo resultado. Opus ya NO es 15× haiku ni 5× sonnet (pricing retirado): es **2.5× sonnet**, y ese ratio es estable — la suba de Sonnet 5 a $3/$15 agendada para el 01/09/2026 **fue cancelada** y $2/$10 pasó a ser el precio estándar (nota oficial en la página de pricing). El threshold para justificar Opus bajó y se quedó ahí (→ §25).
+Un reviewer en sonnet cuesta 2× más que en haiku — mismo resultado. Opus ya NO es 15× haiku ni 5× sonnet (pricing retirado): es **2× sonnet** desde Opus 5.5 ($4/$20; con Opus 5 a $5/$25 era 2.5×). Sonnet 5.5 mantiene los $2/$10 de Sonnet 5. El threshold para justificar Opus volvió a bajar (→ §25). Además, los cache reads de Opus 5.5 cuestan 0.05× del input ($0.20/MTok, lo mismo que Sonnet): en una sesión larga con cache caliente la diferencia real Opus/Sonnet se concentra en el output.
 
 ### El tokenizer cambió — tus estimados históricos están bajos
 
-**Verificado** (nota oficial en la página de pricing): de Claude 4.7 en adelante — Opus 4.7, Opus 4.8, **Opus 5**, **Sonnet 5**, Fable 5/5.1 — el tokenizer es nuevo y produce **~30% más tokens para el mismo texto**. **Sonnet 4.6 y anteriores, y Haiku 4.5, usan el tokenizer viejo.** <!-- ver: 2026-09-02 -->
+**Verificado** (nota oficial en la página de pricing): de Claude 4.7 en adelante — Opus 4.7, Opus 4.8, Opus 5, Sonnet 5, **Opus 5.5**, **Sonnet 5.5**, Fable 5/5.1 — el tokenizer es nuevo y produce **~30% más tokens para el mismo texto**. **Sonnet 4.6 y anteriores, y Haiku 4.5, usan el tokenizer viejo.** <!-- ver: 2026-09-02 -->
 
 | Modelo | Tokenizer | Efecto sobre los estimados de esta sección |
 |---|---|---|
 | Haiku 4.5 | viejo | Los números de arriba valen tal cual |
-| Sonnet 5 · Opus 5 · Fable 5.1 | nuevo (~+30%) | **Multiplicar los estimados por ~1.3** |
+| Sonnet 5.5 · Opus 5.5 · Fable 5.1 (y Sonnet 5 · Opus 5) | nuevo (~+30%) | **Multiplicar los estimados por ~1.3** |
 
 Dos consecuencias, ninguna obvia:
 
-1. **La tabla de costo fijo de arriba subestima ~30% en todo lo que no sea haiku.** Un CLAUDE.md de ~200 tokens con el tokenizer viejo son ~260 en Sonnet 5 u Opus 5: el techo real de §2 está 30% más abajo de lo que creías.
+1. **La tabla de costo fijo de arriba subestima ~30% en todo lo que no sea haiku.** Un CLAUDE.md de ~200 tokens con el tokenizer viejo son ~260 en Sonnet 5.5 u Opus 5.5: el techo real de §2 está 30% más abajo de lo que creías.
 2. **La ventaja de haiku es mayor que 2×.** "Sonnet cuesta 2× haiku" compara precio por token, pero haiku además necesita *menos tokens* para el mismo prompt: el ratio real ronda **~2.6×**. La regla "si haiku lo hace bien, no uses sonnet" se refuerza.
 
-**Opus 5 : Sonnet 5 sigue siendo 2.5×** — comparten tokenizer, ahí la comparación es directa.
+**Opus 5.5 : Sonnet 5.5 es 2×** — comparten tokenizer, ahí la comparación es directa.
 
 Para medir: `count_tokens` **con el modelo destino**. Extrapolar entre modelos es el error que este cambio vuelve caro (→ §21).
 
@@ -885,7 +885,7 @@ Solo los agentes que **escriben** llevan el matcher. Si lo pones sobre `design-r
 name: design-poda
 description: "Lente Poda: qué sobra en el código escrito por agentes de capa. Usar después
   de la aduana, sobre .claude/review/diff.patch. No revisa convenciones."
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 effort: xhigh
 tools: Read, Glob, Grep
 skills: [design-conventions]

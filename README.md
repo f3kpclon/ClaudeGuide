@@ -1,7 +1,7 @@
 # The Broke Dev's Guide: Agents & Plugins in Claude Code
 *Maximum efficiency. Minimum spend. Zero apologies.*
 
-**Author:** Félix Sotelo · **Version:** v5.45 · **New §41 — hook protocol: reading stdin and routing output.** One hook script can serve several events: `hook_event_name` arrives on stdin and the hook picks its audience — the person (`systemMessage`) or the model (`additionalContext` or plain stdout). Verified against the hooks docs: outside 4 events plain stdout goes to the debug log, so a `print()` in a `Stop` hook reaches nobody. Includes a bounded stdin read with `select`. Also a **correction**: `systemMessage` is shown to the person; it does not inject context.
+**Author:** Félix Sotelo · **Version:** v5.46 · **New §42 — Mods: hooks that run inside Claude Code.** A plugin whose `hooks/hooks.json` names a JS/TS module under `"modules"` registers functions that observe, rewrite or answer tool calls, prompts and turns, add `/commands` that run with no model turn, and draw panes. Not sandboxed, and a failing hook is skipped silently: a guard without `.catch` fails open. **Sweep against the official docs:** Opus 5.5 / Sonnet 5.5 generation (Opus drops to $4/$20, so Opus:Sonnet goes from 2.5× to 2×; account default is Opus 5.5 on every plan; default effort `medium`), permission-mode table fixed, hook `timeout` default is 600s, `claude plugin add` does not exist. Before: **§41 — hook protocol.** (§41)
 
 ---
 
@@ -48,6 +48,21 @@
 ## What's New
 
 <!-- changelog-insert -->
+
+### v5.46 — Mods, and a sweep against the official docs (2026-10-05)
+
+| Area | Change |
+|---|---|
+| **§42** | **New — Mods.** A mod is a plugin whose `hooks/hooks.json` points at a JS/TS hooks module (`"modules"`); its hooks run in Claude Code's own process (v2.1.287+). Covers when a mod beats a settings hook (draw, a `/command` with no model turn, step into a tool call, shared state), the three moves (observe / rewrite / answer via `next`), the `--plugin-dir` → `claude plugin validate` → `claude plugin test` loop, token cost per API call (a cache meter on `turn.step` in 10 lines), a silent-deaths table (failing hook is skipped → fail-open without `.catch`; module variables reset on reload; `$.state` resets on `/clear` and `session.start` does not re-fire), and how to audit someone else's mod from the `calls:` line before installing. The example is verified with `claude plugin validate` and a passing `claude plugin test` on v2.1.289. |
+| **§7, §42** | **Scope of "a `PreToolUse` hook is pure physics".** True against the model, not against an installed mod: a mod that answers `tool.call` without `next` keeps non-managed `PreToolUse` hooks from running, and one on `tool.check` can approve a call they blocked. Outside managed settings / Team / Enterprise, a mod can approve a call a **deny rule** refuses. Verified against `permissions#extend-permissions-with-hooks`. |
+| **§25, §3, §15, §31** | **Opus 5.5 / Sonnet 5.5 are the current generation.** Opus 5.5 is $4/$20 (Opus 5 stays at $5/$25 and is now legacy), so Opus:Sonnet is **2×**, not 2.5×; Opus is 4× Haiku. Examples re-pinned to `claude-opus-5-5` / `claude-sonnet-5-5`. Fast mode is $8/$40 on Opus 5.5. Retirement dates added. |
+| **§25** | **The account default no longer depends on the plan**: since v2.1.280 it is Opus 5.5 everywhere, including Pro (was Sonnet 5). **Default effort is `medium`** on Opus 5.5 and Sonnet 5.5, so `effort: high` is no longer the same as omitting it. A top-level `effortLevel` in `~/.claude/settings.json` **does not apply to Opus 5.5** — use `modelSettings`. Thinking cannot be turned off on 5.5 or Fable. |
+| **§7** | **Permission-mode table was wrong in three rows.** `auto` is classifier-reviewed (and the starting mode since v2.1.283), not "the default that asks"; `dontAsk` **denies** whatever is not pre-approved and is not `--dangerously-skip-permissions` (that flag is `bypassPermissions`); `plan` can run classifier-approved commands. |
+| **§7** | Hook `timeout` default is **600s** for `command`/`http`/`mcp_tool` (30s on `UserPromptSubmit` and model-switch events, 10s on `MessageDisplay`), 30s for `prompt`, 60s for `agent` — the guide said "no limit". Prompt hooks default to the background model, not literally "Haiku". `--settings '{"disableAllHooks": true}'` for a one-run kill switch; it also turns off installed mods. |
+| **§11, §1, §15** | **`claude plugin add github:...` does not exist** (checked against `claude plugin --help`). Replaced with `claude plugin marketplace add owner/repo` + `claude plugin install plugin@marketplace`. |
+| **§15** | Glossary: `Stop` fires when Claude finishes responding, not when the session closes; `PreToolUse` is not "the only blocking hook"; new entries **Mod** and **Settings hook**. |
+| **§5** | New frontmatter rows: `omitClaudeMd` (subagent starts without user/project/local CLAUDE.md — a direct fixed-cost lever) and `experimental.cacheTtl`. |
+| **§1, §26** | Decision tree gains a Mod branch; `KEYWORD_MAP` entry for §42. |
 
 ### v5.45 — Hook protocol: reading stdin and routing output (2026-09-22)
 

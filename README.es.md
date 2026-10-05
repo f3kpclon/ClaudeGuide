@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.45 · **§41 nueva — hook protocol: lectura de stdin y routing de salida.** Un mismo script de hook puede atender varios eventos: `hook_event_name` llega en el stdin y el hook elige a quién le habla — la persona (`systemMessage`) o el modelo (`additionalContext` o stdout plano). Verificado contra la doc de hooks: fuera de 4 eventos el stdout plano va al debug log, así que un `print()` en un hook de `Stop` no lo ve nadie. Incluye la lectura de stdin acotada con `select`. Además, **corrección**: `systemMessage` se muestra a la persona, no inyecta contexto (glosario §15, §12, §7). Antes: **§40 nueva — Aduana, filtro de código de agentes.** (§40)
+**Versión:** v5.46 · **§42 nueva — Mods: hooks que corren dentro de Claude Code.** Un plugin cuyo `hooks/hooks.json` apunta a un módulo JS/TS (`"modules"`) registra funciones que observan, reescriben o responden tool calls, prompts y turnos, agregan `/comandos` sin modelo y dibujan paneles. Sin sandbox, y un hook que falla se salta en silencio: un guard sin `.catch` falla abierto. En una máquina sin managed settings, un mod instalado puede aprobar lo que una deny rule rechaza. **Barrido contra la doc oficial:** generación **Opus 5.5 / Sonnet 5.5** (Opus baja a $4/$20: el ratio Opus:Sonnet pasa de 2.5× a 2×; default de cuenta = Opus 5.5 en todos los planes; effort default `medium`), tabla de modos de permiso corregida (`dontAsk` deniega, no aprueba), timeout default de hooks = 600 s (no "sin límite"), `claude plugin add` no existe. Antes: **§41 nueva — hook protocol.** (§41)
 
 ---
 
@@ -55,6 +55,7 @@
 | Crear un filtro contra la salida genérica de IA / sumar skills de otro plugin al mío | §39 — filtros anti-slop · §11 — skills de terceros |
 | Revisar solo el código que escriben mis agentes antes de aceptarlo | §40 — Aduana: hook + lentes Grieta y Poda en paralelo |
 | Que un hook le hable a la persona o al modelo según el evento | §41 — hook protocol: `hook_event_name`, canales de salida, stdin acotado |
+| Un panel, un `/comando` sin modelo o reescribir un evento en vuelo | §42 — mods: hooks JS/TS en proceso, `validate`/`test`, muertes silenciosas |
 
 ---
 
@@ -87,6 +88,7 @@
 - [§33 — Comandos nativos (rewind, clear, compact, fork) + integración con hooks](guia-02-construccion.md#33-comandos-nativos--rewind-clear-compact-fork-y-su-integración-con-agenteshooks)
 - [§34 — Loops y tareas programadas (/loop, ScheduleWakeup, Monitor)](guia-02-construccion.md#34-loops-y-tareas-programadas--loop-schedulewakeup-monitor)
 - [§36 — LSP: inteligencia de código del compilador](guia-02-construccion.md#36-lsp--inteligencia-de-código-del-compilador)
+- [§42 — Mods: hooks que corren dentro de Claude Code](guia-02-construccion.md#42-mods--hooks-que-corren-dentro-de-claude-code)
 
 ### Calidad y eficiencia
 - [§14 — Guía anti-overkill](guia-03-calidad.md#14-guía-anti-overkill)
@@ -118,7 +120,7 @@
 | Archivo | Contenido |
 |---|---|
 | `guia-01-fundamentos.md` | 01 · Fundamentos — §4, §1, §2, §25, §24 |
-| `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §36, §31, §32, §17, §26, §27, §28, §29, §30, §33, §34 |
+| `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §36, §31, §32, §17, §26, §27, §28, §29, §30, §33, §34, §42 |
 | `guia-03-calidad.md` | 03 · Calidad y eficiencia — §14, §12, §13, §23, §3, §39, §40 |
 | `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §35, §37, §38, §41, §15 |
 
@@ -132,6 +134,7 @@
 - [Skills](https://code.claude.com/docs/en/skills)
 - [Hooks](https://code.claude.com/docs/en/hooks-guide)
 - [Plugins](https://code.claude.com/docs/en/plugins)
+- [Mods](https://code.claude.com/docs/en/plugins/mods/overview)
 - [Agent Teams](https://code.claude.com/docs/en/agent-teams)
 
 # Guía del Dev Pobre — 01 · Fundamentos
@@ -243,7 +246,8 @@ La estructura es la misma — solo cambia dónde vive:
                               mi-plugin/.claude-plugin/plugin.json  ← nuevo
 
 Instalar en cualquier proyecto:
-  claude plugin add github:usuario/mi-plugin
+  claude plugin marketplace add usuario/mi-repo
+  claude plugin install mi-plugin@<marketplace>
 ```
 
 ### La regla de oro
@@ -277,6 +281,9 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 ├── Algo que debe ocurrir siempre (validar, bloquear, notificar)
 │   └── → Hook (.claude/settings.json)
 │
+├── Un panel, un /comando sin modelo, o reescribir un evento en vuelo
+│   └── → Mod (plugin con hooks/hooks.json → "modules", §42) — solo si un hook no alcanza
+│
 ├── Contexto del proyecto (estado, decisiones, backlog)
 │   └── → Scope (.claude/scope/)
 │
@@ -292,7 +299,7 @@ Divide las responsabilidades hasta que cada agente tenga **una sola razón para 
 | Ubicación | `.claude/agents/` | `.claude/skills/` | directorio con `.claude-plugin/` |
 | Scope | Solo este repo | Solo este repo | Donde se instale |
 | Hooks | `.claude/settings.json` | — | `hooks/hooks.json` |
-| Compartir | Solo via el repo | Solo via el repo | `claude plugin add github:...` |
+| Compartir | Solo via el repo | Solo via el repo | `claude plugin marketplace add` + `claude plugin install` (§11) |
 
 **Regla:** empezar con agentes y skills locales. Convertir a plugin solo cuando se reutiliza en otro proyecto.
 
@@ -479,26 +486,26 @@ Leer `.claude/scope/scope-index.md` antes de cualquier tarea.
 
 ### Antes de Opus — probar `effort` primero
 
-`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar, sin cambiar el precio por token. Subir a Opus multiplica el precio por token **2.5×** (verificado contra `platform.claude.com/.../pricing`: Sonnet 5 $2/$10 vs Opus 5 / Opus 4.8 $5/$25). <!-- ver: 2026-09-02 -->
+`effort` no es un modelo mejor — es darle más tiempo al chef actual para pensar, sin cambiar el precio por token. Subir a Opus multiplica el precio por token **2×** (verificado contra `platform.claude.com/.../pricing`: Sonnet 5.5 $2/$10 vs Opus 5.5 $4/$20; Opus 5 y 4.8 siguen a $5/$25). <!-- ver: 2026-10-05 -->
 
-**El pricing introductorio de Sonnet 5 se volvió permanente** — la suba a $3/$15 agendada para el 01/09/2026 fue cancelada. El ratio Opus:Sonnet es **2.5× y no vence** (el "baja a ~1.7× en septiembre" de versiones anteriores queda anulado).
+El ratio Opus:Sonnet **bajó de 2.5× a 2×**: Opus 5.5 salió más barato que Opus 5 ($4/$20 contra $5/$25) y Sonnet 5.5 mantiene los $2/$10.
 
 ```yaml
 # En el agente o en la skill
 effort: xhigh   # opciones: low | medium | high | xhigh | max — NO existe "ultra" ni "xlow"
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 # haiku 4.5 NO soporta effort (la API lo rechaza) — effort es palanca de sonnet/opus/fable
 ```
 
-**`xhigh` no está en todos los modelos** (verificado contra `/en/build-with-claude/effort`): <!-- ver: 2026-09-02 -->
+**`xhigh` no está en todos los modelos** (verificado contra `code.claude.com/docs/en/model-config`): <!-- ver: 2026-10-05 -->
 
 | Nivel | Dónde existe |
 |---|---|
-| `low` / `medium` / `high` / `max` | Fable 5.1, Fable 5, Opus 5, Opus 4.8, Opus 4.7, **Opus 4.6**, Sonnet 5, **Sonnet 4.6**, Opus 4.5 |
-| `xhigh` | Fable 5.1, Fable 5, Opus 5, Opus 4.8, Opus 4.7, Sonnet 5 — **no** en Opus 4.6 ni Sonnet 4.6 |
+| `low` / `medium` / `high` / `max` | Fable 5.1, Fable 5, **Opus 5.5**, **Sonnet 5.5**, Opus 5, Sonnet 5, Opus 4.8, Opus 4.7, **Opus 4.6**, **Sonnet 4.6** |
+| `xhigh` | Fable 5.1, Fable 5, Opus 5.5, Sonnet 5.5, Opus 5, Sonnet 5, Opus 4.8, Opus 4.7 — **no** en Opus 4.6 ni Sonnet 4.6 |
 | (ninguno) | **Haiku 4.5** — no soporta `effort` en absoluto |
 
-Default en todos: `high`. Poner `effort: high` es idéntico a omitirlo. → cómo setearlo en Claude Code y la trampa de cache, en §25-ref.
+**El default ya no es `high` en todos.** En Claude Code: `high` en general, **`medium` en Opus 5.5 y Sonnet 5.5**, `xhigh` en Opus 4.7. Ahí `effort: high` **no** es idéntico a omitirlo. Opus 5.5 a `medium` iguala o supera a Opus 5 a `high` (dato de Anthropic). → cómo setearlo y sus trampas, en §25-ref. <!-- ver: 2026-10-05 -->
 
 **Cuándo `effort: xhigh` resuelve lo que parecía Opus:**
 
@@ -514,7 +521,7 @@ La pregunta no es "¿es una tarea difícil?" — es:
 
 > **¿El costo de que Sonnet se equivoque supera el costo de Opus?**
 
-Opus 5 cuesta **2.5× más por token** que Sonnet 5 ($5/$25 vs $2/$10 — verificado; el "~5×" de versiones viejas de esta guía era pricing retirado, y el "~1.7× desde septiembre" nunca llegó a existir: la suba de Sonnet 5 fue cancelada). El threshold para justificar Opus: si un error de Sonnet cuesta más que el ~150% extra de tokens en la tarea → Opus vale la pena. El orden de escalación no cambia — Sonnet + effort primero, porque effort es gratis en precio por token. <!-- ver: 2026-09-02 -->
+Opus 5.5 cuesta **2× más por token** que Sonnet 5.5 ($4/$20 vs $2/$10 — verificado; con Opus 5 era 2.5×). El threshold para justificar Opus: si un error de Sonnet cuesta más que el ~100% extra de tokens en la tarea → Opus vale la pena. El orden de escalación no cambia — Sonnet + effort primero, porque effort es gratis en precio por token. <!-- ver: 2026-10-05 -->
 
 **Cuándo Opus tiene justificación real:**
 
@@ -528,7 +535,7 @@ Opus 5 cuesta **2.5× más por token** que Sonnet 5 ($5/$25 vs $2/$10 — verifi
 <!-- §25-ref -->
 #### Las cuatro formas de setear effort en Claude Code
 
-Verificado contra `code.claude.com/.../model-config`: <!-- ver: 2026-09-02 -->
+Verificado contra `code.claude.com/.../model-config`: <!-- ver: 2026-10-05 -->
 
 ```bash
 /effort high                        # en sesión
@@ -536,13 +543,19 @@ claude --effort xhigh               # al arrancar
 export CLAUDE_CODE_EFFORT_LEVEL=high
 ```
 ```json
-// En settings.json para toda la sesión
-{ "effortLevel": "high" }
+// En settings.json — por modelo (la forma vigente)
+{ "modelSettings": { "claude-opus-5-5": { "effortLevel": "high" } } }
 ```
+
+**Trampa silenciosa:** el `"effortLevel": "high"` de nivel superior en tu `~/.claude/settings.json` **no cuenta para Opus 5.5** ni para los modelos que salgan después: sigue aplicando en Opus 5, Fable 5.1 y anteriores, pero 5.5 arranca en su propio default (`medium`) hasta que elijas nivel con `/effort` o con `modelSettings`. No da error: simplemente corres en otro nivel del que crees. (En settings de proyecto, local, managed o `--settings`, el `effortLevel` top-level sí aplica a todos los modelos.) Ni `effortLevel` ni `modelSettings` aceptan `max`.
+
+Orden de resolución, gana el primero: `CLAUDE_CODE_EFFORT_LEVEL` → `--effort` / `/effort` → settings (`modelSettings` antes que `effortLevel`) → default del modelo.
+
+**Thinking no se puede apagar en Opus 5.5, Sonnet 5.5 ni Fable.** `MAX_THINKING_TOKENS=0` y `alwaysThinkingEnabled: false` no tienen efecto ahí. La única palanca de costo de razonamiento es `effort`.
 
 Claude Code agrega un nivel que **no existe en la API**: `ultracode` = `xhigh` + orquestación dinámica de workflow. Si lo ves en un settings.json no es un typo — pero tampoco es portable a un request de la Messages API.
 
-**Trampa de caching con effort:** cambiar el `effort` de nivel superior a mitad de conversación **invalida el prompt cache** (cambia el prefix renderizado). Elegí un nivel al inicio y mantenelo. Excepción: Opus 5 y Fable 5.1 soportan cambio de effort *por mensaje* (beta `mid-conversation-output-config-2026-07-01`), que sí lo preserva.
+**Trampa de caching con effort:** cambiar el `effort` de nivel superior a mitad de conversación **invalida el prompt cache** (cambia el prefix renderizado). Elige un nivel al inicio y mantenlo. Excepción: Opus 5.5, Sonnet 5.5, Opus 5 y Fable 5.1 soportan cambio de effort *por mensaje* (beta `mid-conversation-output-config-2026-07-01`), que sí lo preserva.
 
 #### Casos de uso — reviewer
 
@@ -571,7 +584,7 @@ Claude Code agrega un nivel que **no existe en la API**: `ultracode` = `xhigh` +
 name: security-auditor
 description: Audit de seguridad antes de merge a main. Invocar SOLO en PRs con cambios
   de auth, permisos, storage o inputs de usuario. NO usar para linting o code style.
-model: claude-opus-5
+model: claude-opus-5-5
 tools: Read, Glob, Grep
 ---
 ```
@@ -580,20 +593,24 @@ tools: Read, Glob, Grep
 
 **Por qué no `effort: xhigh` en Sonnet:** patrones de seguridad sutiles (IDOR, timing attacks, second-order injection) requieren el nivel de razonamiento de Opus. En auditorías de seguridad, el costo del error justifica el modelo más capaz disponible.
 
-### El lineup actual (verificado contra `/en/models/overview`) <!-- ver: 2026-09-02 -->
+### El lineup actual (verificado contra `/en/models/overview`, pricing y deprecations) <!-- ver: 2026-10-05 -->
 
 | Modelo | ID | Contexto | Output máx | Precio in/out | effort |
 |---|---|---|---|---|---|
 | **Claude Fable 5.1** | `claude-fable-5-1` | 1M | 128K | $10 / $50 | los 5 (thinking siempre on) |
-| **Claude Opus 5** | `claude-opus-5` | 1M | 128K | $5 / $25 | los 5 |
-| **Claude Sonnet 5** | `claude-sonnet-5` | 1M | 128K | $2 / $10 | los 5 |
+| **Claude Opus 5.5** | `claude-opus-5-5` | 1M | 128K | $4 / $20 | los 5 — default `medium`, thinking siempre on |
+| **Claude Sonnet 5.5** | `claude-sonnet-5-5` | 1M | 128K | $2 / $10 | los 5 — default `medium` en Claude Code, thinking siempre on |
 | **Claude Haiku 4.5** | `claude-haiku-4-5-20251001` | 200K | 64K | $1 / $5 | ninguno |
 
-**Opus 5 reemplazó a Opus 4.8 como el Opus vigente** — 4.8, 4.7, 4.6, Sonnet 4.6 y Fable 5 pasaron a "legacy (todavía disponible)". La recomendación oficial hoy es *"start with Claude Opus 5 for most workloads"*, y Fable 5.1 solo cuando tus evals con Opus 5 a effort alto se quedan cortos.
+**Opus 5.5 y Sonnet 5.5 son la generación vigente.** Opus 5 duró dos meses como "el Opus actual": hoy está en "legacy (todavía disponible)" junto a Fable 5, Opus 4.8, 4.7 y 4.6. La recomendación oficial es *"start with Claude Opus 5.5 for most workloads"*, y Fable 5.1 para razonamiento exigente y trabajo agéntico de largo aliento.
+
+**Opus 5.5 salió más barato que el que reemplaza**: $4/$20 contra los $5/$25 de Opus 5, con cache reads a $0.20/MTok (0.05× del input, la mitad del 0.1× habitual). Un agente pinneado a `claude-opus-5` hoy paga 25% de más por un modelo legacy. Es el caso exacto de "pinear no te ahorra el mantenimiento: te lo hace visible" (más abajo).
+
+**Requisito de versión:** Opus 5.5 pide Claude Code ≥ v2.1.280 y Sonnet 5.5 ≥ v2.1.284.
 
 **Dos fechas que importan para una guía que apoya casi todo en haiku:**
 - **Haiku 4.5 se retira "no antes del 15/10/2026"** <!-- vence: 2026-10-15 --> — es el único modelo del lineup con retiro a menos de un año. Todos los agentes haiku de esta guía necesitan plan de sucesión antes de esa fecha.
-- Opus 5: no antes del 24/07/2027 · Sonnet 5: no antes del 30/06/2027 · Fable 5.1: no antes del 01/09/2027.
+- Opus 5.5: no antes del 22/09/2027 · Sonnet 5.5: no antes del 28/09/2027 · Fable 5.1: no antes del 01/09/2027 · (legacy) Opus 5: 24/07/2027 · Sonnet 5: 30/06/2027.
 
 **Aliases de Claude Code** (`/model <alias>`, `--model`, `ANTHROPIC_MODEL`, `settings.json`) — son de Claude Code, no de la API:
 
@@ -601,12 +618,12 @@ tools: Read, Glob, Grep
 |---|---|
 | `best` | El Fable más nuevo donde esté disponible, si no Opus |
 | `fable` | Fable más nuevo (hoy 5.1) — requiere Claude Code ≥ v2.1.255, **nunca es default**, puede consumir usage credits |
-| `opus` / `sonnet` / `haiku` | El más nuevo del tier (hoy Opus 5 / Sonnet 5) |
+| `opus` / `sonnet` / `haiku` | El más nuevo del tier. En la Anthropic API hoy: Opus 5.5 / Sonnet 5.5. **Depende del proveedor**: en Bedrock y Google Cloud `sonnet` → Sonnet 4.5; en Claude Platform on AWS → Sonnet 4.6; en Foundry `opus` → Opus 4.6 |
 | `opus[1m]` / `sonnet[1m]` | Mismo modelo, ventana de 1M forzada |
 | `opusplan` | Opus para planificar, cambia solo a Sonnet para ejecutar |
 | `default` | Limpia el override y usa el default de la cuenta |
 
-**El default depende del plan, no del CLI:** Max / Team Premium / Enterprise / Anthropic API → **Opus 5**. Pro / Team Standard → **Sonnet 5**. Microsoft Foundry → Sonnet 4.5. Opus 5 requiere Claude Code ≥ v2.1.219.
+**El default ya no depende del plan** (corregido): desde v2.1.280, Pro, Max, Team, Enterprise y Anthropic API → **Opus 5.5**. Microsoft Foundry → Sonnet 4.5. Antes de esa versión, Pro y Team Standard arrancaban en Sonnet 5. Para el dev pobre en plan Pro esto es el cambio que más pesa: **tu sesión principal pasó de Sonnet a Opus sin que tocaras nada**, y todo agente con `model: inherit` (o sin `model:`) la sigue. Si quieres Sonnet, hay que pedirlo: `/model sonnet` o `"model": "sonnet"` en settings. <!-- ver: 2026-10-05 -->
 
 ### Aliases y defaults en el frontmatter — qué es realmente "pinear" (verificado contra sub-agents y model-config oficiales)
 
@@ -614,7 +631,7 @@ tools: Read, Glob, Grep
 
 ```yaml
 model: sonnet              # alias de tier — ej. usado en la documentación oficial
-model: claude-sonnet-5     # ID completo
+model: claude-sonnet-5-5     # ID completo
 model: inherit             # mismo modelo que la conversación principal
 ```
 
@@ -622,25 +639,25 @@ No es que "la documentación exija poner el nombre completo" — los propios eje
 
 | Forma | Ejemplo | ¿Puede cambiar sin que lo toques? |
 |---|---|---|
-| Alias de **tier** (sin número de versión) | `sonnet`, `opus`, `haiku`, `fable` | **Sí** — "apunta a la versión recomendada para tu proveedor y se actualiza con el tiempo" (doc oficial). Hoy `sonnet`→Sonnet 5, mañana puede ser Sonnet 6 sin que edites nada |
-| ID/alias **con versión, sin fecha** (Sonnet 5, Opus 5, Fable 5.1 — generación 4.6+) | `claude-sonnet-5`, `claude-opus-5`, `claude-fable-5-1` | **No** — desde la generación 4.6, el formato sin fecha ES el snapshot pinneado, no un puntero evergreen. La doc oficial lo dice explícito: *"Every Claude model ID is a pinned snapshot, including the dateless IDs used from the 4.6 generation on"* |
+| Alias de **tier** (sin número de versión) | `sonnet`, `opus`, `haiku`, `fable` | **Sí** — "apunta a la versión recomendada para tu proveedor y se actualiza con el tiempo" (doc oficial). En julio `sonnet`→Sonnet 5, hoy →Sonnet 5.5, sin que edites nada |
+| ID/alias **con versión, sin fecha** (Sonnet 5.5, Opus 5.5, Fable 5.1 — generación 4.6+) | `claude-sonnet-5-5`, `claude-opus-5-5`, `claude-fable-5-1` | **No** — desde la generación 4.6, el formato sin fecha ES el snapshot pinneado, no un puntero evergreen. La doc oficial lo dice explícito: *"Every Claude model ID is a pinned snapshot, including the dateless IDs used from the 4.6 generation on"* |
 | ID **con fecha** (modelos pre-4.6, ej. Haiku 4.5) | `claude-haiku-4-5-20251001` | No — es el ID real, pinneado por definición |
 | Alias con versión, sin fecha, de un modelo **pre-4.6** | `claude-haiku-4-5` | Es un puntero de conveniencia al ID con fecha — en la práctica estable, pero la forma explícitamente pinneada es la fechada |
 
-**Regla corregida:** el riesgo de drift está en los alias de **tier sin número** (`sonnet`, `opus`, `haiku`, `fable`), no en `claude-haiku-4-5-20251001` — ese SÍ es la forma más pinneada que existe para Haiku, no un anti-patrón. Para Sonnet 5 / Opus 5 / Fable 5.1 no hay una forma "más pinneada" que `claude-sonnet-5` / `claude-opus-5` / `claude-fable-5-1` — ya es el snapshot, no hace falta fecha.
+**Regla corregida:** el riesgo de drift está en los alias de **tier sin número** (`sonnet`, `opus`, `haiku`, `fable`), no en `claude-haiku-4-5-20251001` — ese SÍ es la forma más pinneada que existe para Haiku, no un anti-patrón. Para Sonnet 5.5 / Opus 5.5 / Fable 5.1 no hay una forma "más pinneada" que `claude-sonnet-5-5` / `claude-opus-5-5` / `claude-fable-5-1` — ya es el snapshot, no hace falta fecha.
 
-**Prueba de que el drift de tier es real, no teórico:** esta guía escribió `claude-opus-4-8` en todos sus ejemplos en julio. Hoy `opus` resuelve a Opus 5. Los agentes que decían `model: opus` cambiaron de modelo y de comportamiento sin que nadie tocara un archivo; los que decían `claude-opus-4-8` siguen exactamente donde estaban — que es el punto, aunque ahora corran un modelo legacy. Pinear no te ahorra el mantenimiento: te lo hace **visible**.
+**Prueba de que el drift de tier es real, no teórico:** esta guía escribió `claude-opus-4-8` en todos sus ejemplos en julio, `claude-opus-5` en septiembre y `claude-opus-5-5` en octubre. Los agentes que decían `model: opus` cambiaron dos veces de modelo, de precio y de effort default sin que nadie tocara un archivo; los que decían `claude-opus-4-8` siguen exactamente donde estaban — que es el punto, aunque ahora corran un modelo legacy que cuesta 25% más que el vigente. Pinear no te ahorra el mantenimiento: te lo hace **visible**.
 
 **Sin `model:` en el agente → NO usa "el modelo más caro" ni Fable 5 por default.** Verificado contra la doc de sub-agents: el campo, si se omite, **default a `inherit`** — el agente hereda el modelo de la conversación principal. (Corrección: versiones anteriores de esta guía afirmaban que el default era `claude-fable-5` — no es así.)
 
-### Fast Mode — inferencia rápida (Opus 5 y Opus 4.8, research preview)
+### Fast Mode — inferencia rápida (Opus 5.5, Opus 5 y Opus 4.8, research preview)
 
 **Corrección importante: la versión anterior de esta guía afirmaba que fast mode "NO es un parámetro de la Messages API". Es falso.** La doc oficial `/en/build-with-claude/fast-mode` documenta el parámetro con ejemplos en 8 lenguajes: <!-- ver: 2026-09-02 -->
 
 ```bash
 curl https://api.anthropic.com/v1/messages \
   -H "anthropic-beta: fast-mode-2026-02-01" \
-  -d '{ "model": "claude-opus-5", "max_tokens": 4096, "speed": "fast", ... }'
+  -d '{ "model": "claude-opus-5-5", "max_tokens": 4096, "speed": "fast", ... }'
 ```
 
 Es un **parámetro top-level `speed: "fast"`** + beta header `fast-mode-2026-02-01`, sobre el endpoint **beta** de messages (`client.beta.messages.*`). No va en headers sueltos ni en `extra_body`. Existe además como feature de producto (`/fast` en Claude Code), pero las dos cosas son la misma palanca, no dos features distintas.
@@ -651,14 +668,14 @@ Es un **parámetro top-level `speed: "fast"`** + beta header `fast-mode-2026-02-
 
 | Modelo | `speed: "fast"` |
 |---|---|
-| **Opus 5**, **Opus 4.8** | ✅ funciona — hasta 2.5× más tokens de output por segundo |
+| **Opus 5.5**, **Opus 5**, **Opus 4.8** | ✅ funciona — hasta 2.5× más tokens de output por segundo |
 | Opus 4.7 | ❌ **error**, sin fallback |
 | Opus 4.6 | ⚠️ **no falla**: corre a velocidad estándar y factura estándar. `usage.speed` dice `"standard"` |
 | Sonnet / Haiku / Fable | ❌ no existe |
 
 Siempre verificar `response.usage.speed` — es el único modo de distinguir "corrió rápido" de "corrió normal y no te avisó" (§21).
 
-**Precio: $10/$50 por MTok** — 2× el estándar de Opus, y aplica sobre **toda** la ventana de contexto, incluidos los requests de más de 200k tokens de input.
+**Precio: 2× el estándar del modelo** — $8/$40 por MTok en Opus 5.5, $10/$50 en Opus 5 y 4.8 — y aplica sobre **toda** la ventana de contexto, incluidos los requests de más de 200k tokens de input. <!-- ver: 2026-10-05 -->
 
 **Dónde NO está:** Bedrock, Google Cloud, Microsoft Foundry, Claude Platform on AWS, Batch API y Priority Tier. Claude API (incluido Managed Agents) y nada más. Es research preview: hace falta account manager o waitlist.
 
@@ -666,7 +683,7 @@ Siempre verificar `response.usage.speed` — es el único modo de distinguir "co
 
 | Escenario | Fast Mode |
 |---|---|
-| Sesión interactiva en Opus 5 donde la latencia molesta | ✅ — mismo modelo y mismas capacidades, más rápido; activar desde el inicio |
+| Sesión interactiva en Opus 5.5 donde la latencia molesta | ✅ — mismo modelo y mismas capacidades, más rápido; activar desde el inicio |
 | Agentes haiku/sonnet (git, postmortem, implementador) | ❌ — no disponible, y no lo necesitan |
 | Trabajo batch/CI sin humano esperando | ❌ — pagás 2× premium por velocidad que nadie ve (y con Batch API ni siquiera se puede) |
 | Toggle a mitad de una sesión larga | ❌ — cache miss del prefix completo, refacturado a precio premium |
@@ -674,9 +691,9 @@ Siempre verificar `response.usage.speed` — es el único modo de distinguir "co
 
 ### Contexto largo — ya no hay "extended premium"
 
-**Re-verificado:** de Claude 4.6 en adelante (Opus 5, Sonnet 5, Fable 5.1 incluidos) la ventana de 1M tokens viene **a pricing estándar** — *"a 900k-token request is billed at the same per-token rate as a 9k-token request"*. El modelo de "activar extended context a 10×" de versiones anteriores de esta guía quedó obsoleto. Haiku 4.5 mantiene 200K. <!-- ver: 2026-09-02 -->
+**Re-verificado:** de Claude 4.6 en adelante (Opus 5.5, Sonnet 5.5, Fable 5.1 incluidos) la ventana de 1M tokens viene **a pricing estándar** — *"a 900k-token request is billed at the same per-token rate as a 9k-token request"*. El modelo de "activar extended context a 10×" de versiones anteriores de esta guía quedó obsoleto. Haiku 4.5 mantiene 200K. <!-- ver: 2026-09-02 -->
 
-En Claude Code la ventana grande se fuerza con los aliases `opus[1m]` / `sonnet[1m]`.
+En Claude Code la ventana grande se fuerza con los aliases `opus[1m]` / `sonnet[1m]`; no hacen nada cuando el alias ya resuelve a un modelo con 1M nativo (Sonnet 5 y 5.5, Opus 4.7 en adelante).
 
 Lo que sigue vigente es la física del costo: el input se cobra por token usado. Una sesión que arrastra 500k tokens de contexto paga esos 500k en cada llamada (menos lo cacheado — §3). La palanca lowcost no es un flag: es fragmentar el problema y no cargar lo que no se usa.
 
@@ -690,32 +707,37 @@ Lo que sigue vigente es la física del costo: el input se cobra por token usado.
 | Reviewer de bugs/seguridad con haiku | Falsos negativos silenciosos — no detecta lo que no puede razonar. Sonnet mínimo |
 | Plan arquitectónico con haiku | Aprueba el primer approach que se le ocurre sin evaluar trade-offs — sonnet |
 | Opus para git/postmortem | haiku — tarea estructurada |
-| Alias de tier sin versión (`sonnet`, `haiku`, `opus`) en el agente | Drift silencioso — se actualiza solo con el tiempo, rompe reproducibilidad de costo. Usar `claude-sonnet-5` / `claude-haiku-4-5` |
+| Alias de tier sin versión (`sonnet`, `haiku`, `opus`) en el agente | Drift silencioso — se actualiza solo con el tiempo, rompe reproducibilidad de costo. Usar `claude-sonnet-5-5` / `claude-haiku-4-5` |
 | Asumir que sin `model:` el agente usa el modelo más caro | Falso — default a `inherit` (hereda el modelo de la sesión principal), no a Fable 5.1 |
 | Sonnet para triage/dispatch | haiku — decisión simple sobre keywords |
-| Opus por defecto "para estar seguros" | Sonnet + `effort: xhigh` primero — 2.5× más barato por token |
+| Opus por defecto "para estar seguros" | Sonnet + `effort: xhigh` primero — 2× más barato por token |
+| Dejar el default de la cuenta en plan Pro creyendo que es Sonnet | Desde v2.1.280 el default es Opus 5.5 en todos los planes — fijar `"model": "sonnet"` si eso es lo que quieres |
+| `"effortLevel": "high"` top-level en `~/.claude/settings.json` y asumir que rige en Opus 5.5 | No cuenta para 5.5: corre en `medium`. Usar `modelSettings` |
+| Agente pinneado a `claude-opus-5` "porque es el vigente" | Es legacy y cuesta 25% más que `claude-opus-5-5` |
 | `effort: xhigh` en Sonnet 4.6 u Opus 4.6 | La API lo rechaza — `xhigh` solo existe de Opus 4.7 / Sonnet 5 en adelante. En esos modelos el escalón es `max` |
-| Cambiar `effort` a mitad de conversación | Invalida el prompt cache (salvo el effort por-mensaje de Opus 5 / Fable 5.1) — elegir nivel al inicio |
+| Cambiar `effort` a mitad de conversación | Invalida el prompt cache (salvo el effort por-mensaje de Opus 5.5 / Sonnet 5.5 / Opus 5 / Fable 5.1) — elegir nivel al inicio |
 | Asumir que `speed: "fast"` falla si el modelo no lo soporta | Solo Opus 4.7 da error. **Opus 4.6 corre estándar y no avisa** — chequear `usage.speed` |
 | `effort: xhigh` global en settings.json | Solo en agentes o skills específicas — el costo se multiplica por cada tool call |
 
 ### Checklist §25
 
 ```
-□ Cada agente tiene model: especificado con alias de versión, NO alias de tier desnudo (ej. claude-haiku-4-5 o claude-sonnet-5, NO haiku ni sonnet a secas)
+□ Cada agente tiene model: especificado con alias de versión, NO alias de tier desnudo (ej. claude-haiku-4-5 o claude-sonnet-5-5, NO haiku ni sonnet a secas)
 □ Reviewer de convenciones (checklist fijo) → claude-haiku-4-5
-□ Reviewer de correctness (bugs, seguridad, edge cases) → claude-sonnet-5 mínimo
+□ Reviewer de correctness (bugs, seguridad, edge cases) → claude-sonnet-5-5 mínimo
 □ git, postmortem, curador → claude-haiku-4-5
 □ Plan mecánico (archivos conocidos, sin ambigüedad) → claude-haiku-4-5
-□ Plan arquitectónico (trade-offs, multi-sistema) → claude-sonnet-5
+□ Plan arquitectónico (trade-offs, multi-sistema) → claude-sonnet-5-5
 □ Antes de Opus → probar Sonnet con effort: xhigh (skill frontmatter o settings.json)
 □ Opus solo si: security/arch one-shot O contexto > 10k tokens O costo de error es irreversible
 □ Agentes Opus tienen tools mínimas (Read/Grep/Glob) — el costo extra debe estar en razonamiento, no en ejecución
 □ effort: xhigh no en settings.json global — solo en agentes/skills que lo necesitan
 □ Evitar alias de tier desnudo (haiku ❌, sonnet ❌, opus ❌ — cambian de versión solos); claude-haiku-4-5 ✅ y claude-haiku-4-5-20251001 ✅ son AMBOS formas pinneadas válidas para Haiku
-□ El Opus vigente es claude-opus-5 — 4.8/4.7/4.6 pasaron a legacy; revisar los agentes que quedaron pinneados a 4.8
-□ effort: xhigh solo existe en Opus 4.7+/Sonnet 5/Fable — en Opus 4.6 y Sonnet 4.6 el escalón es max
-□ Fast Mode: Opus 5 y Opus 4.8 — SÍ es parámetro de API (speed: "fast" + beta fast-mode-2026-02-01, endpoint beta) y también /fast en Claude Code; $10/$50/MTok; decidir al inicio (el toggle invalida el cache); Opus 4.6 lo ignora en silencio
+□ La generación vigente es claude-opus-5-5 / claude-sonnet-5-5 — Opus 5, 4.8, 4.7 y 4.6 son legacy; revisar los agentes pinneados a claude-opus-5 (pagan $5/$25 en vez de $4/$20)
+□ Opus 5.5 y Sonnet 5.5 arrancan en effort medium — si un agente necesita high, escribirlo en su frontmatter
+□ Default de cuenta = Opus 5.5 en todos los planes (v2.1.280+) — si quieres Sonnet en la sesión principal, fijarlo en settings
+□ effort: xhigh solo existe en Opus 4.7+/Sonnet 5+/Fable — en Opus 4.6 y Sonnet 4.6 el escalón es max
+□ Fast Mode: Opus 5.5, Opus 5 y Opus 4.8 — SÍ es parámetro de API (speed: "fast" + beta fast-mode-2026-02-01, endpoint beta) y también /fast en Claude Code; 2× el estándar ($8/$40 en 5.5, $10/$50 en 5 y 4.8); decidir al inicio (el toggle invalida el cache); Opus 4.6 lo ignora en silencio
 □ Contexto: 1M es estándar sin premium de Claude 4.6 en adelante — pero cada token en contexto se paga; fragmentar sigue siendo la regla
 □ Haiku 4.5 se retira no antes del 15/10/2026 — si la arquitectura apoya en haiku, tener sucesor elegido
 ```
@@ -841,7 +863,7 @@ FALLÓ: <archivo::test> — <línea del error>
 name: <nombre-kebab-case>           # cómo se invoca: @nombre · único en el proyecto
 description: "<Qué hace este agente>. Usar cuando <caso principal>,
   <caso secundario>, o el contexto involucra <señal de activación>."
-model: <claude-haiku-4-5|claude-sonnet-5|claude-opus-5|claude-fable-5-1>   # pinear siempre — ver §25
+model: <claude-haiku-4-5|claude-sonnet-5-5|claude-opus-5-5|claude-fable-5-1>   # pinear siempre — ver §25
 tools: <Read, Glob, Grep>           # solo las necesarias — ver tabla de tools abajo
 ---
 
@@ -873,7 +895,7 @@ Si un comando falla:
 name: security-auditor
 description: "Audit de seguridad. Usar cuando el PR modifica auth, permisos,
   storage o cualquier input de usuario. No usar para linting o code style."
-model: claude-opus-5                 # one-shot irreversible — ver §25
+model: claude-opus-5-5                 # one-shot irreversible — ver §25
 tools: Read, Glob, Grep             # sin Write ni Bash — solo lectura
 ---
 
@@ -913,6 +935,8 @@ RESULTADO: PASS | FAIL
 | `mcpServers` | No | MCP servers disponibles para este agente — referencia por nombre a uno ya configurado, o definición inline. **Ignorado si el agente viene de un plugin** |
 | `effort` | No | Override de esfuerzo: `low` · `medium` · `high` · `xhigh` · `max` |
 | `color` | No | Color en la UI: `red` · `blue` · `green` · `yellow` · `purple` · `orange` · `pink` · `cyan` |
+| `omitClaudeMd` | No | `true` = el subagente arranca **sin** los CLAUDE.md de usuario, proyecto y local (los managed sí cargan). Palanca lowcost directa para agentes que reciben todo en el prompt de delegación: se ahorran el costo fijo de §2. Ignorado si el agente corre como sesión principal (`--agent`). Requiere v2.1.271+ <!-- ver: 2026-10-05 --> |
+| `experimental` | No | Mapa de opciones experimentales. `cacheTtl: 5m` o `1h` elige la vida del prompt cache para los requests de ese subagente. Se ignora `1h` mientras tu suscripción esté consumiendo usage credits. Requiere v2.1.248+ |
 
 **Gotcha verificado (doc oficial de sub-agents):** `hooks`, `mcpServers` y `permissionMode` se **ignoran en silencio** cuando el agente se carga desde un plugin — sin error, sin warning. Si un agente de plugin necesita alguno de estos tres, la única forma es que el usuario copie el archivo a `.claude/agents/` o `~/.claude/agents/` locales; agregar reglas en `permissions.allow` de `settings.json` es la alternativa para permisos, pero aplica a toda la sesión, no solo a ese subagente. <!-- ver: 2026-07-04 -->
 
@@ -1315,6 +1339,8 @@ Nota: `Stop` y `SubagentStop` sin `matcher` se aplican a todos los casos.
 
 <!-- §7-ref -->
 
+> Estos son los **settings hooks**: un comando, HTTP o prompt que corre fuera del proceso. Desde v2.1.287 un plugin también puede registrar hooks como funciones JS/TS que corren *dentro* de Claude Code y dibujan en la interfaz: eso es un **mod** (§42). Ojo con el alcance de "física pura": vale frente al modelo, no frente a un mod instalado, que puede saltarse un `PreToolUse` no-managed (§42). <!-- ver: 2026-10-05 -->
+
 > **Complemento al recuadro de stdout plano (§7-quick).** El matiz que hace confusa la fila *"`additionalContext` al top level se ignora"* del catálogo de muertes silenciosas (§35): eso vale cuando **emitís JSON**. Ahí el campo tiene que ir dentro de `hookSpecificOutput` o se descarta sin aviso. Las dos reglas conviven — texto plano funciona, JSON mal anidado no — y son fáciles de mezclar: **si tu primera línea empieza con `{`, estás en el camino JSON y aplican sus reglas**; si no, es texto plano y solo funciona en esos 4 eventos.
 
 ### Eventos de nicho — no cubiertos arriba
@@ -1338,7 +1364,7 @@ Re-verificado contra la referencia oficial de hooks — 33 eventos en total, est
 | `Setup` | Con flags `--init-only`/`--init`/`--maintenance` — preparación única |
 | `UserPromptExpansion` | Un slash command se expande a un prompt — bloquea la expansión |
 | `DirectoryAdded` | Se agrega un directorio al workspace — no bloquea *(nuevo desde julio 2026)* |
-| `PreModelSwitch` / `PostModelSwitch` | Cambio de modelo en la sesión; el matcher matchea el **nombre del modelo** (`claude-opus-5`, `.*opus.*`) y `Pre` bloquea con exit 2 *(nuevos desde julio 2026)* |
+| `PreModelSwitch` / `PostModelSwitch` | Cambio de modelo en la sesión; el matcher matchea el **nombre del modelo** (`claude-opus-5-5`, `.*opus.*`) y `Pre` bloquea con exit 2 *(nuevos desde julio 2026)* |
 
 > **`PreModelSwitch` es la palanca lowcost que faltaba:** hasta ahora no había forma de impedir que una sesión escale de modelo sin querer. Un hook con `matcher: ".*opus.*"` que devuelve exit 2 convierte "no uses Opus salvo que lo decidas" de sugerencia del prompt en física del harness (§7 intro). Mismo argumento que cualquier otro guard: la regla escrita se ignora, el hook no.
 
@@ -1362,7 +1388,7 @@ La guía usa `"type": "command"` (Python/shell) en todos los ejemplos. Existen *
 {"type": "prompt", "prompt": "¿Este comando Bash es seguro para ejecutar en producción? $ARGUMENTS"}
 ```
 
-**Prompt hooks: corren en Haiku por defecto** (campo `model` para subirlo) y responden `{"ok": true|false, "reason": "..."}`. Es literalmente el Advisor Pattern (§31) implementado por el harness — un juez barato que no consume el contexto principal.
+**Prompt hooks: corren en el modelo de background** (el que Claude Code usa para sus tareas de fondo: Haiku salvo que `ANTHROPIC_DEFAULT_HAIKU_MODEL` diga otra cosa; campo `model` para cambiarlo) y responden `{"ok": true|false, "reason": "..."}`. Es literalmente el Advisor Pattern (§31) implementado por el harness — un juez barato que no consume el contexto principal.
 
 **Agent hooks** (experimental, preferir `command` en producción): mismo formato `ok`/`reason`, timeout default **60s**, hasta **50 turnos de tool use**, sin campo `impossible`. Úsalo solo cuando la verificación necesita *mirar* el repo — "¿pasan los tests?" — y no alcanza con leer el payload.
 
@@ -1405,7 +1431,7 @@ La tabla de arriba (§7-quick) cubre los dos habituales. La lista completa, con 
 
 Los dos últimos son la novedad que conecta §6 y §7: una skill puede **registrar sus propios hooks al invocarse** (campo `hooks` en el frontmatter, → §6). El detalle que hay que leer dos veces: el hook de una skill **queda registrado el resto de la sesión**, no solo durante la skill. Para que se desregistre después de disparar una vez, el campo es `once: true`.
 
-**`disableAllHooks: true`** apaga todo. Precedencia con trampa: gana el valor que queda **después** de resolver la precedencia de settings, así que el `settings.json` de un proyecto puede desactivar los hooks que definiste en tu `~/.claude/`. Los de managed settings siguen corriendo salvo que el `disableAllHooks` esté también ahí.
+**`disableAllHooks: true`** apaga todo. Precedencia con trampa: gana el valor que queda **después** de resolver la precedencia de settings, así que el `settings.json` de un proyecto puede desactivar los hooks que definiste en tu `~/.claude/`. Los de managed settings siguen corriendo salvo que el `disableAllHooks` esté también ahí. Para apagarlos una sola corrida sin importar lo que diga el proyecto: `claude --settings '{"disableAllHooks": true}'`. No existe forma de deshabilitar un hook individual dejándolo en la config. El mismo flag apaga también los **mods** que instalaste (§42), no solo los settings hooks. <!-- ver: 2026-10-05 -->
 
 **`/hooks` lista todos los hooks configurados agrupados por evento.** Es la respuesta directa a la pregunta de §35 ("¿cómo sabría que este hook está muerto?"): si tu guard no aparece en `/hooks`, no está registrado — no hace falta esperar a que falle un caso real para descubrirlo.
 
@@ -1441,7 +1467,7 @@ Consecuencia práctica: `Bash` matchea exactamente `Bash`, pero `Bash.` es regex
     "args": [],                 // si se setea, ejecuta en forma exec (sin shell)
     "shell": "bash",            // "bash" (default) o "powershell"
     "if": "Bash(npm *)",        // AND con matcher — SOLO en los 5 eventos de tool
-    "timeout": 30,              // segundos antes de timeout (default: sin límite)
+    "timeout": 30,              // segundos antes de cancelar (default: 600 — ver nota abajo)
     "statusMessage": "Verificando paquete...",  // spinner visible al usuario
     "once": false,              // true = corre una vez y se desregistra
     "async": false,             // true = corre en background, no bloquea
@@ -1451,21 +1477,32 @@ Consecuencia práctica: `Bash` matchea exactamente `Bash`, pero `Bash.` es regex
 }
 ```
 
+**Defaults de `timeout`** (corregido: la versión anterior decía "sin límite"): **600 s** para `command`, `http` y `mcp_tool`; **30 s** para `prompt`; **60 s** para `agent`. El default de `command`/`http`/`mcp_tool` baja a **30 s** en `UserPromptSubmit`, `PreModelSwitch` y `PostModelSwitch`, y a **10 s** en `MessageDisplay`. No se aplica a un hook `command` con `async: true`. Un guard colgado en `PreToolUse` retiene la tool call hasta 10 minutos si no pones `timeout`. <!-- ver: 2026-10-05 -->
+
 **Placeholders de path** — resuelven contra la raíz correcta sin importar el cwd: `${CLAUDE_PROJECT_DIR}` (raíz del proyecto), `${CLAUDE_PLUGIN_ROOT}` (instalación del plugin) y `${CLAUDE_PLUGIN_DATA}` (directorio persistente del plugin, **sobrevive a los updates** — ahí van caches y dependencias instaladas, nunca dentro de `PLUGIN_ROOT`). En worktrees `${CLAUDE_PROJECT_DIR}` queda fijo: para el directorio actual usá el campo `cwd` del payload del hook.
 
 **`if` y comandos encadenados** — un `if` angosto tipo `Bash(git push *)` NO matchea `git add -u && git commit && git push origin master`: la regla evalúa por prefijo y el comando parte con `git add`. Para guards de seguridad: `if` amplio (`Bash(git *)`) + el script segmenta internamente por `&&`/`||`/`;`. Un `if` angosto en un guard es un bypass, no una optimización.
 
 ### Modos de permiso — cuándo usar cada uno
 
-| Modo | Cómo activar | Comportamiento | Cuándo usar |
-|---|---|---|---|
-| `plan` | `"permissionMode": "plan"` | Solo Read/Glob/Grep — 0 writes ni Bash | Auditar antes de ejecutar |
-| `auto` | default | Pide confirmación en acciones destructivas | Trabajo interactivo normal |
-| `acceptEdits` | `"permissionMode": "acceptEdits"` | Auto-aprueba Write/Edit, pide Bash peligroso | Refactors grandes sin riesgo |
-| `dontAsk` | `--dangerously-skip-permissions` | Todo automático, sin interrupciones | CI/CD no interactivo |
-| `bypassPermissions` | Solo config interna | Bypasea hooks y permissions completamente | **Sandboxes aislados únicamente** |
+| Modo | Qué corre sin preguntar | Cuándo usar |
+|---|---|---|
+| `default` (en la UI: **Manual**) | Solo lecturas | Revisar cada acción, trabajo sensible |
+| `acceptEdits` | Lecturas, edits de archivos y comandos comunes de filesystem (`mkdir`, `touch`, `mv`, `cp`) | Iterar sobre código que estás revisando |
+| `plan` | Lecturas, más comandos aprobados por el classifier si auto mode está disponible | Explorar antes de cambiar |
+| `auto` | Todo, con un classifier (un segundo modelo) revisando cada acción | Tareas largas, menos fatiga de prompts |
+| `dontAsk` | Lecturas y tools pre-aprobadas; **lo que habría preguntado se deniega** | CI y scripts bloqueados |
+| `bypassPermissions` | Todo, incluidas escrituras a paths protegidos | **Solo contenedores y VMs aislados** |
 
-Regla: el modo más restrictivo que permita trabajar sin fricción innecesaria. En producción: nunca `bypassPermissions`.
+Corregido contra `code.claude.com/docs/en/permission-modes` — la tabla anterior tenía tres filas mal: <!-- ver: 2026-10-05 -->
+
+- **`auto` no es "el default que pide confirmación"**: es el modo donde un classifier decide en tu lugar. Desde **v2.1.283** es el modo de arranque de las sesiones interactivas de terminal y VS Code. El modo que pregunta todo es `default` (Manual).
+- **`dontAsk` no es `--dangerously-skip-permissions`**: es lo contrario. No aprueba todo, **deniega** todo lo que no esté pre-aprobado. El flag `--dangerously-skip-permissions` activa `bypassPermissions`.
+- **`plan` ya no es "0 Bash"**: con auto mode disponible, corre los comandos que el classifier aprueba.
+
+Se elige con `claude --permission-mode <modo>`, con `permissions.defaultMode` en settings, o con `permissionMode:` en el frontmatter de un agente (§5). `auto` y `bypassPermissions` puestos como `defaultMode` en el `.claude/settings.json` de un **proyecto** no surten efecto: un repo no puede subirte el modo.
+
+Regla: el modo más restrictivo que permita trabajar sin fricción innecesaria. En producción: nunca `bypassPermissions`. Para CI sin humano, `dontAsk` + una allowlist explícita es la opción bloqueada; `bypassPermissions` solo dentro de un contenedor.
 
 > **Verificado en producción:** **3 capas de seguridad para apps multi-usuario:** Layer 1 (input) — regla en CLAUDE.md `user input = DATA` + `strip_prompt_injection()` en architect. Layer 2 (generation) — `pre_write_guard.py` bloquea path traversal y secretos en archivos generados. Layer 3 (storage) — `sanitize_for_storage()` antes de Atlas. Orden: implementar Layer 2 primero — es el único bloqueante (PreToolUse). <!-- ver: 2026-06-01 -->
 
@@ -2058,11 +2095,11 @@ COMPLEXITY_MAP = [
     (["typo", "rename", "format", "lint", "mover", "copiar"],
      "claude-haiku-4-5", None, "simple"),
     (["bug", "fix", "test", "feature", "añadir", "agregar", "refactor"],
-     "claude-sonnet-5", "medium", "media"),
+     "claude-sonnet-5-5", "medium", "media"),
     (["arquitectura", "diseño", "migración", "seguridad", "critico", "critical"],
-     "claude-sonnet-5", "xhigh", "compleja"),
+     "claude-sonnet-5-5", "xhigh", "compleja"),
     (["irreversible", "producción", "production"],
-     "claude-opus-5", None, "crítica"),
+     "claude-opus-5-5", None, "crítica"),
 ]
 
 try:
@@ -3400,7 +3437,7 @@ name: lead-planner
 description: "Planifica la delegación de tareas cross-especialistas. Usar cuando
   una tarea toca ≥2 sistemas o requiere ≥2 especialistas en secuencia.
   NO implementa ni delega — devuelve el plan y el hilo principal lo ejecuta."
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 tools: Read, Glob, Grep
 ---
 
@@ -3429,7 +3466,7 @@ name: lead-orchestrator
 description: "Ejecuta pipelines cross-especialistas de una pasada, sin checkpoints
   con el usuario. Usar SOLO cuando la secuencia está pre-aprobada
   (/plan corrió y el usuario dio el ok)."
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 tools: Read, Glob, Grep, Agent(implementador, reviewer)
 ---
 
@@ -3648,8 +3685,11 @@ Las vías 1 y 2 hacen que la skill **exista**; la 3 decide **quién la lleva car
 ### Instalación — CLI
 
 ```bash
-claude plugin add github:usuario/mi-repo
+claude plugin marketplace add usuario/mi-repo        # el repo necesita .claude-plugin/marketplace.json
+claude plugin install mi-plugin@<nombre-del-marketplace>
 ```
+
+Corregido: `claude plugin add github:...` **no existe** (verificado con `claude plugin --help` en v2.1.289: los subcomandos son `install`, `marketplace`, `validate`, `test`, `update`...). Un plugin se instala desde un marketplace, así que son dos pasos: registrar el marketplace y luego instalar `plugin@marketplace`. `#ref` pinea rama o tag (`usuario/mi-repo#v1.2.0`). Para pasarle el plugin a pocas personas sin marketplace: el directorio o un `.zip`, y `claude --plugin-dir`. <!-- ver: 2026-10-05 -->
 
 ### Probar localmente
 
@@ -3735,7 +3775,7 @@ Es REQUERIDO para distribución y ningún template lo mostraba:
 <Una línea: qué hace y para quién.>
 
 ## Instalación
-`claude plugin add github:<usuario>/<repo>` — o desktop: Browse plugins → Add marketplace → `<usuario>/<repo>`
+`claude plugin marketplace add <usuario>/<repo>` y luego `claude plugin install <plugin>@<marketplace>` — o desktop: Browse plugins → Add marketplace → `<usuario>/<repo>`
 
 ## Componentes
 | Componente | Qué hace | Modelo |
@@ -4077,7 +4117,7 @@ El inventario cruza los plugins habilitados con sus `lspServers`, chequea que ca
 
 > Como un sous-chef que revisa el plato antes de que salga a la mesa: no cocina — solo dice si algo está mal. El chef sigue siendo sonnet; el revisor es haiku. El plato mejora sin cambiar al chef Michelin.
 
-El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus" (2.5× por token, ratio estable — §25). La solución no es subir de modelo — es agregar un segundo agente barato que revisa el output del primero.
+El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus" (2× por token desde Opus 5.5 — §25). La solución no es subir de modelo — es agregar un segundo agente barato que revisa el output del primero.
 
 ### Cuándo aplicar
 
@@ -4085,7 +4125,7 @@ El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus"
 |---|---|---|
 | Sonnet genera output que incumple un criterio fijo (schema, formato, campos obligatorios) | Iterar con sonnet hasta que funcione | haiku detecta y reporta el fallo en un turno |
 | El output de un agente es input del siguiente (pipeline) | Error se propaga silenciosamente | Advisor corta la cadena antes de que escale |
-| Subir a opus parece la única solución | ~2.5× costo por token hoy (~1.7× desde 01/09/2026) | Sonnet + haiku advisor (~1.15× costo) |
+| Subir a opus parece la única solución | ~2× costo por token | Sonnet + haiku advisor (~1.15× costo) |
 
 **No aplicar cuando:** ya existe un agente reviewer explícito en el sistema. Dos revisores para lo mismo = costo duplicado sin beneficio.
 
@@ -4133,7 +4173,7 @@ El advisor no itera — emite veredicto. Si hacés más de 1 retry, el problema 
 |---|---|---|
 | Sonnet solo | 1× | Output predecible, stack conocido |
 | Sonnet + haiku advisor | ~1.15× | Output con consecuencias si está mal |
-| Opus solo | 2.5× | Si sonnet + advisor sigue fallando |
+| Opus solo | 2× | Si sonnet + advisor sigue fallando |
 | Opus + advisor | ~2.65× | Security/one-shot donde el error es irreversible |
 
 El advisor barato mantiene su ventaja: haiku usa además el tokenizer viejo, así que consume ~30% menos tokens que sonnet/opus para el mismo texto de revisión (→ §3).
@@ -4866,6 +4906,9 @@ KEYWORD_MAP = [
     # §41 — Hook protocol: lectura de stdin y routing de salida por evento
     (["hook_event_name", "hook protocol", "routing de salida", "stdin del hook",
       "lectura de stdin", "stdout plano", "salida por evento"],       41),
+    # §42 — Mods: hooks JS/TS que corren dentro de Claude Code
+    (["mods", "un mod", "hooks module", "function hook", "register.js",
+      "plugin-authoring", "tool.call", "ui.render", "plugin test"],    42),
 ]
 
 def detect_sections(prompt: str) -> list[int]:
@@ -5659,8 +5702,8 @@ La versión anterior de esta sección solo contemplaba cloud vs hook local. Falt
 | Tarea | Modelo |
 |---|---|
 | Mantenimiento / curation / deduplicación | `claude-haiku-4-5` |
-| Análisis de código / PR review automático | `claude-sonnet-5` |
-| Tareas complejas multi-step | `claude-sonnet-5` |
+| Análisis de código / PR review automático | `claude-sonnet-5-5` |
+| Tareas complejas multi-step | `claude-sonnet-5-5` |
 
 ### /web-setup — conectar servicios OAuth
 
@@ -6014,6 +6057,276 @@ Markdown plano, sin estructura obligatoria; se recarga **en caliente** (los edit
 `/loop` para polling rápido dentro de una sesión; **Routines/Desktop (§30)** cuando debe correr sin tu máquina o sin sesión abierta. El pipeline que orquesta un loop no es lo mismo que el patrón harness — ver §35.
 
 **Fuentes:** [Scheduled tasks](https://code.claude.com/docs/en/scheduled-tasks.md) · [Channels](https://code.claude.com/docs/en/channels) · [Tools reference — Monitor](https://code.claude.com/docs/en/tools-reference) · [`/goal`](https://code.claude.com/docs/en/goal)
+
+---
+
+<!-- §42 -->
+<!-- §42-quick -->
+## 42. Mods — hooks que corren dentro de Claude Code
+
+> Un mod es un plugin cuyo `hooks/hooks.json` apunta a un módulo JS/TS con la clave `"modules"`. Sus funciones corren **dentro del proceso de Claude Code** en cada evento: observan, reescriben o responden una tool call, un prompt o un turno, registran un `/comando` que corre sin modelo y dibujan paneles. Corren con tus permisos, sin sandbox, y un hook que falla se salta en silencio: un guard sin `.catch` falla abierto. Requiere v2.1.287+. <!-- ver: 2026-10-05 -->
+
+La doc llama "hook" a las dos cosas. En esta guía: **settings hook** es el de §7 (un comando, HTTP o prompt declarado en settings, que corre fuera del proceso) y **mod** es el de esta sección. No se reemplazan: los settings hooks siguen funcionando igual y nada de §7 queda deprecado.
+
+### Cuándo sí, cuándo no
+
+| | Mod | Settings hook (§7) | Skill (§6) | MCP server |
+|---|---|---|---|---|
+| Qué es | Funciones JS/TS en un plugin, llamadas en proceso | Comando, HTTP o prompt en un evento | `SKILL.md` que Claude lee | Proceso externo que da tools |
+| Qué cambia | Tool calls, prompts, comandos, turnos y lo que se dibuja | Si una tool call o prompt sigue, sus argumentos y resultado, contexto extra | Lo que Claude sabe y hace | Qué tools tiene Claude |
+| Dibuja en la interfaz | Sí | No | No | No |
+| Qué escribes | JavaScript o TypeScript | Un script + una entrada en `settings.json` | Markdown | Un server |
+
+**Regla lowcost:** si un settings hook ya lo resuelve, no escribas un mod. Bloquear, permitir o loguear con un script que ya tienes es §7. El mod se justifica cuando necesitas una de estas cuatro cosas que nada más da:
+
+1. **Dibujar**: un panel, una banda sobre el prompt, un sufijo en el spinner.
+2. **Un `/comando` que corre tu función sin turno de modelo**, incluso mientras Claude trabaja (`immediate: true`).
+3. **Meterte en medio de una tool call o de un request**: retenerla mientras preguntas, responderla sin ejecutar la tool, mandar un request a otro modelo.
+4. **Estado compartido entre hooks**: lo que un hook cuenta, otro lo muestra.
+
+### Anatomía — tres archivos, sin build
+
+```text
+push-guard/
+├── .claude-plugin/plugin.json     # manifest normal de plugin, sin campos especiales
+└── hooks/
+    ├── hooks.json                 # { "modules": ["./register.js"] } — esta clave es lo que lo vuelve mod
+    └── register.js                # el hooks module: exporta register(on, options)
+```
+
+No hace falta Node, bundler ni paso de build: Claude Code carga `.js` y `.ts` directo. `hooks.json` puede llevar además settings hooks bajo `hooks`, así que un plugin puede traer las dos cosas.
+
+Ejemplo completo. Validado con `claude plugin validate` y con un test que pasa en `claude plugin test` (v2.1.289):
+
+```javascript
+// hooks/register.js
+// Variable de módulo: se reinicia en cada reload (para conservarla: $.state o $.store)
+let calls = 0
+
+async function guard($, e, next) {
+  if (/git push .*--force/.test(e.command)) {
+    // Sin next(): el comando no corre y Claude lee este texto como resultado
+    return { deny: 'Force push bloqueado. Empuja a una rama nueva.' }
+  }
+  return next(e)
+}
+
+export function register(on) {
+  on('session.start', async ($, e, next) => {
+    await $.command.register({ name: 'tally', description: 'Tool calls de esta sesión' })
+    return next(e)
+  })
+
+  // Observa: cuenta y deja pasar
+  on('tool.call', async ($, e, next) => {
+    calls += 1
+    return next(e)
+  })
+
+  // Responde: bloquea. El .catch lo hace fail-closed — sin él, un guard roto deja pasar todo
+  on('tool.call', { tool: 'Bash' }, guard).catch(async ($, e, next) => {
+    return { deny: 'El guard falló (' + next.error.kind + '): comando no ejecutado.' }
+  })
+
+  // /tally corre tu función sin turno de modelo
+  on('command.run', { command: 'tally' }, async () => {
+    return { text: calls + ' tool calls desde que cargó el mod' }
+  })
+}
+```
+
+Cada hook recibe `($, e, next)`: `$` es la API de mods (lo único con lo que el módulo alcanza archivos, procesos, red, modelo o interfaz: no hay Node ni `setTimeout`), `e` es el evento congelado, y `next(e)` pasa el evento a los demás mods y al comportamiento propio de Claude Code. Lo que haces con `next` decide la jugada:
+
+| Jugada | Código | Efecto |
+|---|---|---|
+| Observar | `return next(e)` (o `await next(e)` y actuar después) | Nada cambia |
+| Reescribir | `return next({ ...e, text: nuevo })` | El resto de la cadena ve la copia. `e` es inmutable: asignarle un campo lanza error |
+| Responder | `return { deny: '...' }` sin llamar `next` | Corta la cadena: ni los mods siguientes ni Claude Code actúan |
+
+El matcher es el segundo argumento de `on`: un valor, un array o una regex por campo (`{ tool: ['Edit', 'Write'] }`, `{ tool: /^mcp__github__/ }`).
+
+<!-- §42-ref -->
+### El loop de desarrollo
+
+```bash
+claude --plugin-dir ./push-guard      # carga sin instalar y recarga el módulo al guardar
+claude plugin validate ./push-guard   # qué lee Claude Code del mod, sin ejecutarlo ni abrir sesión
+claude plugin test ./push-guard       # corre los *.test.ts sin sesión, sin login y sin red
+```
+
+`validate` imprime dos líneas que son el contrato real del mod:
+
+```text
+  ❯ ./register.js hooks: session.start, tool.call, tool.call{tool=Bash}, command.run{command=tally}
+  ❯ ./register.js calls: $.command.register
+```
+
+Si un evento que querías manejar no aparece en `hooks:`, Claude Code tampoco va a llamar ese hook. El análisis es estático, y por eso impone forma: cada llamada escrita completa (`$.fs.read(...)`, nunca `const ui = $.ui`), el nombre del evento como string literal, imports solo relativos y dentro del plugin, sin `import()` dinámico.
+
+El test dispara los eventos y revisa qué hizo el hook:
+
+```typescript
+// tests/push-guard.test.ts
+import { expect, test } from 'claude-code/testing'
+
+test('bloquea force push y deja pasar el resto', async ($, on) => {
+  on('tool.call', () => ({ result: 'ok' }))   // responde en lugar de Claude Code: ninguna tool corre
+  const blocked = await $.tool.call({ tool: 'Bash', command: 'git push origin main --force' })
+  expect(blocked.deny).toContain('Force push bloqueado')
+  const passed = await $.tool.call({ tool: 'Bash', command: 'ls' })
+  expect(passed.deny).toBeUndefined()
+  const answer = await $.command.run({ command: 'tally', args: '' })
+  expect(answer.text).toBe('2 tool calls desde que cargó el mod')
+})
+```
+
+**Tipos.** En cada carga desde `--plugin-dir`, Claude Code escribe los `.d.ts` de tu versión en `.claude-plugin/types/`. Son la referencia que manda: la API cambia entre releases y la propia doc dice que, si una página y esos archivos discrepan, valen los archivos. Para buscar algo: `grep "'tool.call'" .claude-plugin/types/claude-code/index.d.ts`.
+
+**Pedírselo a Claude.** La skill bundled `plugin-authoring` escribe el mod en `~/.claude/dev-mods/<session-id>/<nombre>/`. Al primer archivo, Claude Code pregunta una vez si habilita hot reload para la sesión; esa respuesta es solo tuya, ningún modo de permisos la contesta. El mod carga solo en esa sesión y la carpeta se borra pasado `cleanupPeriodDays`: para conservarlo, cópialo fuera y cárgalo con `--plugin-dir` o publícalo en un marketplace (§11).
+
+**No desarrolles contra la copia instalada.** Un plugin instalado corre desde un cache por versión: tus edits no llegan hasta subir la versión y reinstalar.
+
+### Lo que cuesta en tokens
+
+| Acción del mod | Costo |
+|---|---|
+| Un hook que observa o bloquea | 0 tokens: es código en proceso |
+| `/comando` que devuelve `{ text }` | Sin turno de modelo, pero **Claude lee ese `text`**: entra al contexto. Para no imprimir nada, `return {}` |
+| `$.ui.log`, `$.ui.status`, `$.ui.toast` | 0: los ve la persona, Claude no los lee |
+| `$.prompt.submit({ text })` | Arranca un turno completo |
+| `$.model.complete({ model: 'haiku', ... })` | Gasta de tu plan o API key. `maxTokens` default 1024: bájalo si esperas una palabra |
+| `$.model.fork({ prompt })` | Una pregunta sobre la conversación actual; el prefijo sale casi todo del prompt cache |
+| `prompt.section` / `prompt.context` / `skill.prompt` con texto que cambia entre requests | **Invalida el prompt cache** en cada request (§3) |
+| `$.tool.register(...)` | La descripción de la tool la lee Claude: costo fijo, igual que una tool MCP (§2). *Inferido de que la tool se lista como `mcp__<plugin>__<nombre>`; no medido* |
+
+**El medidor de cache que faltaba.** `turn.step` entrega el `usage` de cada request, así que un mod de 10 líneas responde la pregunta de §3 ("¿mi cache está pegando?") sin tocar la API:
+
+```javascript
+// turn.step transmite: el hook es un async generator
+on('turn.step', async function* ($, e, next) {
+  const result = yield* next(e)
+  if (result.usage && !e.agentId) {   // e.agentId viene seteado en requests de subagentes
+    $.ui.log('cache leyó ' + result.usage.cache_read_input_tokens +
+             ' · escribió ' + result.usage.cache_creation_input_tokens)
+  }
+  return result
+})
+```
+
+Si `cache_read_input_tokens` da 0 en requests seguidos, hay un invalidador silencioso. `$.session.usage()` da además el uso de la ventana de contexto y el porcentaje de los límites del plan.
+
+### Dónde quedan tus guards de §7
+
+El orden de la cadena, de afuera hacia adentro:
+
+1. `PreToolUse` de **managed settings**. Corre antes que cualquier mod y su bloqueo es final.
+2. Mods de la organización (`prependPlugins`), mods que instalas tú, `appendPlugins`, mods built-in.
+3. El comportamiento de Claude Code, que incluye los `PreToolUse` de **todos los demás** settings (los tuyos y los de plugins) y luego el chequeo de permisos.
+4. `tool.check`: dispara después de que reglas y hooks decidieron, y un mod puede cambiar esa decisión.
+
+Dos consecuencias para la frase de §7 "un hook `PreToolUse` es física pura":
+
+- Un mod que responde `tool.call` sin llamar `next` **impide que tus `PreToolUse` corran**.
+- Un mod con `tool.check` puede **aprobar** una call que tu `PreToolUse` bloqueó, y una que una regla `ask` iba a preguntar. Las **deny rules** solo prevalecen sobre el mod en una máquina con managed settings o con sesión Team/Enterprise (ahí carga el guard built-in `cc-plugin-sec-default`). En cualquier otro lado, que es el caso del dev solo con plan Pro o API key, **el mod puede aprobar una call que una deny rule rechaza**.
+
+Tus guards siguen siendo física frente al modelo. Frente a un mod instalado no lo son: instalar un mod es darle a su autor tu sesión completa. Lo único que un mod no puede tocar es el prompt de permisos (no es un render site).
+
+### Antes de instalar uno ajeno
+
+Un mod no está sandboxeado ni con el sandbox de Bash activo: lee y escribe donde tu usuario pueda, lee variables de entorno y settings (API keys incluidas), ve cada prompt y cada tool call, y gasta tu plan. Como todo sale por `$`, se puede auditar sin ejecutarlo:
+
+```bash
+git clone <repo> && claude plugin validate ./el-mod
+```
+
+| En `calls:` / `hooks:` | Qué significa |
+|---|---|
+| `$.fs.read`, `$.fs.write` | Lee o escribe archivos en cualquier lado que tú puedas |
+| `$.process.run`, `$.process.spawn` | Lanza programas como tú, fuera del sandbox |
+| `$.http.fetch` | Hace requests de red |
+| `$.env.get`, `$.settings.read` | Lee entorno y settings; la línea `env reads:` nombra cada variable |
+| `$.model.complete` | Gasta tu plan o API key |
+| `$.prompt.submit` | Envía un prompt, y con `asUser: true` como si lo hubieras escrito tú |
+| `tool.check` | Aprueba o deniega antes del prompt de permisos |
+| `tool.call`, `prompt.submit`, `session.append` | Ve y puede reescribir cada tool call, cada prompt y cada fila de la conversación |
+
+Un mod con `$.http.fetch` + `$.env.get` + `prompt.submit` tiene todo lo necesario para exfiltrar. Que `validate` pase no es una revisión de seguridad: dice qué puede hacer, no qué hace.
+
+### Muertes silenciosas
+
+Un módulo o un hook que falla **se salta y la sesión sigue**: un mod roto se ve igual que uno que no hace nada.
+
+| Qué pasa | Por qué | Fix |
+|---|---|---|
+| El guard deja pasar todo | El hook lanzó, hizo timeout o devolvió una forma inválida **antes** de `next`: se salta y corre lo siguiente | `.catch` en ese `on(...)` que devuelva `{ deny }`. El handler tiene 1 s |
+| El comando retenido corrió igual | El hook superó sus 10 s de ejecución propia. El tiempo dentro de `next` o de una llamada a `$` (como `$.ui.ask`) no cuenta; un `await` de una promesa tuya, sí | Mantener la espera dentro de una llamada a `$` |
+| El contador vuelve a 0 | Las variables de módulo se reinician en cada reload | `$.state` (dura la sesión) o `$.store` (persiste entre sesiones) |
+| El valor se pierde tras `/clear`, `/resume` o `/branch` | Resetean `$.state` y `session.start` **no** vuelve a disparar | Recargar en `on('classic.SessionStart', { source: ['clear', 'resume', 'fork'] }, ...)` |
+| El módulo no carga | `on('session.start')` registrado dos veces sin matcher, evento mal escrito, o error en el top-level | `claude plugin validate` lo reporta antes de abrir sesión |
+| El panel no aparece | El árbol no validó (Claude Code dibuja lo suyo), o `$.ui.open` no vino de una acción de la persona y la terminal mide menos de 144 columnas | Leer la línea `ui.render (Pane) refused:`; abrir el panel desde un comando |
+| Se pierde un `set` en `$.store` | Todas las sesiones de la máquina comparten el store y `get` + `set` no es atómico | Una clave por ítem; releer justo antes de escribir |
+| Todos los mods desaparecen | El worker compartido se cayó 3 veces: Claude Code descarga todo mod no built-in | `/reload-plugins` |
+| La call se deniega en auto mode | Un hook cambió el input después de la revisión del classifier | No reescribir inputs en auto mode, o salir de auto y aprobar a mano |
+| `$.command.register` lanza | El nombre ya es de un comando built-in; el hook se salta y el resto de `session.start` no corre | Registrar comandos al final del hook, o en `try`/`catch` |
+| No pasa nada en `claude -p` | Los hooks corren, pero nada se dibuja y `$.ui.ask` rechaza | Default seguro en el `catch`; fallback a `{ text }` |
+
+**¿Cómo sabría que está muerto?** (§35)
+
+- `/plugin` muestra bajo las pestañas una línea tipo `1 mod active · push-guard`. Si tu mod no está ahí, no cargó.
+- Con `--plugin-dir`, el transcript muestra una línea tenue por cada reload y por cada hook saltado (`push-guard: tool.call hook skipped: threw Error: ...`). **En un mod instalado desde marketplace esa línea va solo al debug log**: `claude --debug` y buscar `hooks module <nombre> loaded` o `not loaded:`.
+- `claude plugin test` en un directorio sin mod dice si la máquina puede cargar mods: `no hooks module to load` (sí puede) frente a `hooks modules are turned off here` (un setting los bloquea).
+
+### Apagarlos
+
+| Alcance | Cómo |
+|---|---|
+| Un mod | Deshabilitar su plugin en `/plugin` → Installed |
+| Todos los instalados, una sesión | `claude --safe-mode` (apaga también el resto de tus customizaciones) |
+| Todos los que instalaste, siempre | `"disableAllHooks": true` en `~/.claude/settings.json`. Se lleva también tus settings hooks y el status line |
+
+`disableAllHooks` apaga el mod pero deja el resto del plugin: sus skills, comandos, agentes y MCP servers siguen cargando. Los mods built-in (`/diff`, soporte de `AGENTS.md`, el guard) no se apagan con ninguno de los tres. La variable de early access `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS` se ignora desde v2.1.287: ponerla en `0` ya no apaga nada.
+
+### Dónde corren
+
+| Dónde | Hooks | Dibujo |
+|---|---|---|
+| `claude` en terminal | Sí | Sí |
+| Pestaña Code de Desktop | Sí | Sí, salvo elementos solo-terminal (`Raster`, `Image`) |
+| Extensión de VS Code, `claude -p`, Agent SDK, sesión cloud | Sí | No |
+| Sesión WSL en Desktop | No | No |
+
+Un guard basado en mod sí protege en CI (`claude -p`). Un panel no existe ahí.
+
+### Límites que conviene saber
+
+| Límite | Valor |
+|---|---|
+| Ejecución propia de un hook por evento | 10 s (50 ms en `prompt.edit`) |
+| Handler `.catch` | 1 s |
+| `$.process.run` | 30 s default, 10 min máximo |
+| `$.fs.read` / `$.fs.write` | 4 MiB por archivo; `write` no es atómico |
+| `$.store` | 4 MiB de JSON en total |
+| `$.model.complete` `maxTokens` | 1024 default |
+| Un test de `claude plugin test` | 5 s salvo `timeoutMs` |
+
+### Checklist §42
+
+```
+□ ¿Un settings hook (§7) lo resolvía? Entonces no es un mod
+□ hooks/hooks.json tiene "modules" con una sola ruta relativa
+□ claude plugin validate pasa y la línea hooks: lista todos los eventos que esperas
+□ Todo hook que bloquea tiene .catch que devuelve { deny } (fail-closed)
+□ Esperas largas dentro de llamadas a $ ($.ui.ask), no en promesas propias
+□ Estado que debe sobrevivir un reload → $.state; entre sesiones → $.store
+□ Si usas $.state: recarga en classic.SessionStart para clear/resume/fork
+□ Al menos un *.test.ts y claude plugin test en verde
+□ Comandos que solo abren un panel devuelven {} (su text entraría al contexto)
+□ $.model.complete con model y maxTokens explícitos
+□ Mod ajeno: leer calls: y hooks: de validate antes de instalar
+□ Desarrollo con --plugin-dir, nunca contra la copia instalada
+```
+
+**Fuentes:** [Mods overview](https://code.claude.com/docs/en/plugins/mods/overview) · [Create a mod](https://code.claude.com/docs/en/plugins/mods/create) · [React to events](https://code.claude.com/docs/en/plugins/mods/events) · [Mods API](https://code.claude.com/docs/en/plugins/mods/api) · [Draw in the interface](https://code.claude.com/docs/en/plugins/mods/interface) · [Troubleshoot](https://code.claude.com/docs/en/plugins/mods/troubleshoot) · [Reference](https://code.claude.com/docs/en/plugins/mods/reference) · [Permissions — Extend permissions with hooks](https://code.claude.com/docs/en/permissions#extend-permissions-with-hooks) · ejemplo verificado con `claude plugin validate` y `claude plugin test` en v2.1.289.
 
 # Guía del Dev Pobre — 03 · Calidad y eficiencia
 *Parte de [guia-00-indice.md](guia-00-indice.md) — volver al índice.*
@@ -6494,32 +6807,32 @@ Si el hub tiene `skillOverrides: user-invocable-only`, los ~280 tokens no se gas
 
 ### Impacto del modelo
 
-Precios oficiales por 1M tokens (input/output, verificados): <!-- ver: 2026-09-02 -->
+Precios oficiales por 1M tokens (input/output, verificados): <!-- ver: 2026-10-05 -->
 
 | Modelo | Precio | Costo relativo | Cuándo |
 |---|---|---|---|
 | haiku 4.5 | $1 / $5 | 1× | Tareas fijas: git, postmortem, reviewer de checklist |
-| sonnet 5 | $2 / $10 | 2× | Implementación, debugging |
-| opus 5 | $5 / $25 | 5× | Arquitectura con trade-offs complejos, security |
-| fable 5.1 | $10 / $50 | 10× | Solo si tus evals con Opus 5 a effort alto se quedan cortos |
+| sonnet 5.5 | $2 / $10 | 2× | Implementación, debugging |
+| opus 5.5 | $4 / $20 | 4× | Arquitectura con trade-offs complejos, security |
+| fable 5.1 | $10 / $50 | 10× | Solo si tus evals con Opus 5.5 a effort alto se quedan cortos |
 
-Un reviewer en sonnet cuesta 2× más que en haiku — mismo resultado. Opus ya NO es 15× haiku ni 5× sonnet (pricing retirado): es **2.5× sonnet**, y ese ratio es estable — la suba de Sonnet 5 a $3/$15 agendada para el 01/09/2026 **fue cancelada** y $2/$10 pasó a ser el precio estándar (nota oficial en la página de pricing). El threshold para justificar Opus bajó y se quedó ahí (→ §25).
+Un reviewer en sonnet cuesta 2× más que en haiku — mismo resultado. Opus ya NO es 15× haiku ni 5× sonnet (pricing retirado): es **2× sonnet** desde Opus 5.5 ($4/$20; con Opus 5 a $5/$25 era 2.5×). Sonnet 5.5 mantiene los $2/$10 de Sonnet 5. El threshold para justificar Opus volvió a bajar (→ §25). Además, los cache reads de Opus 5.5 cuestan 0.05× del input ($0.20/MTok, lo mismo que Sonnet): en una sesión larga con cache caliente la diferencia real Opus/Sonnet se concentra en el output.
 
 ### El tokenizer cambió — tus estimados históricos están bajos
 
-**Verificado** (nota oficial en la página de pricing): de Claude 4.7 en adelante — Opus 4.7, Opus 4.8, **Opus 5**, **Sonnet 5**, Fable 5/5.1 — el tokenizer es nuevo y produce **~30% más tokens para el mismo texto**. **Sonnet 4.6 y anteriores, y Haiku 4.5, usan el tokenizer viejo.** <!-- ver: 2026-09-02 -->
+**Verificado** (nota oficial en la página de pricing): de Claude 4.7 en adelante — Opus 4.7, Opus 4.8, Opus 5, Sonnet 5, **Opus 5.5**, **Sonnet 5.5**, Fable 5/5.1 — el tokenizer es nuevo y produce **~30% más tokens para el mismo texto**. **Sonnet 4.6 y anteriores, y Haiku 4.5, usan el tokenizer viejo.** <!-- ver: 2026-09-02 -->
 
 | Modelo | Tokenizer | Efecto sobre los estimados de esta sección |
 |---|---|---|
 | Haiku 4.5 | viejo | Los números de arriba valen tal cual |
-| Sonnet 5 · Opus 5 · Fable 5.1 | nuevo (~+30%) | **Multiplicar los estimados por ~1.3** |
+| Sonnet 5.5 · Opus 5.5 · Fable 5.1 (y Sonnet 5 · Opus 5) | nuevo (~+30%) | **Multiplicar los estimados por ~1.3** |
 
 Dos consecuencias, ninguna obvia:
 
-1. **La tabla de costo fijo de arriba subestima ~30% en todo lo que no sea haiku.** Un CLAUDE.md de ~200 tokens con el tokenizer viejo son ~260 en Sonnet 5 u Opus 5: el techo real de §2 está 30% más abajo de lo que creías.
+1. **La tabla de costo fijo de arriba subestima ~30% en todo lo que no sea haiku.** Un CLAUDE.md de ~200 tokens con el tokenizer viejo son ~260 en Sonnet 5.5 u Opus 5.5: el techo real de §2 está 30% más abajo de lo que creías.
 2. **La ventaja de haiku es mayor que 2×.** "Sonnet cuesta 2× haiku" compara precio por token, pero haiku además necesita *menos tokens* para el mismo prompt: el ratio real ronda **~2.6×**. La regla "si haiku lo hace bien, no uses sonnet" se refuerza.
 
-**Opus 5 : Sonnet 5 sigue siendo 2.5×** — comparten tokenizer, ahí la comparación es directa.
+**Opus 5.5 : Sonnet 5.5 es 2×** — comparten tokenizer, ahí la comparación es directa.
 
 Para medir: `count_tokens` **con el modelo destino**. Extrapolar entre modelos es el error que este cambio vuelve caro (→ §21).
 
@@ -6902,7 +7215,7 @@ Solo los agentes que **escriben** llevan el matcher. Si lo pones sobre `design-r
 name: design-poda
 description: "Lente Poda: qué sobra en el código escrito por agentes de capa. Usar después
   de la aduana, sobre .claude/review/diff.patch. No revisa convenciones."
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 effort: xhigh
 tools: Read, Glob, Grep
 skills: [design-conventions]
@@ -8019,7 +8332,7 @@ Si todavía tenés `anthropics/claude-code-action@beta`:
 | Deploy automático al marketplace | Plugins requieren revisión manual de Anthropic |
 | Coverage report + badge | No hay target de coverage — solo tests de fallos silenciosos |
 | Dependabot auto-update | Deps auto-actualizadas pueden romper agentes silenciosamente |
-| Claude en CI sin `--model` explícito | Usa el default de la cuenta (Opus 5 en Anthropic API/Max/Team Premium/Enterprise, Sonnet 5 en Pro/Team Standard, Sonnet 4.5 en Microsoft Foundry) — nunca Fable, pero igual impredecible por PR si cambia el default de cuenta |
+| Claude en CI sin `--model` explícito | Usa el default de la cuenta (Opus 5.5 en todos los planes y en la Anthropic API desde v2.1.280, Sonnet 4.5 en Microsoft Foundry) — nunca Fable, pero igual impredecible por PR si cambia el default de cuenta |
 
 ### Checklist §20
 
@@ -8491,9 +8804,9 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
 **sonnet** — El intermedio. 2× más caro que haiku ($2/$10 por 1M tokens; ese precio dejó de ser introductorio y pasó a estándar — la suba a $3/$15 agendada para el 01/09/2026 fue cancelada). Para implementación, debugging, tareas que requieren razonar sobre contexto variable. La mayoría de los agentes especialistas viven aquí.
 
-**opus** — El más poderoso. 5× más caro que haiku y 2.5× más que sonnet ($5/$25 por 1M tokens en Opus 5 — el 15× histórico ya no aplica). Ese 2.5× es estable, no un descuento temporal. Para arquitectura con trade-offs complejos y security. Si crees que lo necesitas, primero intenta con sonnet + effort.
+**opus** — El más poderoso. 4× más caro que haiku y 2× más que sonnet ($4/$20 por 1M tokens en Opus 5.5 — el 15× histórico ya no aplica, y el 2.5× era de Opus 5). Para arquitectura con trade-offs complejos y security. Si crees que lo necesitas, primero intenta con sonnet + effort.
 
-**fable** — El techo. 10× haiku, 5× sonnet ($10/$50 en Fable 5.1). Thinking siempre encendido, no se puede desactivar. Reservado para lo que Opus 5 a `xhigh` no resuelve — si no mediste eso primero, no es tu modelo.
+**fable** — El techo. 10× haiku, 5× sonnet ($10/$50 en Fable 5.1). Thinking siempre encendido, no se puede desactivar. Reservado para lo que Opus 5.5 a `xhigh` no resuelve — si no mediste eso primero, no es tu modelo.
 
 ### Los componentes
 
@@ -8503,9 +8816,13 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
 **Hub** — Skill especial de triage siempre en contexto (auto-load). Su único trabajo es decirle a Claude qué agente usar para cada tarea. Debe ser corto (< 60 líneas para plugins, < 40 para proyectos con CLAUDE.md) porque se paga en cada tarea.
 
-**Hook** — Script Python que se ejecuta automáticamente cuando Claude hace algo. Hay 4 tipos: `PreToolUse` (antes de una acción, puede bloquearla), `PostToolUse` (después, solo informa), `SubagentStop` (cuando un agente termina), `Stop` (cuando cierra la sesión).
+**Hook** — Comando, request HTTP o prompt que el harness ejecuta solo cuando ocurre un evento (un *settings hook*, §7). Hay 33 eventos; los que más usa esta guía: `PreToolUse` (antes de una acción, puede denegarla), `PostToolUse` (después; no deshace, pero puede devolverle el error a Claude), `SubagentStop` (cuando un agente termina) y `Stop` (cuando Claude termina de responder — no cuando se cierra la sesión: eso es `SessionEnd`). <!-- ver: 2026-10-05 -->
 
-**Plugin** — Conjunto de agentes + skills + hooks empaquetados en un directorio con `plugin.json`. Se instala con `claude plugin add github:usuario/repo` y funciona en cualquier proyecto.
+**Mod** — Plugin cuyo `hooks/hooks.json` apunta a un módulo JS/TS con `"modules"`. Sus hooks son funciones que corren dentro del proceso de Claude Code: observan, reescriben o responden eventos, registran comandos y dibujan en la interfaz. Corren con tus permisos y sin sandbox (§42).
+
+**Settings hook** — El hook de §7, llamado así para distinguirlo del hook de un mod. Se declara en un archivo de settings o en el `hooks/hooks.json` de un plugin y corre fuera del proceso.
+
+**Plugin** — Conjunto de agentes + skills + hooks empaquetados en un directorio con `plugin.json`. Se instala desde un marketplace (`claude plugin marketplace add usuario/repo` + `claude plugin install plugin@marketplace`, §11) y funciona en cualquier proyecto. Si además trae un hooks module, es un mod (§42).
 
 **Orchestrador / Lead** — Agente que coordina otros agentes pero no implementa código directamente. No tiene Bash — coordina con instrucciones, no con comandos.
 
@@ -8523,13 +8840,13 @@ Dos físicas que aparecen al cablear un `command` orquestador (§33):
 
 ### Los hooks en detalle
 
-**PreToolUse** — El único hook bloqueante. Se ejecuta antes de que Claude use una herramienta. Si retorna `permissionDecision: deny`, la acción no ocurre. Usar para validaciones críticas e irreversibles.
+**PreToolUse** — Se ejecuta antes de que Claude use una herramienta. Si retorna `permissionDecision: deny`, la acción no ocurre. Es el hook que deniega una tool call antes de que pase; no es el único que bloquea (`UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolBatch` y otros también, cada uno a su manera — §7). Usar para validaciones críticas e irreversibles.
 
-**PostToolUse** — Informativo. Se ejecuta después de que Claude usa una herramienta. No puede deshacer la acción. Usar para confirmar, notificar o encadenar acciones secundarias.
+**PostToolUse** — Se ejecuta después de que Claude usa una herramienta. No puede deshacer la acción, pero con `"decision": "block"` + `reason` le devuelve el error a Claude en el mismo turno (§7). Usar para validar el resultado, notificar o encadenar acciones secundarias.
 
-**SubagentStop** — Se ejecuta cuando un agente termina su trabajo. Usar para encadenar agentes o notificar al usuario. Output debe ser JSON `{"systemMessage": "..."}`.
+**SubagentStop** — Se ejecuta cuando un agente termina su trabajo. Usar para encadenar agentes o exigir un paso más (`decision: block` lo hace seguir). Su stdout plano va al debug log: para avisar a la persona, JSON `{"systemMessage": "..."}`; para hablarle al modelo, `additionalContext` (§41).
 
-**Stop** — Se ejecuta cuando Claude cierra la sesión. Usar para recordatorios de fin de sesión (postmortem, learnings). Output debe ser JSON `{"systemMessage": "..."}`.
+**Stop** — Se ejecuta cuando Claude termina de responder (cada turno, no al cerrar la sesión). Usar para recordatorios de fin de trabajo o para forzar que siga (`decision: block`). Su stdout plano va al debug log: para la persona, JSON `{"systemMessage": "..."}` (§41).
 
 **systemMessage** — Campo del JSON de un hook que se muestra **a la persona** como banner; no entra al contexto del modelo. Para que Claude lo vea: `hookSpecificOutput.additionalContext`, o stdout plano en los 4 eventos que lo aceptan (`UserPromptSubmit`, `UserPromptExpansion`, `SessionStart`, `PostModelSwitch` — §7). Algunos eventos lo descartan o lo entregan en otro lado; la sección de cada evento en la doc lo indica. <!-- ver: 2026-09-22 -->
 

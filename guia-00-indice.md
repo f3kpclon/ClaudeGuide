@@ -2,7 +2,7 @@
 *Máxima eficiencia. Mínimo gasto. Cero disculpas.*
 
 **Autor:** Félix Sotelo — Dev pobre con aspiraciones de rico
-**Versión:** v5.45 · **§41 nueva — hook protocol: lectura de stdin y routing de salida.** Un mismo script de hook puede atender varios eventos: `hook_event_name` llega en el stdin y el hook elige a quién le habla — la persona (`systemMessage`) o el modelo (`additionalContext` o stdout plano). Verificado contra la doc de hooks: fuera de 4 eventos el stdout plano va al debug log, así que un `print()` en un hook de `Stop` no lo ve nadie. Incluye la lectura de stdin acotada con `select`. Además, **corrección**: `systemMessage` se muestra a la persona, no inyecta contexto (glosario §15, §12, §7). Antes: **§40 nueva — Aduana, filtro de código de agentes.** (§40)
+**Versión:** v5.46 · **§42 nueva — Mods: hooks que corren dentro de Claude Code.** Un plugin cuyo `hooks/hooks.json` apunta a un módulo JS/TS (`"modules"`) registra funciones que observan, reescriben o responden tool calls, prompts y turnos, agregan `/comandos` sin modelo y dibujan paneles. Sin sandbox, y un hook que falla se salta en silencio: un guard sin `.catch` falla abierto. En una máquina sin managed settings, un mod instalado puede aprobar lo que una deny rule rechaza. **Barrido contra la doc oficial:** generación **Opus 5.5 / Sonnet 5.5** (Opus baja a $4/$20: el ratio Opus:Sonnet pasa de 2.5× a 2×; default de cuenta = Opus 5.5 en todos los planes; effort default `medium`), tabla de modos de permiso corregida (`dontAsk` deniega, no aprueba), timeout default de hooks = 600 s (no "sin límite"), `claude plugin add` no existe. Antes: **§41 nueva — hook protocol.** (§41)
 
 ---
 
@@ -51,6 +51,7 @@
 | Crear un filtro contra la salida genérica de IA / sumar skills de otro plugin al mío | §39 — filtros anti-slop · §11 — skills de terceros |
 | Revisar solo el código que escriben mis agentes antes de aceptarlo | §40 — Aduana: hook + lentes Grieta y Poda en paralelo |
 | Que un hook le hable a la persona o al modelo según el evento | §41 — hook protocol: `hook_event_name`, canales de salida, stdin acotado |
+| Un panel, un `/comando` sin modelo o reescribir un evento en vuelo | §42 — mods: hooks JS/TS en proceso, `validate`/`test`, muertes silenciosas |
 
 ---
 
@@ -83,6 +84,7 @@
 - [§33 — Comandos nativos (rewind, clear, compact, fork) + integración con hooks](guia-02-construccion.md#33-comandos-nativos--rewind-clear-compact-fork-y-su-integración-con-agenteshooks)
 - [§34 — Loops y tareas programadas (/loop, ScheduleWakeup, Monitor)](guia-02-construccion.md#34-loops-y-tareas-programadas--loop-schedulewakeup-monitor)
 - [§36 — LSP: inteligencia de código del compilador](guia-02-construccion.md#36-lsp--inteligencia-de-código-del-compilador)
+- [§42 — Mods: hooks que corren dentro de Claude Code](guia-02-construccion.md#42-mods--hooks-que-corren-dentro-de-claude-code)
 
 ### Calidad y eficiencia
 - [§14 — Guía anti-overkill](guia-03-calidad.md#14-guía-anti-overkill)
@@ -114,7 +116,7 @@
 | Archivo | Contenido |
 |---|---|
 | `guia-01-fundamentos.md` | 01 · Fundamentos — §4, §1, §2, §25, §24 |
-| `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §36, §31, §32, §17, §26, §27, §28, §29, §30, §33, §34 |
+| `guia-02-construccion.md` | 02 · Construcción — §5, §7, §6, §8, §9, §10, §11, §36, §31, §32, §17, §26, §27, §28, §29, §30, §33, §34, §42 |
 | `guia-03-calidad.md` | 03 · Calidad y eficiencia — §14, §12, §13, §23, §3, §39, §40 |
 | `guia-04-avanzado.md` | 04 · Avanzado y referencia — §16, §18, §19, §20, §21, §22, §35, §37, §38, §41, §15 |
 
@@ -128,4 +130,5 @@
 - [Skills](https://code.claude.com/docs/en/skills)
 - [Hooks](https://code.claude.com/docs/en/hooks-guide)
 - [Plugins](https://code.claude.com/docs/en/plugins)
+- [Mods](https://code.claude.com/docs/en/plugins/mods/overview)
 - [Agent Teams](https://code.claude.com/docs/en/agent-teams)
