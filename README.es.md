@@ -4119,6 +4119,8 @@ El inventario cruza los plugins habilitados con sus `lspServers`, chequea que ca
 
 El patrón resuelve el dilema "sonnet comete errores, pero no quiero pagar Opus" (2× por token desde Opus 5.5 — §25). La solución no es subir de modelo — es agregar un segundo agente barato que revisa el output del primero.
 
+> **No es el advisor tool.** Claude Code tiene una feature oficial con el mismo nombre (`/advisor`) que va en la dirección contraria: un modelo *igual o más fuerte* aconseja al principal en los puntos de decisión. Ahí Haiku no puede ser el advisor. Diferencias, costo y muertes silenciosas: §31-ref. <!-- ver: 2026-10-05 -->
+
 ### Cuándo aplicar
 
 | Síntoma | Sin advisor | Con advisor |
@@ -4169,7 +4171,7 @@ El advisor no itera — emite veredicto. Si hacés más de 1 retry, el problema 
 
 ### Costo comparado
 
-| Estrategia | Costo relativo (por token, verificado) | Cuándo <!-- ver: 2026-09-02 --> |
+| Estrategia | Costo relativo (por token, verificado) | Cuándo <!-- ver: 2026-10-05 --> |
 |---|---|---|
 | Sonnet solo | 1× | Output predecible, stack conocido |
 | Sonnet + haiku advisor | ~1.15× | Output con consecuencias si está mal |
@@ -4177,6 +4179,59 @@ El advisor no itera — emite veredicto. Si hacés más de 1 retry, el problema 
 | Opus + advisor | ~2.15× | Security/one-shot donde el error es irreversible |
 
 El advisor barato mantiene su ventaja: haiku usa además el tokenizer viejo, así que consume ~30% menos tokens que sonnet/opus para el mismo texto de revisión (→ §3).
+
+<!-- §31-ref -->
+### No confundir con el advisor tool de Claude Code
+
+Verificado contra `code.claude.com/docs/en/advisor` y con el CLI v2.1.289. <!-- ver: 2026-10-05 -->
+
+| | Advisor Pattern (esta sección) | Advisor tool (`/advisor`) |
+|---|---|---|
+| Dirección | Un modelo **más barato** revisa el output | Un modelo **igual o más fuerte** aconseja al principal |
+| Quién decide cuándo | Tú: el pipeline lo invoca siempre | Claude: antes de comprometerse con un enfoque, ante un error que se repite, antes de dar la tarea por terminada. No hay setting para forzarlo ni para ponerle tope |
+| Qué recibe | Solo el output a revisar | La conversación completa, con cada tool call y su resultado |
+| Qué devuelve | PASS/FAIL contra un criterio fijo | Guía que Claude aplica antes de seguir |
+| Dónde corre | Un subagente tuyo (`.claude/agents/`) | Server-side, solo en la Anthropic API. Experimental |
+| Haiku como revisor | Sí, es el punto | No: `claude --advisor haiku` sale con `The model "haiku" cannot be used as an advisor` |
+
+No compiten. El pattern valida **forma** contra una lista, barato y determinista; el tool sube la calidad de las **decisiones** pagando un modelo caro solo en los momentos que importan.
+
+**Activarlo.** `/advisor opus` (lo guarda en `advisorModel` de tus user settings), `"advisorModel": "opus"` en settings, o `claude --advisor opus` para una sola sesión (el flag no aparece en `claude --help`). Acepta `fable`, `opus`, `sonnet` o un ID completo. Para apagarlo: `/advisor off`. Para deshabilitarlo del todo: `CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1`.
+
+**La regla de pareo:** el advisor tiene que rankear igual o por encima del modelo principal.
+
+| Principal | Advisors aceptados |
+|---|---|
+| Haiku 4.5 | Fable, Opus, Sonnet |
+| Sonnet 5.5 | Fable, Opus 5 o posterior, Sonnet 5.5 |
+| Opus 5 / Opus 5.5 | Fable, Opus 5 o posterior |
+| Fable 5.1 | Solo Fable 5.1 |
+
+Los dos pareos lowcost de la doc: **Sonnet + advisor Opus** (Sonnet hace la rutina y escala plan, fallos ambiguos y chequeo final) y **Haiku + advisor Opus** (más caro que Haiku solo, más barato que subir el principal a Sonnet u Opus).
+
+**Lo que cuesta:**
+
+- Cada consulta lee **la conversación completa** a precio del advisor, y esa lectura **no se cachea**: no reutiliza nada entre una llamada y la siguiente. *Inferido de eso, no medido:* el costo de una consulta crece con el largo de la sesión, así que conviene más al principio de una tarea que al final de una sesión de horas.
+- Prender o apagar `/advisor` a mitad de sesión **no invalida el prompt cache** del modelo principal, a diferencia de cambiar de modelo (§3).
+- En suscripción cuenta contra los límites del plan; con Fable de advisor va a usage credits en los planes donde Fable ya se cobra así.
+- **Los subagentes heredan el advisor configurado** y aplican el mismo chequeo de pareo contra su propio modelo. Con `advisorModel: opus` en tus settings, tus agentes haiku de git o postmortem también pueden consultar a Opus. `/usage` muestra el total.
+
+**Muertes silenciosas:**
+
+| Qué pasa | Por qué |
+|---|---|
+| Tienes advisor guardado y nunca consulta | Rankea por debajo del modelo principal: Claude Code no lo adjunta. Lo dice solo en la salida de `/advisor` y en una notificación |
+| Consultaba y dejó de hacerlo | La API rechazó el pareo: Claude Code reenvía sin advisor, sin error. Otro advisor recién aplica tras `/clear` o `/compact` |
+| No se activa en ninguna sesión | `DISABLE_TELEMETRY` (o cualquier variable que apague el fetch de feature flags) lo deja apagado |
+| No se activa con un modelo custom | Si Claude Code no reconoce el modelo principal o el advisor, no lo adjunta |
+| No existe la opción | Bedrock, Claude Platform on AWS, Google Cloud y Foundry no lo soportan |
+| Sesión en background arranca sin advisor | Con `--advisor` inválido, una sesión normal sale con error; una en background sigue sin él |
+
+**¿Cómo sabría que está muerto?** Al iniciar, una sesión con advisor activo muestra `Advisor Tool (experimental) is on and may use more tokens · /advisor`. Durante la tarea aparece una línea `Advising` por consulta (`Ctrl+O` para leer la guía). Sin esa notificación, no hay advisor.
+
+**Cuándo sí:** tareas largas y multi-paso donde casi todos los turnos son rutina pero la calidad del plan decide el resultado. **Cuándo no:** tareas cortas, o trabajo donde cada turno necesita el modelo fuerte. Las alternativas para combinar modelos: `opusplan` (§25) y un subagente con `model:` propio (§5).
+
+**Fuente:** [Advisor tool](https://code.claude.com/docs/en/advisor)
 
 ---
 
